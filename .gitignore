@@ -1,6 +1,30 @@
-node_modules
-dist
+# Dependencias
+node_modules/
+
+# Build
+dist/
+
+# Variables de entorno
 .env
-.vscode
-coverage
-.pnpm-store
+.env.*
+
+# Editor
+.vscode/
+
+# Testing
+coverage/
+
+# PNPM
+.pnpm-store/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
