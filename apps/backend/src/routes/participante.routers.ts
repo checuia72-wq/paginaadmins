@@ -1,5 +1,3 @@
-// src/routes/participante.routes.ts
-
 import { Router } from "express";
 import {
   getParticipantes,

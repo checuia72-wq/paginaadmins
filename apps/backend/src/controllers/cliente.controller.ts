@@ -4,7 +4,7 @@ import { pool } from "../config/database";
 export const getClientes = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM cliente ORDER BY nombre ASC"
+      "SELECT * FROM cliente ORDER BY telefono ASC"
     );
 
     res.json(result.rows);
@@ -34,21 +34,21 @@ export const getClienteByTelefono = async (req: Request, res: Response) => {
 
 export const createCliente = async (req: Request, res: Response) => {
   try {
-    const { telefono, nombre } = req.body;
+    const { telefono, atencion_humana = false } = req.body;
 
-    if (!telefono || !nombre) {
+    if (!telefono) {
       return res.status(400).json({
-        message: "El teléfono y el nombre son obligatorios",
+        message: "El teléfono es obligatorio",
       });
     }
 
     const result = await pool.query(
       `
-      INSERT INTO cliente (telefono, nombre)
+      INSERT INTO cliente (telefono, atencion_humana)
       VALUES ($1, $2)
       RETURNING *
       `,
-      [telefono, nombre]
+      [telefono, atencion_humana]
     );
 
     res.status(201).json(result.rows[0]);
@@ -69,22 +69,22 @@ export const createCliente = async (req: Request, res: Response) => {
 export const updateCliente = async (req: Request, res: Response) => {
   try {
     const { telefono } = req.params;
-    const { nombre } = req.body;
+    const { atencion_humana } = req.body;
 
-    if (!nombre) {
+    if (typeof atencion_humana !== "boolean") {
       return res.status(400).json({
-        message: "El nombre es obligatorio",
+        message: "El campo atencion_humana debe ser true o false",
       });
     }
 
     const result = await pool.query(
       `
       UPDATE cliente
-      SET nombre = $1
+      SET atencion_humana = $1
       WHERE telefono = $2
       RETURNING *
       `,
-      [nombre, telefono]
+      [atencion_humana, telefono]
     );
 
     if (result.rows.length === 0) {
@@ -113,7 +113,8 @@ export const deleteCliente = async (req: Request, res: Response) => {
 
     if (reservas.rows.length > 0) {
       return res.status(400).json({
-        message: "No se puede eliminar el cliente porque tiene reservas registradas",
+        message:
+          "No se puede eliminar el cliente porque tiene reservas registradas",
       });
     }
 

@@ -15,7 +15,7 @@ export const getReservas = async (
         r.aprobado,
 
         c.telefono AS telefono_cliente,
-        c.nombre AS nombre_cliente,
+        c.atencion_humana,
 
         p.id_plan,
         p.nombre_plan,
@@ -199,63 +199,61 @@ export const updateReserva = async (
       aprobado,
     } = req.body;
 
-    // VALIDACIONES
     if (
-      !telefono_cliente ||
-      !id_plan ||
-      !cantidad_personas
+      cantidad_personas !== undefined &&
+      cantidad_personas <= 0
     ) {
       return res.status(400).json({
-        message:
-          "Teléfono del cliente, plan y cantidad de personas son obligatorios",
+        message: "La cantidad de personas debe ser mayor a 0",
       });
     }
 
-    if (cantidad_personas <= 0) {
-      return res.status(400).json({
-        message:
-          "La cantidad de personas debe ser mayor a 0",
-      });
+    if (telefono_cliente !== undefined) {
+      const clienteExiste = await pool.query(
+        `
+        SELECT * FROM cliente
+        WHERE telefono = $1
+        `,
+        [telefono_cliente]
+      );
+
+      if (clienteExiste.rows.length === 0) {
+        return res.status(404).json({
+          message: "El cliente no existe",
+        });
+      }
     }
 
-    // VALIDAR CLIENTE
-    const clienteExiste = await pool.query(
-      `
-      SELECT * FROM cliente
-      WHERE telefono = $1
-      `,
-      [telefono_cliente]
-    );
+    if (id_plan !== undefined) {
+      const planExiste = await pool.query(
+        `
+        SELECT * FROM plan
+        WHERE id_plan = $1
+        `,
+        [id_plan]
+      );
 
-    if (clienteExiste.rows.length === 0) {
-      return res.status(404).json({
-        message: "El cliente no existe",
-      });
-    }
-
-    // VALIDAR PLAN
-    const planExiste = await pool.query(
-      `
-      SELECT * FROM plan
-      WHERE id_plan = $1
-      `,
-      [id_plan]
-    );
-
-    if (planExiste.rows.length === 0) {
-      return res.status(404).json({
-        message: "El plan no existe",
-      });
+      if (planExiste.rows.length === 0) {
+        return res.status(404).json({
+          message: "El plan no existe",
+        });
+      }
     }
 
     const result = await pool.query(
       `
       UPDATE reserva
       SET
-        telefono_cliente = $1,
-        id_plan = $2,
-        cantidad_personas = $3,
-        aprobado = $4
+        telefono_cliente = COALESCE($1, telefono_cliente),
+        id_plan = COALESCE($2, id_plan),
+        cantidad_personas = COALESCE($3, cantidad_personas),
+        aprobado = COALESCE($4, aprobado),
+        fecha_aprobacion =
+          CASE
+            WHEN $4 = true THEN CURRENT_TIMESTAMP
+            WHEN $4 = false THEN NULL
+            ELSE fecha_aprobacion
+          END
       WHERE id_reserva = $5
       RETURNING *
       `,
