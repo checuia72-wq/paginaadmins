@@ -1,153 +1,229 @@
 import { supabase } from "../lib/supabase";
 
-const API_URL = import.meta.env.VITE_API_URL;
+function getClient() {
+  if (!supabase) throw new Error("Supabase no está configurado");
+  return supabase;
+}
 
-const getAuthHeaders = async () => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+/* ─── PLANES ─────────────────────────────────────────────── */
 
-  if (!session?.access_token) {
-    throw new Error("No hay sesión activa");
-  }
+export async function getPlanes() {
+  const { data, error } = await getClient()
+    .from("plan")
+    .select("*")                        // incluye precio_plan, nombre_plan, etc.
+    .order("id_plan", { ascending: true });
 
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${session.access_token}`,
-  };
-};
+  if (error) throw error;
+  return data ?? [];
+}
 
-const apiRequest = async (
-  endpoint: string,
-  options: RequestInit = {}
-) => {
-  const headers = await getAuthHeaders();
+export async function createPlan(payload: any) {
+  const { data, error } = await getClient()
+    .from("plan")
+    .insert(payload)
+    .select()
+    .single();
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      ...headers,
-      ...options.headers,
-    },
-  });
+  if (error) throw error;
+  return data;
+}
 
-  const text = await response.text();
+export async function updatePlan(id: number, payload: any) {
+  const { data, error } = await getClient()
+    .from("plan")
+    .update(payload)
+    .eq("id_plan", id)
+    .select()
+    .single();
 
-  if (!response.ok) {
-    throw new Error(text || "Error en la solicitud");
-  }
+  if (error) throw error;
+  return data;
+}
 
-  return text ? JSON.parse(text) : null;
-};
+export async function deletePlan(id: number) {
+  const { error } = await getClient()
+    .from("plan")
+    .delete()
+    .eq("id_plan", id);
 
-/* =========================
-   PLANES
-========================= */
+  if (error) throw error;
+}
 
-export const getPlanes = () => {
-  return apiRequest("/planes");
-};
+/* ─── CLIENTES ───────────────────────────────────────────── */
+// La tabla cliente solo tiene: telefono (PK), atencion_humana (bool)
+// No tiene nombre ni email — se usan tal cual.
 
-export const createPlan = (data: any) => {
-  return apiRequest("/planes", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
+export async function getClientes() {
+  const { data, error } = await getClient()
+    .from("cliente")
+    // Incluye: telefono, atencion_humana, etapaconversacion
+    .select("telefono, atencion_humana, etapaconversacion")
+    .order("telefono", { ascending: true });
 
-export const updatePlan = (id: number, data: any) => {
-  return apiRequest(`/planes/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-};
+  if (error) throw error;
+  return data ?? [];
+}
 
-export const deletePlan = (id: number) => {
-  return apiRequest(`/planes/${id}`, {
-    method: "DELETE",
-  });
-};
+export async function createCliente(payload: any) {
+  const { data, error } = await getClient()
+    .from("cliente")
+    .insert(payload)
+    .select()
+    .single();
 
-/* =========================
-   CLIENTES
-========================= */
+  if (error) throw error;
+  return data;
+}
 
-export const getClientes = () => {
-  return apiRequest("/clientes");
-};
+export async function updateCliente(telefono: string, payload: any) {
+  const { data, error } = await getClient()
+    .from("cliente")
+    .update(payload)
+    .eq("telefono", telefono)
+    .select()
+    .single();
 
-export const createCliente = (data: any) => {
-  return apiRequest("/clientes", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
+  if (error) throw error;
+  return data;
+}
 
-export const updateCliente = (telefono: string, data: any) => {
-  return apiRequest(`/clientes/${telefono}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-};
+export async function deleteCliente(telefono: string) {
+  const { error } = await getClient()
+    .from("cliente")
+    .delete()
+    .eq("telefono", telefono);
 
-export const deleteCliente = (telefono: string) => {
-  return apiRequest(`/clientes/${telefono}`, {
-    method: "DELETE",
-  });
-};
+  if (error) throw error;
+}
 
-/* =========================
-   RESERVAS
-========================= */
+/* ─── RESERVAS ───────────────────────────────────────────── */
+// Campos reales: id_reserva, fecha_solicitud (timestamp), fecha_aprobacion (timestamp),
+//                telefono_cliente, id_plan, cantidad_personas, aprobado (bool)
 
-export const getReservas = () => {
-  return apiRequest("/reservas");
-};
+export async function getReservas() {
+  const { data, error } = await getClient()
+    .from("reserva")
+    .select(`
+      id_reserva,
+      fecha_solicitud,
+      fecha_aprobacion,
+      telefono_cliente,
+      id_plan,
+      cantidad_personas,
+      aprobado,
+      plan (
+        id_plan,
+        nombre_plan,
+        precio_plan
+      )
+    `)
+    .order("id_reserva", { ascending: false });
 
-export const createReserva = (data: any) => {
-  return apiRequest("/reservas", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
+  if (error) throw error;
 
-export const updateReserva = (id: number, data: any) => {
-  return apiRequest(`/reservas/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-};
+  // Normalizar: exponer nombre_plan en el nivel raíz para compatibilidad
+  return (data ?? []).map((reserva: any) => ({
+    ...reserva,
+    nombre_plan: reserva.plan?.nombre_plan ?? null,
+  }));
+}
 
-export const deleteReserva = (id: number) => {
-  return apiRequest(`/reservas/${id}`, {
-    method: "DELETE",
-  });
-};
+export async function createReserva(payload: any) {
+  const { data, error } = await getClient()
+    .from("reserva")
+    .insert(payload)
+    .select()
+    .single();
 
-/* =========================
-   PARTICIPANTES
-========================= */
+  if (error) throw error;
+  return data;
+}
 
-export const getParticipantes = () => {
-  return apiRequest("/participantes");
-};
+export async function updateReserva(id: number, payload: any) {
+  const { data, error } = await getClient()
+    .from("reserva")
+    .update(payload)
+    .eq("id_reserva", id)
+    .select()
+    .single();
 
-export const createParticipante = (data: any) => {
-  return apiRequest("/participantes", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
+  if (error) throw error;
+  return data;
+}
 
-export const updateParticipante = (id: number, data: any) => {
-  return apiRequest(`/participantes/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-};
+export async function deleteReserva(id: number) {
+  const { error } = await getClient()
+    .from("reserva")
+    .delete()
+    .eq("id_reserva", id);
 
-export const deleteParticipante = (id: number) => {
-  return apiRequest(`/participantes/${id}`, {
-    method: "DELETE",
-  });
-};
+  if (error) throw error;
+}
+
+/* ─── PARTICIPANTES ──────────────────────────────────────── */
+// Campos reales: id_participante, id_reserva (FK), nombre, edad, estatura, peso
+// El plan se obtiene a través de la reserva asociada.
+
+export async function getParticipantes() {
+  const { data, error } = await getClient()
+    .from("participante")
+    .select(`
+      id_participante,
+      nombre,
+      edad,
+      estatura,
+      peso,
+      id_reserva,
+      reserva (
+        id_reserva,
+        id_plan,
+        aprobado,
+        plan (
+          id_plan,
+          nombre_plan
+        )
+      )
+    `)
+    .order("id_participante", { ascending: false });
+
+  if (error) throw error;
+
+  // Normalizar: subir nombre_plan y id_plan al nivel raíz
+  return (data ?? []).map((p: any) => ({
+    ...p,
+    id_plan:     p.reserva?.id_plan ?? null,
+    nombre_plan: p.reserva?.plan?.nombre_plan ?? null,
+  }));
+}
+
+export async function createParticipante(payload: any) {
+  const { data, error } = await getClient()
+    .from("participante")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function updateParticipante(id: number, payload: any) {
+  const { data, error } = await getClient()
+    .from("participante")
+    .update(payload)
+    .eq("id_participante", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteParticipante(id: number) {
+  const { error } = await getClient()
+    .from("participante")
+    .delete()
+    .eq("id_participante", id);
+
+  if (error) throw error;
+}
