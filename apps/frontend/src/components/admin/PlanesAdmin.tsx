@@ -1,9 +1,3 @@
-/**
- * PlanesAdmin.tsx
- * CRUD completo de planes con Supabase en tiempo real.
- * Estética coherente con el dashboard: header oscuro, cards, modales.
- */
-
 import { useEffect, useState, useRef } from "react";
 import {
   getPlanes,
@@ -16,20 +10,17 @@ import {
   Plus,
   Pencil,
   Trash2,
-  X,
+  Eye,
   Package,
   Search,
+  X,
+  ChevronLeft,
+  ChevronRight,
   RefreshCw,
-  Calendar,
-  Clock,
-  ImageIcon,
-  ChevronUp,
-  ChevronDown,
-  AlertTriangle,
-  CheckCircle2,
+  MoreVertical,
 } from "lucide-react";
+import "../../styles/planes.css";
 
-/* ─── tipos ─────────────────────────────────────────────── */
 interface Plan {
   id_plan: number;
   nombre_plan: string;
@@ -41,515 +32,490 @@ interface Plan {
   imagen_url?: string | null;
 }
 
-type SortKey = "nombre_plan" | "precio_plan" | "fecha_plan";
-type SortDir = "asc" | "desc";
-
-const EMPTY_FORM: Omit<Plan, "id_plan"> = {
+const emptyPlan: Omit<Plan, "id_plan"> = {
   nombre_plan: "",
   precio_plan: null,
-  descripcion_basica: "",
-  descripcion_detallada: "",
+  descripcion_basica: null,
+  descripcion_detallada: null,
   fecha_plan: null,
   hora_plan: null,
-  imagen_url: "",
+  imagen_url: null,
 };
 
-const AVATAR_COLORS = [
-  "#3b82f6","#8b5cf6","#ec4899","#f59e0b",
-  "#10b981","#06b6d4","#f97316","#6366f1",
-];
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
-/* ─── helpers ───────────────────────────────────────────── */
-const fmt = (n?: number | null) =>
-  n != null ? `$${Number(n).toLocaleString("es-CO")}` : "—";
-
-const fmtDate = (d?: string | null) =>
-  d ? new Date(d).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-
-/* ─── Toast ─────────────────────────────────────────────── */
-interface ToastProps { msg: string; type: "ok" | "err" }
-function Toast({ msg, type }: ToastProps) {
-  return (
-    <div className={`planes-toast planes-toast-${type}`}>
-      {type === "ok" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-      {msg}
-    </div>
-  );
+function fmtPrecio(v?: number | null) {
+  if (v == null) return null;
+  return "$" + Number(v).toLocaleString("es-CO");
 }
 
-/* ─── Modal de confirmación de borrado ───────────────────── */
-function DeleteModal({
-  plan,
-  onConfirm,
-  onCancel,
-  loading,
-}: {
-  plan: Plan;
-  onConfirm: () => void;
-  onCancel: () => void;
-  loading: boolean;
-}) {
-  return (
-    <div className="planes-overlay" onClick={onCancel}>
-      <div className="planes-modal planes-modal-sm" onClick={(e) => e.stopPropagation()}>
-        <div className="planes-modal-icon-danger">
-          <Trash2 size={22} />
-        </div>
-        <h3 className="planes-modal-title">Eliminar plan</h3>
-        <p className="planes-modal-sub">
-          ¿Estás seguro de que deseas eliminar{" "}
-          <strong>«{plan.nombre_plan}»</strong>? Esta acción no se puede deshacer.
-        </p>
-        <div className="planes-modal-actions">
-          <button className="btn-ghost" onClick={onCancel} disabled={loading}>
-            Cancelar
-          </button>
-          <button className="btn-danger" onClick={onConfirm} disabled={loading}>
-            {loading ? "Eliminando…" : "Sí, eliminar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Formulario (crear / editar) ────────────────────────── */
-function PlanForm({
-  initial,
-  onSave,
-  onClose,
-  saving,
-}: {
-  initial: Omit<Plan, "id_plan"> | Plan;
-  onSave: (data: Omit<Plan, "id_plan">) => void;
-  onClose: () => void;
-  saving: boolean;
-}) {
-  const [form, setForm] = useState<Omit<Plan, "id_plan">>(
-    "id_plan" in initial
-      ? { ...initial }
-      : { ...initial }
-  );
-
-  const set = (key: keyof typeof form, val: unknown) =>
-    setForm((f) => ({ ...f, [key]: val }));
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(form);
-  };
-
-  const isEdit = "id_plan" in initial;
-
-  return (
-    <div className="planes-overlay" onClick={onClose}>
-      <div className="planes-modal" onClick={(e) => e.stopPropagation()}>
-        {/* header */}
-        <div className="planes-modal-header">
-          <div className="planes-modal-header-left">
-            <div className="planes-modal-icon">
-              <Package size={18} />
-            </div>
-            <div>
-              <h3 className="planes-modal-title">
-                {isEdit ? "Editar plan" : "Nuevo plan"}
-              </h3>
-              <p className="planes-modal-sub">
-                {isEdit ? "Modifica los datos del plan" : "Completa los campos para crear un plan"}
-              </p>
-            </div>
-          </div>
-          <button className="planes-close-btn" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* body */}
-        <form onSubmit={handleSubmit} className="planes-form">
-          <div className="form-grid-2">
-            <div className="form-field form-field-full">
-              <label>Nombre del plan *</label>
-              <input
-                required
-                value={form.nombre_plan}
-                onChange={(e) => set("nombre_plan", e.target.value)}
-                placeholder="Ej. Plan Premium"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>Precio (COP)</label>
-              <input
-                type="number"
-                min={0}
-                value={form.precio_plan ?? ""}
-                onChange={(e) =>
-                  set("precio_plan", e.target.value === "" ? null : Number(e.target.value))
-                }
-                placeholder="0"
-              />
-            </div>
-
-            <div className="form-field">
-              <label>Fecha del plan</label>
-              <input
-                type="date"
-                value={form.fecha_plan ?? ""}
-                onChange={(e) => set("fecha_plan", e.target.value || null)}
-              />
-            </div>
-
-            <div className="form-field">
-              <label>Hora del plan</label>
-              <input
-                type="time"
-                value={form.hora_plan ?? ""}
-                onChange={(e) => set("hora_plan", e.target.value || null)}
-              />
-            </div>
-
-            <div className="form-field form-field-full">
-              <label>Descripción básica</label>
-              <input
-                value={form.descripcion_basica ?? ""}
-                onChange={(e) => set("descripcion_basica", e.target.value)}
-                placeholder="Descripción corta del plan"
-              />
-            </div>
-
-            <div className="form-field form-field-full">
-              <label>Descripción detallada</label>
-              <textarea
-                rows={3}
-                value={form.descripcion_detallada ?? ""}
-                onChange={(e) => set("descripcion_detallada", e.target.value)}
-                placeholder="Detalles completos del plan…"
-              />
-            </div>
-
-            <div className="form-field form-field-full">
-              <label>URL de imagen</label>
-              <div className="input-with-icon">
-                <ImageIcon size={14} className="input-icon" />
-                <input
-                  value={form.imagen_url ?? ""}
-                  onChange={(e) => set("imagen_url", e.target.value)}
-                  placeholder="https://…"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="planes-modal-actions">
-            <button type="button" className="btn-ghost" onClick={onClose} disabled={saving}>
-              Cancelar
-            </button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? "Guardando…" : isEdit ? "Guardar cambios" : "Crear plan"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   COMPONENTE PRINCIPAL
-   ═══════════════════════════════════════════════════════════ */
 export default function PlanesAdmin() {
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
+  // Filtros y paginación
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("nombre_plan");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
 
+  // Form modal
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Plan | null>(null);
-  const [deleting, setDeleting] = useState<Plan | null>(null);
+  const [formData, setFormData] = useState<Omit<Plan, "id_plan">>(emptyPlan);
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState(false);
 
-  const [toast, setToast] = useState<ToastProps | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // View modal
+  const [viewing, setViewing] = useState<Plan | null>(null);
 
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+  // Menú de acciones (móvil) — guarda el id_plan abierto
+  const [openMenu, setOpenMenu] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
-  /* ── fetch ── */
-  const fetchPlanes = async (silent = false) => {
-    if (silent) setRefreshing(true);
+  const fetchPlanes = async () => {
     try {
       const data = await getPlanes();
-      if (mountedRef.current) setPlanes(data as Plan[]);
+      setPlanes(data);
     } catch (e) {
       console.error(e);
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
     }
   };
 
-  useEffect(() => { fetchPlanes(false); }, []);
+  useEffect(() => { fetchPlanes(); }, []);
 
-  /* ── realtime ── */
   useEffect(() => {
     if (!supabase) return;
     const channel = supabase
       .channel("planes-admin")
-      .on("postgres_changes", { event: "*", schema: "public", table: "plan" },
-        () => fetchPlanes(true))
+      .on("postgres_changes", { event: "*", schema: "public", table: "plan" }, fetchPlanes)
       .subscribe();
-    return () => { supabase!.removeChannel(channel); };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
-  /* ── toast helper ── */
-  const showToast = (msg: string, type: "ok" | "err") => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ msg, type });
-    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  // Cerrar el menú al hacer clic fuera
+  useEffect(() => {
+    if (openMenu == null) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenu]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormData(emptyPlan);
+    setShowForm(true);
   };
 
-  /* ── CRUD handlers ── */
-  const handleSave = async (data: Omit<Plan, "id_plan">) => {
+  const openEdit = (plan: Plan) => {
+    setOpenMenu(null);
+    setEditing(plan);
+    setFormData({
+      nombre_plan: plan.nombre_plan,
+      precio_plan: plan.precio_plan ?? null,
+      descripcion_basica: plan.descripcion_basica ?? null,
+      descripcion_detallada: plan.descripcion_detallada ?? null,
+      fecha_plan: plan.fecha_plan ?? null,
+      hora_plan: plan.hora_plan ?? null,
+      imagen_url: plan.imagen_url ?? null,
+    });
+    setShowForm(true);
+  };
+
+  const openView = (plan: Plan) => {
+    setOpenMenu(null);
+    setViewing(plan);
+  };
+
+  const handleSave = async () => {
+    if (!formData.nombre_plan.trim()) return;
     setSaving(true);
     try {
       if (editing) {
-        await updatePlan(editing.id_plan, data);
-        showToast("Plan actualizado correctamente", "ok");
+        await updatePlan(editing.id_plan, formData);
       } else {
-        await createPlan(data);
-        showToast("Plan creado correctamente", "ok");
+        await createPlan(formData);
       }
       setShowForm(false);
-      setEditing(null);
-      fetchPlanes(true);
-    } catch (e: any) {
-      showToast(e?.message ?? "Error al guardar", "err");
+      await fetchPlanes();
+    } catch (e) {
+      console.error(e);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleting) return;
-    setDeletingId(true);
+  const handleDelete = async (plan: Plan) => {
+    setOpenMenu(null);
+    if (!confirm(`¿Eliminar "${plan.nombre_plan}"?`)) return;
     try {
-      await deletePlan(deleting.id_plan);
-      showToast("Plan eliminado", "ok");
-      setDeleting(null);
-      fetchPlanes(true);
-    } catch (e: any) {
-      showToast(e?.message ?? "Error al eliminar", "err");
-    } finally {
-      setDeletingId(false);
+      await deletePlan(plan.id_plan);
+      await fetchPlanes();
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  /* ── sort ── */
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc");
-    else { setSortKey(key); setSortDir("asc"); }
-  };
+  /* ── Filtrado y paginación ── */
+  const filtered = planes.filter((p) =>
+    p.nombre_plan.toLowerCase().includes(search.toLowerCase()) ||
+    String(p.id_plan).includes(search.toLowerCase()) ||
+    (p.descripcion_basica ?? "").toLowerCase().includes(search.toLowerCase())
+  );
 
-  const SortIcon = ({ k }: { k: SortKey }) => {
-    if (sortKey !== k) return <ChevronUp size={12} style={{ opacity: .25 }} />;
-    return sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
-  };
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  /* ── filtered + sorted list ── */
-  const filtered = planes
-    .filter((p) =>
-      p.nombre_plan.toLowerCase().includes(search.toLowerCase()) ||
-      (p.descripcion_basica ?? "").toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => {
-      let va: string | number = a[sortKey] ?? "";
-      let vb: string | number = b[sortKey] ?? "";
-      if (typeof va === "string") va = va.toLowerCase();
-      if (typeof vb === "string") vb = vb.toLowerCase();
-      if (va < vb) return sortDir === "asc" ? -1 : 1;
-      if (va > vb) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
+  const handleClear = () => { setSearch(""); setPage(1); };
 
-  /* ─────────────────────────────────────────────────────── */
+  /* ── Acciones reutilizables (botones desktop) ── */
+  const ActionButtons = ({ plan }: { plan: Plan }) => (
+    <div className="action-buttons">
+      <button className="action-btn action-ver" onClick={() => openView(plan)} title="Ver">
+        <Eye size={15} /> Ver
+      </button>
+      <button className="action-btn action-editar" onClick={() => openEdit(plan)} title="Editar">
+        <Pencil size={15} /> Editar
+      </button>
+      <button className="action-btn action-eliminar" onClick={() => handleDelete(plan)} title="Eliminar">
+        <Trash2 size={15} /> Eliminar
+      </button>
+    </div>
+  );
+
+  /* ── Menú de tres puntos (tarjetas móviles) ── */
+  const ActionMenu = ({ plan }: { plan: Plan }) => (
+    <div className="plan-card-menu" ref={openMenu === plan.id_plan ? menuRef : undefined}>
+      <button
+        className="plan-menu-trigger"
+        onClick={() => setOpenMenu(openMenu === plan.id_plan ? null : plan.id_plan)}
+        aria-label="Acciones"
+      >
+        <MoreVertical size={18} />
+      </button>
+      {openMenu === plan.id_plan && (
+        <div className="plan-menu-dropdown">
+          <button onClick={() => openView(plan)}><Eye size={15} /> Ver</button>
+          <button onClick={() => openEdit(plan)}><Pencil size={15} /> Editar</button>
+          <button className="plan-menu-danger" onClick={() => handleDelete(plan)}>
+            <Trash2 size={15} /> Eliminar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="planes-page">
-
-      {/* ── TOAST ── */}
-      {toast && <Toast msg={toast.msg} type={toast.type} />}
-
-      {/* ── MODALES ── */}
-      {(showForm || editing) && (
-        <PlanForm
-          initial={editing ?? EMPTY_FORM}
-          onSave={handleSave}
-          onClose={() => { setShowForm(false); setEditing(null); }}
-          saving={saving}
-        />
-      )}
-      {deleting && (
-        <DeleteModal
-          plan={deleting}
-          onConfirm={handleDelete}
-          onCancel={() => setDeleting(null)}
-          loading={deletingId}
-        />
-      )}
-
-      {/* ── HEADER ── */}
+      {/* Header */}
       <div className="planes-header">
         <div>
           <h1 className="planes-title">Planes</h1>
-          <p className="planes-sub">{planes.length} plan{planes.length !== 1 ? "es" : ""} registrado{planes.length !== 1 ? "s" : ""}</p>
+          <p className="planes-subtitle">Gestión de planes, precios y disponibilidad</p>
         </div>
-        <div className="planes-header-actions">
-          <button
-            className="btn-icon-sm"
-            onClick={() => fetchPlanes(true)}
-            disabled={refreshing}
-            title="Actualizar"
-          >
-            <RefreshCw size={15} className={refreshing ? "spin-icon" : ""} />
-          </button>
-          <button
-            className="btn-primary"
-            onClick={() => { setEditing(null); setShowForm(true); }}
-          >
-            <Plus size={16} />
-            Nuevo plan
-          </button>
+        <button className="btn-nuevo-plan" onClick={openCreate}>
+          <Plus size={16} /> Nuevo plan
+        </button>
+      </div>
+
+      {/* KPIs */}
+      <div className="planes-kpis">
+        <div className="kpi-card">
+          <div className="kpi-icon" style={{ background: "#dbeafe", color: "#1e40af" }}>
+            <Package size={24} />
+          </div>
+          <div className="kpi-info">
+            <h3>{planes.length}</h3>
+            <p>Total planes</p>
+          </div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-icon" style={{ background: "#ecfdf5", color: "#0f766e" }}>
+            <Package size={24} />
+          </div>
+          <div className="kpi-info">
+            <h3>{planes.length}</h3>
+            <p>Planes activos</p>
+          </div>
         </div>
       </div>
 
-      {/* ── BARRA DE BÚSQUEDA ── */}
-      <div className="planes-toolbar">
-        <div className="search-wrap">
-          <Search size={15} className="search-icon" />
+      {/* Filter bar */}
+      <div className="planes-filter-bar">
+        <div className="planes-search-wrap">
+          <Search size={18} className="planes-search-icon" />
           <input
-            className="search-input"
-            placeholder="Buscar plan…"
+            className="planes-search-input"
+            placeholder="Buscar por nombre o descripción..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
-          {search && (
-            <button className="search-clear" onClick={() => setSearch("")}>
-              <X size={13} />
-            </button>
-          )}
         </div>
-        <span className="planes-count">
-          {filtered.length} resultado{filtered.length !== 1 ? "s" : ""}
-        </span>
+
+        <div className="planes-filter-divider" />
+
+        <button className="planes-clear-btn" onClick={handleClear}>
+          <X size={14} /> Limpiar
+        </button>
+
+        <div className="planes-filter-divider" />
+
+        <span className="planes-rows-label">Filas:</span>
+        <select
+          className="planes-rows-select"
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+
+        <button onClick={fetchPlanes} className="btn-refresh" title="Recargar">
+          <RefreshCw size={18} />
+        </button>
       </div>
 
-      {/* ── TABLA ── */}
-      {loading ? (
-        <div className="planes-loading">
-          <div className="spinner" />
-          <p>Cargando planes…</p>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="planes-empty">
-          <Package size={36} style={{ color: "var(--text-muted)" }} />
-          <p>{search ? "Sin resultados para esa búsqueda" : "No hay planes registrados"}</p>
-          {!search && (
-            <button className="btn-primary" onClick={() => setShowForm(true)}>
-              <Plus size={14} /> Crear primer plan
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="planes-table-wrap">
-          <table className="planes-table">
-            <thead>
-              <tr>
-                <th className="th-sort" onClick={() => toggleSort("nombre_plan")}>
-                  Nombre <SortIcon k="nombre_plan" />
-                </th>
-                <th className="th-sort" onClick={() => toggleSort("precio_plan")}>
-                  Precio <SortIcon k="precio_plan" />
-                </th>
-                <th>Descripción</th>
-                <th className="th-sort" onClick={() => toggleSort("fecha_plan")}>
-                  <Calendar size={13} style={{ display: "inline", marginRight: 4 }} />
-                  Fecha <SortIcon k="fecha_plan" />
-                </th>
-                <th>
-                  <Clock size={13} style={{ display: "inline", marginRight: 4 }} />
-                  Hora
-                </th>
-                <th style={{ textAlign: "right" }}>Acciones</th>
+      {/* ── Tabla (desktop) ── */}
+      <div className="planes-table-wrap planes-desktop-only">
+        <table className="planes-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>PLAN</th>
+              <th>PRECIO</th>
+              <th>DESCRIPCIÓN</th>
+              <th>FECHA</th>
+              <th>HORA</th>
+              <th>ACCIONES</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
+            ) : paginated.length === 0 ? (
+              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
+            ) : paginated.map((plan) => (
+              <tr key={plan.id_plan}>
+                <td><strong>#{plan.id_plan}</strong></td>
+                <td>
+                  <div className="plan-name-cell">
+                    {plan.imagen_url ? (
+                      <img
+                        src={plan.imagen_url}
+                        alt={plan.nombre_plan}
+                        className="plan-thumb"
+                        onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                      />
+                    ) : (
+                      <div className="plan-thumb-placeholder"><Package size={18} /></div>
+                    )}
+                    <div>
+                      <div className="plan-name">{plan.nombre_plan}</div>
+                      <div className="plan-desc-short">{plan.descripcion_basica ?? ""}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="precio-cell">
+                  {fmtPrecio(plan.precio_plan) ?? <span className="rv-null">—</span>}
+                </td>
+                <td className="descripcion-cell">{plan.descripcion_basica || <span className="rv-null">—</span>}</td>
+                <td>{plan.fecha_plan ?? <span className="rv-null">—</span>}</td>
+                <td>{plan.hora_plan ?? <span className="rv-null">—</span>}</td>
+                <td>
+                  <ActionButtons plan={plan} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((plan, i) => {
-                const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-                return (
-                  <tr key={plan.id_plan} className="planes-row">
-                    <td>
-                      <div className="plan-name-cell">
-                        {plan.imagen_url ? (
-                          <img
-                            src={plan.imagen_url}
-                            alt={plan.nombre_plan}
-                            className="plan-thumb"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                          />
-                        ) : (
-                          <div
-                            className="plan-thumb-placeholder"
-                            style={{ background: color + "22", color }}
-                          >
-                            <Package size={14} />
-                          </div>
-                        )}
-                        <span className="plan-table-name">{plan.nombre_plan}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="price-chip">{fmt(plan.precio_plan)}</span>
-                    </td>
-                    <td className="desc-cell">
-                      {plan.descripcion_basica
-                        ? plan.descripcion_basica.length > 60
-                          ? plan.descripcion_basica.slice(0, 60) + "…"
-                          : plan.descripcion_basica
-                        : <span style={{ color: "var(--text-muted)" }}>—</span>}
-                    </td>
-                    <td className="meta-cell">{fmtDate(plan.fecha_plan)}</td>
-                    <td className="meta-cell">{plan.hora_plan ?? "—"}</td>
-                    <td>
-                      <div className="row-actions">
-                        <button
-                          className="action-btn action-edit"
-                          onClick={() => { setEditing(plan); setShowForm(false); }}
-                          title="Editar"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          className="action-btn action-delete"
-                          onClick={() => setDeleting(plan)}
-                          title="Eliminar"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Paginación */}
+        <div className="planes-pagination">
+          <span className="planes-pag-info">
+            Mostrando {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}
+          </span>
+          <div className="planes-pag-controls">
+            <button className="planes-pag-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <span className="planes-pag-current">Página {page} / {totalPages}</span>
+            <button className="planes-pag-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+              Siguiente <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tarjetas (móvil) ── */}
+      <div className="planes-cards planes-mobile-only">
+        {loading ? (
+          <div className="plan-card-empty">Cargando...</div>
+        ) : paginated.length === 0 ? (
+          <div className="plan-card-empty">Sin resultados</div>
+        ) : paginated.map((plan) => (
+          <div className="plan-card" key={plan.id_plan}>
+            <div className="plan-card-top">
+              {plan.imagen_url ? (
+                <img
+                  src={plan.imagen_url}
+                  alt={plan.nombre_plan}
+                  className="plan-card-thumb"
+                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                />
+              ) : (
+                <div className="plan-card-thumb-ph"><Package size={20} /></div>
+              )}
+              <div className="plan-card-headtext">
+                <span className="plan-card-id">#{plan.id_plan}</span>
+                <span className="plan-card-name">{plan.nombre_plan}</span>
+              </div>
+              <ActionMenu plan={plan} />
+            </div>
+
+            {plan.descripcion_basica && (
+              <p className="plan-card-desc">{plan.descripcion_basica}</p>
+            )}
+
+            <div className="plan-card-meta">
+              <div className="plan-card-meta-item">
+                <span className="plan-card-meta-label">Precio</span>
+                <span className="plan-card-meta-value precio-cell">
+                  {fmtPrecio(plan.precio_plan) ?? "—"}
+                </span>
+              </div>
+              <div className="plan-card-meta-item">
+                <span className="plan-card-meta-label">Fecha</span>
+                <span className="plan-card-meta-value">{plan.fecha_plan ?? "—"}</span>
+              </div>
+              <div className="plan-card-meta-item">
+                <span className="plan-card-meta-label">Hora</span>
+                <span className="plan-card-meta-value">{plan.hora_plan ?? "—"}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Paginación móvil */}
+        <div className="planes-pagination planes-pagination-mobile">
+          <span className="planes-pag-info">
+            {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}
+          </span>
+          <div className="planes-pag-controls">
+            <button className="planes-pag-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft size={15} />
+            </button>
+            <span className="planes-pag-current">{page} / {totalPages}</span>
+            <button className="planes-pag-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Modal Ver ── */}
+      {viewing && (
+        <div className="modal-overlay" onClick={() => setViewing(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Detalle del plan</h2>
+              <button className="modal-close" onClick={() => setViewing(null)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              {viewing.imagen_url && (
+                <img src={viewing.imagen_url} alt={viewing.nombre_plan} className="modal-img" />
+              )}
+              <div className="modal-field"><label>Nombre</label><span>{viewing.nombre_plan}</span></div>
+              <div className="modal-field"><label>Precio</label><span>{fmtPrecio(viewing.precio_plan) ?? "—"}</span></div>
+              <div className="modal-field"><label>Descripción básica</label><span>{viewing.descripcion_basica || "—"}</span></div>
+              <div className="modal-field"><label>Descripción detallada</label><span>{viewing.descripcion_detallada || "—"}</span></div>
+              <div className="modal-field"><label>Fecha</label><span>{viewing.fecha_plan || "—"}</span></div>
+              <div className="modal-field"><label>Hora</label><span>{viewing.hora_plan || "—"}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Crear / Editar ── */}
+      {showForm && (
+        <div className="modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{editing ? "Editar plan" : "Nuevo plan"}</h2>
+              <button className="modal-close" onClick={() => setShowForm(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Nombre *</label>
+                <input
+                  value={formData.nombre_plan}
+                  onChange={(e) => setFormData({ ...formData, nombre_plan: e.target.value })}
+                  placeholder="Nombre del plan"
+                />
+              </div>
+              <div className="form-group">
+                <label>Precio (COP)</label>
+                <input
+                  type="number"
+                  value={formData.precio_plan ?? ""}
+                  onChange={(e) => setFormData({ ...formData, precio_plan: e.target.value ? Number(e.target.value) : null })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="form-group">
+                <label>Descripción básica</label>
+                <textarea
+                  value={formData.descripcion_basica ?? ""}
+                  onChange={(e) => setFormData({ ...formData, descripcion_basica: e.target.value || null })}
+                  rows={3}
+                  placeholder="Descripción corta..."
+                />
+              </div>
+              <div className="form-group">
+                <label>Descripción detallada</label>
+                <textarea
+                  value={formData.descripcion_detallada ?? ""}
+                  onChange={(e) => setFormData({ ...formData, descripcion_detallada: e.target.value || null })}
+                  rows={4}
+                  placeholder="Descripción larga..."
+                />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Fecha</label>
+                  <input
+                    type="date"
+                    value={formData.fecha_plan ?? ""}
+                    onChange={(e) => setFormData({ ...formData, fecha_plan: e.target.value || null })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Hora</label>
+                  <input
+                    type="time"
+                    value={formData.hora_plan ?? ""}
+                    onChange={(e) => setFormData({ ...formData, hora_plan: e.target.value || null })}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>URL de imagen</label>
+                <input
+                  value={formData.imagen_url ?? ""}
+                  onChange={(e) => setFormData({ ...formData, imagen_url: e.target.value || null })}
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-cancelar" onClick={() => setShowForm(false)}>Cancelar</button>
+              <button className="btn-guardar" onClick={handleSave} disabled={saving}>
+                {saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear plan"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

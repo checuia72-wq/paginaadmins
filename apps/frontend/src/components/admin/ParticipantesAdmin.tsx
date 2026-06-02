@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   getParticipantes,
   createParticipante,
@@ -6,396 +6,513 @@ import {
   deleteParticipante,
   getReservas,
 } from "../../services/api.service";
+import {
+  Plus, Eye, Pencil, Trash2, Search, X,
+  ChevronLeft, ChevronRight, Users, Calendar, MoreVertical,
+} from "lucide-react";
+import "../../styles/participantes.css";
 
-type Participante = {
+/* ── Tipos ── */
+interface Participante {
   id_participante: number;
   id_reserva: number;
   nombre: string;
   edad: number | null;
   estatura: number | null;
   peso: number | null;
-};
+  nombre_plan?: string | null;
+}
 
-type Reserva = {
+interface Reserva {
   id_reserva: number;
-  telefono_cliente: string;
-  nombre_plan: string;
-};
+  telefono_cliente?: string;
+  nombre_plan?: string;
+}
 
-type ParticipanteForm = {
-  id_reserva: number | "";
-  nombre: string;
-  edad: string;
-  estatura: string;
-  peso: string;
-};
-
-const initialForm: ParticipanteForm = {
-  id_reserva: "",
+const emptyForm = {
+  id_reserva: "" as number | "",
   nombre: "",
   edad: "",
   estatura: "",
   peso: "",
 };
 
-function ParticipantesAdmin() {
-  const [participantes, setParticipantes] = useState<
-    Participante[]
-  >([]);
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
-  const [reservas, setReservas] = useState<
-    Reserva[]
-  >([]);
+/* ── Componente ── */
+export default function ParticipantesAdmin() {
+  const [participantes, setParticipantes] = useState<Participante[]>([]);
+  const [reservas, setReservas] = useState<Reserva[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [form, setForm] =
-    useState<ParticipanteForm>(initialForm);
+  // Filtros
+  const [search, setSearch] = useState("");
+  const [reservaFilter, setReservaFilter] = useState<string>("todas");
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
 
-  const [editandoId, setEditandoId] =
-    useState<number | null>(null);
+  // Modal form
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Participante | null>(null);
+  const [formData, setFormData] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
-  const [loading, setLoading] = useState(false);
+  // Modal ver
+  const [viewing, setViewing] = useState<Participante | null>(null);
 
-  const cargarParticipantes = async () => {
+  // Menú acciones (móvil)
+  const [openMenu, setOpenMenu] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  /* ── Fetch ── */
+  const fetchAll = async () => {
     try {
       setLoading(true);
-
-      const data = await getParticipantes();
-      setParticipantes(data);
-    } catch (error) {
-      console.error(error);
-      alert("Error al cargar participantes");
+      const [p, r] = await Promise.all([getParticipantes(), getReservas()]);
+      setParticipantes(p);
+      setReservas(r);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const cargarReservas = async () => {
-    try {
-      const data = await getReservas();
-      setReservas(data);
-    } catch (error) {
-      console.error(error);
-      alert("Error al cargar reservas");
-    }
-  };
+  useEffect(() => { fetchAll(); }, []);
 
   useEffect(() => {
-    cargarParticipantes();
-    cargarReservas();
-  }, []);
+    if (openMenu == null) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenu]);
 
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement
-    >
-  ) => {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
+  /* ── Helpers ── */
+  const openCreate = () => {
+    setEditing(null);
+    setFormData(emptyForm);
+    setShowForm(true);
+  };
+
+  const openEdit = (p: Participante) => {
+    setOpenMenu(null);
+    setEditing(p);
+    setFormData({
+      id_reserva: p.id_reserva,
+      nombre: p.nombre,
+      edad: p.edad?.toString() ?? "",
+      estatura: p.estatura?.toString() ?? "",
+      peso: p.peso?.toString() ?? "",
     });
+    setShowForm(true);
   };
 
-  const limpiarFormulario = () => {
-    setForm(initialForm);
-    setEditandoId(null);
+  const openView = (p: Participante) => {
+    setOpenMenu(null);
+    setViewing(p);
   };
 
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
-
-    if (!form.nombre.trim()) {
+  const handleSave = async () => {
+    if (!formData.nombre.trim()) {
       alert("El nombre es obligatorio");
       return;
     }
-
-    if (!form.id_reserva) {
+    if (!formData.id_reserva) {
       alert("Debes seleccionar una reserva");
       return;
     }
-
-    const payload = {
-      id_reserva: Number(form.id_reserva),
-      nombre: form.nombre,
-      edad: form.edad
-        ? Number(form.edad)
-        : null,
-      estatura: form.estatura
-        ? Number(form.estatura)
-        : null,
-      peso: form.peso
-        ? Number(form.peso)
-        : null,
-    };
-
+    setSaving(true);
     try {
-      if (editandoId) {
-        await updateParticipante(
-          editandoId,
-          payload
-        );
-
-        alert(
-          "Participante actualizado correctamente"
-        );
+      const payload = {
+        id_reserva: Number(formData.id_reserva),
+        nombre: formData.nombre,
+        edad: formData.edad ? Number(formData.edad) : null,
+        estatura: formData.estatura ? Number(formData.estatura) : null,
+        peso: formData.peso ? Number(formData.peso) : null,
+      };
+      if (editing) {
+        await updateParticipante(editing.id_participante, payload);
       } else {
         await createParticipante(payload);
-
-        alert(
-          "Participante creado correctamente"
-        );
       }
-
-      limpiarFormulario();
-      cargarParticipantes();
-    } catch (error) {
-      console.error(error);
-      alert(
-        "Error al guardar participante"
-      );
+      setShowForm(false);
+      await fetchAll();
+    } catch (e: any) {
+      console.error(e);
+      alert("No se pudo guardar el participante: " + (e?.message ?? "error desconocido"));
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleEditar = (
-    participante: Participante
-  ) => {
-    setEditandoId(
-      participante.id_participante
-    );
-
-    setForm({
-      id_reserva:
-        participante.id_reserva,
-      nombre: participante.nombre,
-      edad:
-        participante.edad?.toString() ||
-        "",
-      estatura:
-        participante.estatura?.toString() ||
-        "",
-      peso:
-        participante.peso?.toString() ||
-        "",
-    });
-  };
-
-  const handleEliminar = async (
-    id: number
-  ) => {
-    const confirmar = confirm(
-      "¿Seguro que deseas eliminar este participante?"
-    );
-
-    if (!confirmar) return;
-
+  const handleDelete = async (p: Participante) => {
+    setOpenMenu(null);
+    if (!confirm(`¿Eliminar a ${p.nombre}?`)) return;
     try {
-      await deleteParticipante(id);
-
-      alert(
-        "Participante eliminado correctamente"
-      );
-
-      cargarParticipantes();
-    } catch (error) {
-      console.error(error);
-      alert(
-        "No se pudo eliminar el participante"
-      );
+      await deleteParticipante(p.id_participante);
+      await fetchAll();
+    } catch (e: any) {
+      console.error(e);
+      alert("No se pudo eliminar el participante.");
     }
   };
 
+  /* ── Filtrado y paginación ── */
+  const filtered = participantes.filter((p) => {
+    const q = search.toLowerCase();
+    const matchSearch =
+      String(p.id_participante).includes(q) ||
+      p.nombre.toLowerCase().includes(q) ||
+      String(p.id_reserva).includes(q) ||
+      (p.nombre_plan ?? "").toLowerCase().includes(q);
+    const matchReserva =
+      reservaFilter === "todas" ? true : String(p.id_reserva) === reservaFilter;
+    return matchSearch && matchReserva;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleClear = () => { setSearch(""); setReservaFilter("todas"); setPage(1); };
+
+  /* ── KPIs (solo total y reservas con participantes) ── */
+  const totalParticipantes = participantes.length;
+  const reservasConParticipantes = new Set(participantes.map((p) => p.id_reserva)).size;
+
+  /* ── Sub-componentes ── */
+  const ActionButtons = ({ p }: { p: Participante }) => (
+    <div className="action-buttons">
+      <button className="action-btn action-ver" onClick={() => openView(p)}>
+        <Eye size={14} /> Ver
+      </button>
+      <button className="action-btn action-editar" onClick={() => openEdit(p)}>
+        <Pencil size={14} /> Editar
+      </button>
+      <button className="action-btn action-eliminar" onClick={() => handleDelete(p)}>
+        <Trash2 size={14} /> Eliminar
+      </button>
+    </div>
+  );
+
+  const ActionMenu = ({ p }: { p: Participante }) => (
+    <div className="pt-card-menu" ref={openMenu === p.id_participante ? menuRef : undefined}>
+      <button
+        className="pt-menu-trigger"
+        onClick={() => setOpenMenu(openMenu === p.id_participante ? null : p.id_participante)}
+        aria-label="Acciones"
+      >
+        <MoreVertical size={18} />
+      </button>
+      {openMenu === p.id_participante && (
+        <div className="pt-menu-dropdown">
+          <button onClick={() => openView(p)}><Eye size={15} /> Ver</button>
+          <button onClick={() => openEdit(p)}><Pencil size={15} /> Editar</button>
+          <button className="pt-menu-danger" onClick={() => handleDelete(p)}>
+            <Trash2 size={15} /> Eliminar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const fmtEstatura = (v: number | null) => (v != null ? `${v} m` : "—");
+  const fmtPeso = (v: number | null) => (v != null ? `${Number(v).toFixed(2)} kg` : "—");
+
+  // Nombre del plan asociado al participante: usa el que ya trae la API y,
+  // si no viene, lo busca en la lista de reservas cargada.
+  const planDeReserva = (p: Participante) =>
+    p.nombre_plan ??
+    reservas.find((r) => r.id_reserva === p.id_reserva)?.nombre_plan ??
+    "—";
+
+  /* ── Render ── */
   return (
-    <section>
-      <h2>Gestión de participantes</h2>
+    <div className="pt-page">
 
-      <form onSubmit={handleSubmit}>
-        <h3>
-          {editandoId
-            ? "Editar participante"
-            : "Crear participante"}
-        </h3>
-
+      {/* Header */}
+      <div className="pt-header">
         <div>
-          <label>Reserva</label>
+          <h1 className="pt-title">Participantes</h1>
+          <p className="pt-subtitle">Gestión de participantes registrados por reserva.</p>
+        </div>
+        <button className="pt-btn-new" onClick={openCreate}>
+          <Plus size={16} /> Nuevo participante
+        </button>
+      </div>
 
+      {/* KPIs */}
+      <div className="pt-kpis">
+        <div className="pt-kpi">
+          <div className="pt-kpi-icon pt-kpi-blue"><Users size={20} /></div>
+          <div>
+            <div className="pt-kpi-label">Total participantes</div>
+            <div className="pt-kpi-value">{totalParticipantes}</div>
+          </div>
+        </div>
+        <div className="pt-kpi">
+          <div className="pt-kpi-icon pt-kpi-violet"><Calendar size={20} /></div>
+          <div>
+            <div className="pt-kpi-label">Reservas con participantes</div>
+            <div className="pt-kpi-value">{reservasConParticipantes}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="pt-filter-bar">
+        <div className="pt-search-wrap">
+          <Search size={15} className="pt-search-icon" />
+          <input
+            className="pt-search-input"
+            placeholder="Buscar por ID, nombre o reserva..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+        </div>
+
+        <div className="pt-filter-divider" />
+
+        <div className="pt-filter-group">
+          <span className="pt-filter-label">Reserva:</span>
           <select
-            name="id_reserva"
-            value={form.id_reserva}
-            onChange={handleChange}
+            className="pt-filter-select"
+            value={reservaFilter}
+            onChange={(e) => { setReservaFilter(e.target.value); setPage(1); }}
           >
-            <option value="">
-              Seleccionar reserva
-            </option>
-
-            {reservas.map((reserva) => (
-              <option
-                key={reserva.id_reserva}
-                value={reserva.id_reserva}
-              >
-                #{reserva.id_reserva} -{" "}
-                {reserva.nombre_plan}
+            <option value="todas">Todas</option>
+            {reservas.map((r) => (
+              <option key={r.id_reserva} value={String(r.id_reserva)}>
+                #{r.id_reserva}{r.nombre_plan ? ` — ${r.nombre_plan}` : ""}
               </option>
             ))}
           </select>
         </div>
 
-        <div>
-          <label>Nombre</label>
+        <div className="pt-filter-divider" />
 
-          <input
-            type="text"
-            name="nombre"
-            value={form.nombre}
-            onChange={handleChange}
-            placeholder="Nombre participante"
-          />
-        </div>
-
-        <div>
-          <label>Edad</label>
-
-          <input
-            type="number"
-            name="edad"
-            value={form.edad}
-            onChange={handleChange}
-            placeholder="Edad"
-          />
-        </div>
-
-        <div>
-          <label>Estatura</label>
-
-          <input
-            type="number"
-            step="0.01"
-            name="estatura"
-            value={form.estatura}
-            onChange={handleChange}
-            placeholder="Ej. 1.72"
-          />
-        </div>
-
-        <div>
-          <label>Peso</label>
-
-          <input
-            type="number"
-            step="0.01"
-            name="peso"
-            value={form.peso}
-            onChange={handleChange}
-            placeholder="Ej. 70.5"
-          />
-        </div>
-
-        <button type="submit">
-          {editandoId
-            ? "Actualizar participante"
-            : "Crear participante"}
+        <button className="pt-clear-btn" onClick={handleClear}>
+          <X size={14} /> Limpiar
         </button>
 
-        {editandoId && (
-          <button
-            type="button"
-            onClick={limpiarFormulario}
-          >
-            Cancelar edición
-          </button>
-        )}
-      </form>
+        <div className="pt-filter-divider" />
 
-      <hr />
+        <span className="pt-filter-label">Filas:</span>
+        <select
+          className="pt-filter-select"
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+        >
+          {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
 
-      <h3>Participantes registrados</h3>
-
-      {loading ? (
-        <p>Cargando participantes...</p>
-      ) : participantes.length === 0 ? (
-        <p>No hay participantes registrados.</p>
-      ) : (
-        <table>
+      {/* ── Tabla (desktop) ── */}
+      <div className="pt-table-wrap pt-desktop-only">
+        <table className="pt-table">
           <thead>
             <tr>
               <th>ID</th>
-              <th>Reserva</th>
-              <th>Nombre</th>
-              <th>Edad</th>
-              <th>Estatura</th>
-              <th>Peso</th>
-              <th>Acciones</th>
+              <th>RESERVA</th>
+              <th>NOMBRE</th>
+              <th>EDAD</th>
+              <th>ESTATURA</th>
+              <th>PESO</th>
+              <th>ACCIONES</th>
             </tr>
           </thead>
-
           <tbody>
-            {participantes.map(
-              (participante) => (
-                <tr
-                  key={
-                    participante.id_participante
-                  }
-                >
-                  <td>
-                    {
-                      participante.id_participante
-                    }
-                  </td>
-
-                  <td>
-                    {
-                      participante.id_reserva
-                    }
-                  </td>
-
-                  <td>
-                    {participante.nombre}
-                  </td>
-
-                  <td>
-                    {participante.edad ??
-                      "-"}
-                  </td>
-
-                  <td>
-                    {participante.estatura ??
-                      "-"}
-                  </td>
-
-                  <td>
-                    {participante.peso ??
-                      "-"}
-                  </td>
-
-                  <td>
-                    <button
-                      onClick={() =>
-                        handleEditar(
-                          participante
-                        )
-                      }
-                    >
-                      Editar
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        handleEliminar(
-                          participante.id_participante
-                        )
-                      }
-                    >
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              )
-            )}
+            {loading ? (
+              <tr><td colSpan={7} className="pt-empty">Cargando...</td></tr>
+            ) : paginated.length === 0 ? (
+              <tr><td colSpan={7} className="pt-empty">Sin resultados</td></tr>
+            ) : paginated.map((p) => (
+              <tr key={p.id_participante}>
+                <td className="pt-id">#{p.id_participante}</td>
+                <td>
+                  <div className="pt-reserva-cell">
+                    <span className="pt-reserva"><Calendar size={13} /> #{p.id_reserva}</span>
+                    <span className="pt-reserva-plan">{planDeReserva(p)}</span>
+                  </div>
+                </td>
+                <td className="pt-nombre">{p.nombre}</td>
+                <td>{p.edad ?? <span className="rv-null">—</span>}</td>
+                <td>{fmtEstatura(p.estatura)}</td>
+                <td>{fmtPeso(p.peso)}</td>
+                <td><ActionButtons p={p} /></td>
+              </tr>
+            ))}
           </tbody>
         </table>
+
+        {/* Paginación */}
+        <div className="pt-pagination">
+          <span className="pt-pag-info">
+            Mostrando {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}
+          </span>
+          <div className="pt-pag-controls">
+            <button className="pt-pag-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft size={15} /> Anterior
+            </button>
+            <span className="pt-pag-current">Página {page} / {totalPages}</span>
+            <button className="pt-pag-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+              Siguiente <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tarjetas (móvil) ── */}
+      <div className="pt-cards pt-mobile-only">
+        {loading ? (
+          <div className="pt-card-empty">Cargando...</div>
+        ) : paginated.length === 0 ? (
+          <div className="pt-card-empty">Sin resultados</div>
+        ) : paginated.map((p) => (
+          <div className="pt-card" key={p.id_participante}>
+            <div className="pt-card-top">
+              <div className="pt-card-headtext">
+                <span className="pt-card-id">#{p.id_participante}</span>
+                <span className="pt-card-nombre">{p.nombre}</span>
+              </div>
+              <ActionMenu p={p} />
+            </div>
+
+            <div className="pt-card-row">
+              <Calendar size={14} /> Reserva #{p.id_reserva} — {planDeReserva(p)}
+            </div>
+
+            <div className="pt-card-meta">
+              <div className="pt-card-meta-item">
+                <span className="pt-card-meta-label">Edad</span>
+                <span className="pt-card-meta-value">{p.edad ?? "—"}</span>
+              </div>
+              <div className="pt-card-meta-item">
+                <span className="pt-card-meta-label">Estatura</span>
+                <span className="pt-card-meta-value">{fmtEstatura(p.estatura)}</span>
+              </div>
+              <div className="pt-card-meta-item">
+                <span className="pt-card-meta-label">Peso</span>
+                <span className="pt-card-meta-value">{fmtPeso(p.peso)}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Paginación móvil */}
+        <div className="pt-pagination pt-pagination-mobile">
+          <span className="pt-pag-info">
+            {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}
+          </span>
+          <div className="pt-pag-controls">
+            <button className="pt-pag-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
+              <ChevronLeft size={15} />
+            </button>
+            <span className="pt-pag-current">{page} / {totalPages}</span>
+            <button className="pt-pag-btn" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Modal Ver ── */}
+      {viewing && (
+        <div className="pt-overlay" onClick={() => setViewing(null)}>
+          <div className="pt-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-modal-header">
+              <h2>Detalle del participante</h2>
+              <button className="pt-modal-close" onClick={() => setViewing(null)}><X size={20} /></button>
+            </div>
+            <div className="pt-modal-body">
+              <div className="pt-detail-grid">
+                <div className="pt-detail-field"><label>ID</label><span>#{viewing.id_participante}</span></div>
+                <div className="pt-detail-field"><label>Reserva</label><span>#{viewing.id_reserva} — {planDeReserva(viewing)}</span></div>
+                <div className="pt-detail-field"><label>Nombre</label><span>{viewing.nombre}</span></div>
+                <div className="pt-detail-field"><label>Edad</label><span>{viewing.edad ?? "—"}</span></div>
+                <div className="pt-detail-field"><label>Estatura</label><span>{fmtEstatura(viewing.estatura)}</span></div>
+                <div className="pt-detail-field"><label>Peso</label><span>{fmtPeso(viewing.peso)}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
-    </section>
+
+      {/* ── Modal Crear / Editar ── */}
+      {showForm && (
+        <div className="pt-overlay" onClick={() => setShowForm(false)}>
+          <div className="pt-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pt-modal-header">
+              <h2>{editing ? "Editar participante" : "Nuevo participante"}</h2>
+              <button className="pt-modal-close" onClick={() => setShowForm(false)}><X size={20} /></button>
+            </div>
+            <div className="pt-modal-body">
+              <div className="pt-form-group">
+                <label>Reserva *</label>
+                <select
+                  value={formData.id_reserva}
+                  onChange={(e) => setFormData({ ...formData, id_reserva: Number(e.target.value) })}
+                >
+                  <option value="">Seleccionar reserva</option>
+                  {reservas.map((r) => (
+                    <option key={r.id_reserva} value={r.id_reserva}>
+                      #{r.id_reserva}{r.nombre_plan ? ` — ${r.nombre_plan}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="pt-form-group">
+                <label>Nombre *</label>
+                <input
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  placeholder="Nombre del participante"
+                />
+              </div>
+              <div className="pt-form-row">
+                <div className="pt-form-group">
+                  <label>Edad</label>
+                  <input
+                    type="number"
+                    value={formData.edad}
+                    onChange={(e) => setFormData({ ...formData, edad: e.target.value })}
+                    placeholder="Edad"
+                  />
+                </div>
+                <div className="pt-form-group">
+                  <label>Estatura (m)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.estatura}
+                    onChange={(e) => setFormData({ ...formData, estatura: e.target.value })}
+                    placeholder="Ej. 1.72"
+                  />
+                </div>
+                <div className="pt-form-group">
+                  <label>Peso (kg)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.peso}
+                    onChange={(e) => setFormData({ ...formData, peso: e.target.value })}
+                    placeholder="Ej. 70.5"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="pt-modal-footer">
+              <button className="pt-btn-cancel" onClick={() => setShowForm(false)}>Cancelar</button>
+              <button className="pt-btn-save" onClick={handleSave} disabled={saving}>
+                {saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear participante"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
-
-export default ParticipantesAdmin;

@@ -18,9 +18,9 @@ import {
   type Reserva,
   type Plan,
   type Cliente,
-  type EtapaConversacion,
   type Participante,
 } from "../hooks/useLiveDashboard";
+import { contarPorEtapa } from "../lib/etapas";
 
 /* tipos importados desde ../hooks/useLiveDashboard */
 
@@ -120,18 +120,8 @@ export default function OverviewPage() {
   const totalParticipantes = participantes.length;
   const necesitanAtencion  = clientes.filter((c) => c.atencion_humana).length;
 
-  // Conteo por etapa de conversación
-  const ETAPAS: { key: EtapaConversacion; label: string; color: string; bg: string }[] = [
-    { key: "saludo",            label: "Saludo",          color: "#6366f1", bg: "#eef2ff" },
-    { key: "descripcionincluye",label: "Descripción",     color: "#3b82f6", bg: "#eff6ff" },
-    { key: "como_reservar",     label: "Cómo reservar",   color: "#f59e0b", bg: "#fffbeb" },
-    { key: "por_confirmar",     label: "Por confirmar",   color: "#f97316", bg: "#fff7ed" },
-    { key: "confirmada",        label: "Confirmada",      color: "#22c55e", bg: "#f0fdf4" },
-  ];
-  const etapaCounts = ETAPAS.map((e) => ({
-    ...e,
-    count: clientes.filter((c) => c.etapaconversacion === e.key).length,
-  }));
+  // Conteo por etapa de conversación (definición compartida en lib/etapas)
+  const etapaCounts = contarPorEtapa(clientes);
   const sinEtapa = clientes.filter((c) => !c.etapaconversacion).length;
 
   const ultimasReservas      = reservas.slice(0, 4);

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import "../styles/dashboard.css";
+import "../styles/global.css";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../services/auth.service";
 import { supabase } from "../lib/supabase";
@@ -84,9 +86,9 @@ function Dashboard() {
       {/* ── HEADER ── */}
       <header className="dash-header">
         <div className="dash-header-inner">
-          {/* Logo / brand */}
+          {/* Brand */}
           <div className="dash-brand">
-            <span className="dash-brand-icon">F</span>
+            <span className="dash-brand-name">Panel administrativo</span>
           </div>
 
           {/* Nav desktop */}

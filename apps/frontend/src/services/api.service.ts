@@ -144,11 +144,19 @@ export async function updateReserva(id: number, payload: any) {
     .from("reserva")
     .update(payload)
     .eq("id_reserva", id)
-    .select()
-    .single();
+    .select();          // sin .single(): devuelve un array
 
   if (error) throw error;
-  return data;
+
+  // Si RLS bloquea el UPDATE, Supabase NO lanza error pero actualiza 0 filas.
+  // Detectamos ese caso explícitamente para no fallar en silencio.
+  if (!data || data.length === 0) {
+    throw new Error(
+      "El UPDATE no afectó ninguna fila. Posible política RLS de UPDATE faltante en la tabla 'reserva', o el id no existe."
+    );
+  }
+
+  return data[0];
 }
 
 export async function deleteReserva(id: number) {

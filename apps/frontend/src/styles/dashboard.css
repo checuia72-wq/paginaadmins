@@ -3,6 +3,7 @@
    ═══════════════════════════════════════════════ */
 
 /* ── variables ───────────────────────────────── */
+@import './global.css';
 :root {
   --bg: #f1f5f9;
   --surface: #ffffff;
@@ -170,7 +171,7 @@
 .dash-main {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 16px 16px;
 }
 
 /* ═══════════════════════════════════════════════

@@ -1,4 +1,5 @@
 import PlanesAdmin from "../components/admin/PlanesAdmin";
+import "../styles/planes.css";
 
 export default function PlanesPage() {
   return (
