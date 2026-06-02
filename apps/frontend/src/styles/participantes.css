@@ -34,9 +34,14 @@
 .pt-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .pt-kpi {
   background: var(--pt-white); border: 1px solid var(--pt-border);
+  border-left: 4px solid var(--pt-border);
   border-radius: var(--pt-radius); padding: 16px 20px;
   display: flex; align-items: center; gap: 14px; box-shadow: var(--pt-shadow);
 }
+.pt-kpi.line-blue   { border-left-color: #3b82f6; }
+.pt-kpi.line-violet { border-left-color: #7c3aed; }
+.pt-kpi.line-green  { border-left-color: #16a34a; }
+.pt-kpi.line-amber  { border-left-color: #d97706; }
 .pt-kpi-icon { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
 .pt-kpi-blue   { background: #eff6ff; color: #3b82f6; }
 .pt-kpi-violet { background: #f5f3ff; color: #7c3aed; }

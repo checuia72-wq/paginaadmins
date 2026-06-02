@@ -246,14 +246,14 @@ export default function ParticipantesAdmin() {
 
       {/* KPIs */}
       <div className="pt-kpis">
-        <div className="pt-kpi">
+        <div className="pt-kpi line-blue">
           <div className="pt-kpi-icon pt-kpi-blue"><Users size={20} /></div>
           <div>
             <div className="pt-kpi-label">Total participantes</div>
             <div className="pt-kpi-value">{totalParticipantes}</div>
           </div>
         </div>
-        <div className="pt-kpi">
+        <div className="pt-kpi line-violet">
           <div className="pt-kpi-icon pt-kpi-violet"><Calendar size={20} /></div>
           <div>
             <div className="pt-kpi-label">Reservas con participantes</div>
@@ -316,7 +316,7 @@ export default function ParticipantesAdmin() {
           <thead>
             <tr>
               <th>ID</th>
-              <th>RESERVA</th>
+              <th>N° RESERVA</th>
               <th>NOMBRE</th>
               <th>EDAD</th>
               <th>ESTATURA</th>
@@ -430,7 +430,7 @@ export default function ParticipantesAdmin() {
             <div className="pt-modal-body">
               <div className="pt-detail-grid">
                 <div className="pt-detail-field"><label>ID</label><span>#{viewing.id_participante}</span></div>
-                <div className="pt-detail-field"><label>Reserva</label><span>#{viewing.id_reserva} — {planDeReserva(viewing)}</span></div>
+                <div className="pt-detail-field"><label>N° Reserva</label><span>#{viewing.id_reserva} — {planDeReserva(viewing)}</span></div>
                 <div className="pt-detail-field"><label>Nombre</label><span>{viewing.nombre}</span></div>
                 <div className="pt-detail-field"><label>Edad</label><span>{viewing.edad ?? "—"}</span></div>
                 <div className="pt-detail-field"><label>Estatura</label><span>{fmtEstatura(viewing.estatura)}</span></div>
@@ -451,7 +451,7 @@ export default function ParticipantesAdmin() {
             </div>
             <div className="pt-modal-body">
               <div className="pt-form-group">
-                <label>Reserva *</label>
+                <label>N° Reserva *</label>
                 <select
                   value={formData.id_reserva}
                   onChange={(e) => setFormData({ ...formData, id_reserva: Number(e.target.value) })}

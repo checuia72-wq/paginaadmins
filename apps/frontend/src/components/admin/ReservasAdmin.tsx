@@ -71,6 +71,10 @@ export default function ReservasAdmin() {
   // Modal ver
   const [viewing, setViewing] = useState<Reserva | null>(null);
 
+  // Confirmación de aprobar/desaprobar (toggle)
+  const [confirmAprobar, setConfirmAprobar] = useState<Reserva | null>(null);
+  const [togglingAprobar, setTogglingAprobar] = useState(false);
+
   // Menú de acciones (móvil)
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -193,6 +197,31 @@ export default function ReservasAdmin() {
     }
   };
 
+  // Aplica el cambio de estado aprobado (desde el toggle, ya confirmado).
+  const aplicarAprobar = async () => {
+    if (!confirmAprobar) return;
+    const r = confirmAprobar;
+    const nuevoAprobado = !r.aprobado;
+    setTogglingAprobar(true);
+    try {
+      // Al aprobar: fecha ahora (o conservar si ya tenía). Al desaprobar: limpiar.
+      const fecha_aprobacion = nuevoAprobado
+        ? (r.fecha_aprobacion ?? new Date().toISOString())
+        : null;
+      await updateReserva(r.id_reserva, {
+        aprobado: nuevoAprobado,
+        fecha_aprobacion,
+      });
+      setConfirmAprobar(null);
+      await fetchAll();
+    } catch (e: any) {
+      console.error(e);
+      alert("No se pudo actualizar el estado: " + (e?.message ?? "error desconocido"));
+    } finally {
+      setTogglingAprobar(false);
+    }
+  };
+
   /* ── Filtrado y paginación ──────────────── */
   const filtered = reservas.filter((r) => {
     const q = search.toLowerCase();
@@ -277,28 +306,28 @@ export default function ReservasAdmin() {
 
       {/* KPIs */}
       <div className="rv-kpis">
-        <div className="rv-kpi">
+        <div className="rv-kpi line-blue">
           <div className="rv-kpi-icon rv-kpi-blue"><Calendar size={20} /></div>
           <div>
             <div className="rv-kpi-label">Total reservas</div>
             <div className="rv-kpi-value">{reservas.length}</div>
           </div>
         </div>
-        <div className="rv-kpi">
+        <div className="rv-kpi line-green">
           <div className="rv-kpi-icon rv-kpi-green"><CheckCircle size={20} /></div>
           <div>
             <div className="rv-kpi-label">Aprobadas</div>
             <div className="rv-kpi-value">{aprobadas}</div>
           </div>
         </div>
-        <div className="rv-kpi">
+        <div className="rv-kpi line-amber">
           <div className="rv-kpi-icon rv-kpi-amber"><Clock size={20} /></div>
           <div>
             <div className="rv-kpi-label">Pendientes</div>
             <div className="rv-kpi-value">{pendientes}</div>
           </div>
         </div>
-        <div className="rv-kpi">
+        <div className="rv-kpi line-violet">
           <div className="rv-kpi-icon rv-kpi-violet"><Users size={20} /></div>
           <div>
             <div className="rv-kpi-label">Total personas</div>
@@ -358,20 +387,21 @@ export default function ReservasAdmin() {
           <thead>
             <tr>
               <th>ID</th>
-              <th>SOLICITUD</th>
-              <th>APROBACIÓN</th>
+              <th>Fecha solicitud</th>
+              <th>Fecha aprobación</th>
               <th>TELÉFONO</th>
               <th>PLAN</th>
               <th>PERSONAS</th>
               <th>ESTADO</th>
+              <th>APROBAR</th>
               <th>ACCIONES</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="rv-empty">Cargando...</td></tr>
+              <tr><td colSpan={9} className="rv-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={8} className="rv-empty">Sin resultados</td></tr>
+              <tr><td colSpan={9} className="rv-empty">Sin resultados</td></tr>
             ) : paginated.map((r) => (
               <tr key={r.id_reserva}>
                 <td className="rv-id">#{r.id_reserva}</td>
@@ -392,6 +422,18 @@ export default function ReservasAdmin() {
                     : <span className="rv-null">—</span>}
                 </td>
                 <td><EstadoBadge aprobado={r.aprobado} /></td>
+                <td>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!r.aprobado}
+                    className={`rv-switch ${r.aprobado ? "rv-switch-on" : ""}`}
+                    onClick={() => setConfirmAprobar(r)}
+                    title={r.aprobado ? "Desaprobar reserva" : "Aprobar reserva"}
+                  >
+                    <span className="rv-switch-knob" />
+                  </button>
+                </td>
                 <td>
                   <ActionButtons r={r} />
                 </td>
@@ -471,6 +513,31 @@ export default function ReservasAdmin() {
           </div>
         </div>
       </div>
+
+      {/* ── Modal confirmar aprobar/desaprobar ── */}
+      {confirmAprobar && (
+        <div className="rv-overlay" onClick={() => !togglingAprobar && setConfirmAprobar(null)}>
+          <div className="rv-modal rv-modal-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="rv-modal-header">
+              <h2>{confirmAprobar.aprobado ? "Desaprobar reserva" : "Aprobar reserva"}</h2>
+              <button className="rv-modal-close" onClick={() => setConfirmAprobar(null)} disabled={togglingAprobar}><X size={20} /></button>
+            </div>
+            <div className="rv-modal-body">
+              <p className="rv-confirm-text">
+                {confirmAprobar.aprobado
+                  ? <>¿Marcar la reserva <strong>#{confirmAprobar.id_reserva}</strong> como <strong>pendiente</strong>? Se borrará su fecha de aprobación.</>
+                  : <>¿Aprobar la reserva <strong>#{confirmAprobar.id_reserva}</strong>? Se registrará la fecha de aprobación.</>}
+              </p>
+            </div>
+            <div className="rv-modal-footer">
+              <button className="rv-btn-cancel" onClick={() => setConfirmAprobar(null)} disabled={togglingAprobar}>Cancelar</button>
+              <button className="rv-btn-save" onClick={aplicarAprobar} disabled={togglingAprobar}>
+                {togglingAprobar ? "Guardando..." : confirmAprobar.aprobado ? "Sí, desaprobar" : "Sí, aprobar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal Ver ── */}
       {viewing && (

@@ -246,28 +246,28 @@ export default function ClientesAdmin() {
 
       {/* KPIs */}
       <div className="cl-kpis">
-        <div className="cl-kpi">
+        <div className="cl-kpi line-blue">
           <div className="cl-kpi-icon cl-kpi-blue"><Users size={20} /></div>
           <div>
             <div className="cl-kpi-label">Total clientes</div>
             <div className="cl-kpi-value">{totalClientes}</div>
           </div>
         </div>
-        <div className="cl-kpi">
+        <div className="cl-kpi line-amber">
           <div className="cl-kpi-icon cl-kpi-amber"><Headphones size={20} /></div>
           <div>
             <div className="cl-kpi-label">Atención humana</div>
             <div className="cl-kpi-value">{conHumana}</div>
           </div>
         </div>
-        <div className="cl-kpi">
+        <div className="cl-kpi line-slate">
           <div className="cl-kpi-icon cl-kpi-slate"><Bot size={20} /></div>
           <div>
             <div className="cl-kpi-label">Solo bot</div>
             <div className="cl-kpi-value">{soloBot}</div>
           </div>
         </div>
-        <div className="cl-kpi">
+        <div className="cl-kpi line-violet">
           <div className="cl-kpi-icon cl-kpi-violet"><MessageSquare size={20} /></div>
           <div>
             <div className="cl-kpi-label">Etapas distintas</div>

@@ -224,7 +224,7 @@ export default function PlanesAdmin() {
 
       {/* KPIs */}
       <div className="planes-kpis">
-        <div className="kpi-card">
+        <div className="kpi-card line-blue">
           <div className="kpi-icon" style={{ background: "#dbeafe", color: "#1e40af" }}>
             <Package size={24} />
           </div>
@@ -233,7 +233,7 @@ export default function PlanesAdmin() {
             <p>Total planes</p>
           </div>
         </div>
-        <div className="kpi-card">
+        <div className="kpi-card line-green">
           <div className="kpi-icon" style={{ background: "#ecfdf5", color: "#0f766e" }}>
             <Package size={24} />
           </div>

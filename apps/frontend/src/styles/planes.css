@@ -61,6 +61,7 @@
 .kpi-card {
   background: white;
   border: 1px solid var(--border, #e2e8f0);
+  border-left: 4px solid var(--border, #e2e8f0);
   border-radius: var(--radius, 12px);
   padding: 16px 20px;
   display: flex;
@@ -68,6 +69,8 @@
   gap: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,.07);
 }
+.kpi-card.line-blue  { border-left-color: #3b82f6; }
+.kpi-card.line-green { border-left-color: #16a34a; }
 
 .kpi-icon {
   width: 42px;

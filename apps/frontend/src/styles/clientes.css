@@ -69,6 +69,7 @@
 .cl-kpi {
   background: var(--cl-white);
   border: 1px solid var(--cl-border);
+  border-left: 4px solid var(--cl-border);
   border-radius: var(--cl-radius);
   padding: 16px 20px;
   display: flex;
@@ -76,6 +77,10 @@
   gap: 14px;
   box-shadow: var(--cl-shadow);
 }
+.cl-kpi.line-blue   { border-left-color: #3b82f6; }
+.cl-kpi.line-amber  { border-left-color: #d97706; }
+.cl-kpi.line-slate  { border-left-color: #475569; }
+.cl-kpi.line-violet { border-left-color: #7c3aed; }
 .cl-kpi-icon {
   width: 42px;
   height: 42px;
