@@ -120,6 +120,7 @@ export default function ReservasTable() {
   const editDialogRef = useRef<HTMLDialogElement | null>(null);
 
   useEffect(() => {
+    if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => {
       const email = data.user?.email?.trim();
       if (email) setCurrentUserLabel(email);

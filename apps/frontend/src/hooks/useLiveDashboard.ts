@@ -71,9 +71,6 @@ export interface Participante {
   nombre_plan?: string;
 }
 
-/* ── tablas que se monitorizan en Realtime ── */
-const WATCHED_TABLES = ["reserva", "plan", "cliente", "participante"] as const;
-
 /* ── intervalo de polling por defecto: 30 segundos ── */
 const DEFAULT_INTERVAL_MS = 30_000;
 
@@ -165,9 +162,10 @@ export function useLiveDashboard({
   // ── supabase realtime ─────────────────────────────────────────
   useEffect(() => {
     if (disableRealtime || !supabase) return;
+    const client = supabase;
 
     // Un canal único con una suscripción por tabla
-    const channel = supabase
+    const channel = client
       .channel("dashboard-live")
       .on(
         "postgres_changes",
@@ -196,7 +194,7 @@ export function useLiveDashboard({
       });
 
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, [disableRealtime, fetchAll]);
 
