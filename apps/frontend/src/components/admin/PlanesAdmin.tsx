@@ -86,11 +86,12 @@ export default function PlanesAdmin() {
 
   useEffect(() => {
     if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    const channel = client
       .channel("planes-admin")
       .on("postgres_changes", { event: "*", schema: "public", table: "plan" }, fetchPlanes)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { client.removeChannel(channel); };
   }, []);
 
   // Cerrar el menú al hacer clic fuera

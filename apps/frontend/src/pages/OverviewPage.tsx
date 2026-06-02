@@ -7,17 +7,13 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
-  HeadphonesIcon,
-  CheckCheck,
   RefreshCw,
-  Wifi,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
   useLiveDashboard,
   type Reserva,
   type Plan,
-  type Cliente,
   type Participante,
 } from "../hooks/useLiveDashboard";
 import { contarPorEtapa } from "../lib/etapas";
@@ -125,7 +121,6 @@ export default function OverviewPage() {
   const sinEtapa = clientes.filter((c) => !c.etapaconversacion).length;
 
   const ultimasReservas      = reservas.slice(0, 4);
-  const ultimosClientes      = clientes.slice(0, 5);
   const ultimosParticipantes = participantes.slice(0, 5);
 
   if (loading) {
@@ -409,13 +404,12 @@ export default function OverviewPage() {
             <thead>
               <tr>
                 <th>Participante</th>
-                <th>Plan (vía reserva)</th>
                 <th>Reserva</th>
               </tr>
             </thead>
             <tbody>
               {ultimosParticipantes.length === 0 ? (
-                <tr><td colSpan={3} className="empty-cell">Sin participantes</td></tr>
+                <tr><td colSpan={2} className="empty-cell">Sin participantes</td></tr>
               ) : (
                 ultimosParticipantes.map((p, i) => (
                   <tr key={p.id_participante}>
@@ -425,8 +419,11 @@ export default function OverviewPage() {
                         <span>{p.nombre ?? "—"}</span>
                       </div>
                     </td>
-                    <td>{getPlanDeParticipante(p, reservas, planes)}</td>
-                    <td className="id-cell">{p.id_reserva ?? "—"}</td>
+                    <td className="id-cell">
+                      {p.id_reserva
+                        ? `#${p.id_reserva} — ${getPlanDeParticipante(p, reservas, planes)}`
+                        : "—"}
+                    </td>
                   </tr>
                 ))
               )}
