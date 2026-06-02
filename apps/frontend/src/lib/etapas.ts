@@ -1,11 +1,8 @@
 /* etapas.ts — Fuente única de verdad para las etapas de conversación.
-   La usan OverviewPage y ClientesAdmin. El tipo EtapaConversacion se reutiliza
-   del hook existente para no duplicar definiciones. */
-
-import type { EtapaConversacion } from "../hooks/useLiveDashboard";
+   La usan OverviewPage y ClientesAdmin. */
 
 export interface EtapaInfo {
-  key: EtapaConversacion;
+  key: string;
   label: string;
   color: string;
   bg: string;
@@ -30,7 +27,7 @@ export const ETAPAS_MAP: Record<string, EtapaInfo> = ETAPAS.reduce(
 export function getEtapaInfo(etapa?: string | null): EtapaInfo {
   if (etapa && ETAPAS_MAP[etapa]) return ETAPAS_MAP[etapa];
   return {
-    key: (etapa ?? "—") as EtapaConversacion,
+    key: etapa ?? "—",
     label: etapa ?? "—",
     color: "#475569",
     bg: "#f1f5f9",
