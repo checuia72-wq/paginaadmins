@@ -10,7 +10,8 @@
     "backend": {
       "root": "apps/backend",
       "routePrefix": "/_/backend",
-      "framework": "nodejs",
+      "builder": "@vercel/node",
+      "runtime": "nodejs18.x",
       "entrypoint": "src/index.ts"
     }
   }
