@@ -6,28 +6,16 @@ import {
   deleteParticipante,
   getReservas,
 } from "../../services/api.service";
-
-type Participante = {
-  id_participante: number;
-  id_reserva: number;
-  nombre: string;
-  edad: number | null;
-  estatura: number | null;
-  peso: number | null;
-};
-
-type Reserva = {
-  id_reserva: number;
-  telefono_cliente: string;
-  nombre_plan: string;
-};
+import type { Participante, Reserva } from "../../types";
 
 type ParticipanteForm = {
-  id_reserva: number | "";
+  id_reserva: string;
   nombre: string;
   edad: string;
   estatura: string;
   peso: string;
+  telefono_cliente: string;
+  telefono_participante: string;
 };
 
 const initialForm: ParticipanteForm = {
@@ -36,29 +24,20 @@ const initialForm: ParticipanteForm = {
   edad: "",
   estatura: "",
   peso: "",
+  telefono_cliente: "",
+  telefono_participante: "",
 };
 
 function ParticipantesAdmin() {
-  const [participantes, setParticipantes] = useState<
-    Participante[]
-  >([]);
-
-  const [reservas, setReservas] = useState<
-    Reserva[]
-  >([]);
-
-  const [form, setForm] =
-    useState<ParticipanteForm>(initialForm);
-
-  const [editandoId, setEditandoId] =
-    useState<number | null>(null);
-
+  const [participantes, setParticipantes] = useState<Participante[]>([]);
+  const [reservas, setReservas] = useState<Reserva[]>([]);
+  const [form, setForm] = useState<ParticipanteForm>(initialForm);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   const cargarParticipantes = async () => {
     try {
       setLoading(true);
-
       const data = await getParticipantes();
       setParticipantes(data);
     } catch (error) {
@@ -84,14 +63,31 @@ function ParticipantesAdmin() {
     cargarReservas();
   }, []);
 
+  // Teléfono del cliente de una reserva (viene del JOIN como telefono_cliente o telefono)
+  const telefonoDeReserva = (id_reserva: number): string => {
+    const reserva = reservas.find((r) => r.id_reserva === id_reserva);
+    return reserva?.telefono_cliente ?? reserva?.telefono ?? "";
+  };
+
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
+    const { name, value } = e.target;
+
+    // Al elegir reserva, autocompletamos el teléfono del cliente
+    if (name === "id_reserva") {
+      const tel = value ? telefonoDeReserva(Number(value)) : "";
+      setForm({
+        ...form,
+        id_reserva: value,
+        telefono_cliente: tel,
+      });
+      return;
+    }
+
     setForm({
       ...form,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
   };
 
@@ -100,9 +96,7 @@ function ParticipantesAdmin() {
     setEditandoId(null);
   };
 
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!form.nombre.trim()) {
@@ -118,71 +112,45 @@ function ParticipantesAdmin() {
     const payload = {
       id_reserva: Number(form.id_reserva),
       nombre: form.nombre,
-      edad: form.edad
-        ? Number(form.edad)
-        : null,
-      estatura: form.estatura
-        ? Number(form.estatura)
-        : null,
-      peso: form.peso
-        ? Number(form.peso)
-        : null,
+      edad: form.edad ? Number(form.edad) : null,
+      estatura: form.estatura ? Number(form.estatura) : null,
+      peso: form.peso ? Number(form.peso) : null,
+      telefono_cliente: form.telefono_cliente || null,
+      telefono_participante: form.telefono_participante || null,
     };
 
     try {
       if (editandoId) {
-        await updateParticipante(
-          editandoId,
-          payload
-        );
-
-        alert(
-          "Participante actualizado correctamente"
-        );
+        await updateParticipante(editandoId, payload);
+        alert("Participante actualizado correctamente");
       } else {
         await createParticipante(payload);
-
-        alert(
-          "Participante creado correctamente"
-        );
+        alert("Participante creado correctamente");
       }
 
       limpiarFormulario();
       cargarParticipantes();
     } catch (error) {
       console.error(error);
-      alert(
-        "Error al guardar participante"
-      );
+      alert("Error al guardar participante");
     }
   };
 
-  const handleEditar = (
-    participante: Participante
-  ) => {
-    setEditandoId(
-      participante.id_participante
-    );
+  const handleEditar = (participante: Participante) => {
+    setEditandoId(participante.id_participante);
 
     setForm({
-      id_reserva:
-        participante.id_reserva,
+      id_reserva: String(participante.id_reserva),
       nombre: participante.nombre,
-      edad:
-        participante.edad?.toString() ||
-        "",
-      estatura:
-        participante.estatura?.toString() ||
-        "",
-      peso:
-        participante.peso?.toString() ||
-        "",
+      edad: participante.edad?.toString() || "",
+      estatura: participante.estatura?.toString() || "",
+      peso: participante.peso?.toString() || "",
+      telefono_cliente: participante.telefono_cliente || "",
+      telefono_participante: participante.telefono_participante || "",
     });
   };
 
-  const handleEliminar = async (
-    id: number
-  ) => {
+  const handleEliminar = async (id: number) => {
     const confirmar = confirm(
       "¿Seguro que deseas eliminar este participante?"
     );
@@ -191,17 +159,11 @@ function ParticipantesAdmin() {
 
     try {
       await deleteParticipante(id);
-
-      alert(
-        "Participante eliminado correctamente"
-      );
-
+      alert("Participante eliminado correctamente");
       cargarParticipantes();
     } catch (error) {
       console.error(error);
-      alert(
-        "No se pudo eliminar el participante"
-      );
+      alert("No se pudo eliminar el participante");
     }
   };
 
@@ -210,31 +172,19 @@ function ParticipantesAdmin() {
       <h2>Gestión de participantes</h2>
 
       <form onSubmit={handleSubmit}>
-        <h3>
-          {editandoId
-            ? "Editar participante"
-            : "Crear participante"}
-        </h3>
+        <h3>{editandoId ? "Editar participante" : "Crear participante"}</h3>
 
         <div>
           <label>Reserva</label>
-
           <select
             name="id_reserva"
             value={form.id_reserva}
             onChange={handleChange}
           >
-            <option value="">
-              Seleccionar reserva
-            </option>
-
+            <option value="">Seleccionar reserva</option>
             {reservas.map((reserva) => (
-              <option
-                key={reserva.id_reserva}
-                value={reserva.id_reserva}
-              >
-                #{reserva.id_reserva} -{" "}
-                {reserva.nombre_plan}
+              <option key={reserva.id_reserva} value={reserva.id_reserva}>
+                #{reserva.id_reserva} - {reserva.nombre_plan ?? "Plan"}
               </option>
             ))}
           </select>
@@ -242,7 +192,6 @@ function ParticipantesAdmin() {
 
         <div>
           <label>Nombre</label>
-
           <input
             type="text"
             name="nombre"
@@ -254,7 +203,6 @@ function ParticipantesAdmin() {
 
         <div>
           <label>Edad</label>
-
           <input
             type="number"
             name="edad"
@@ -266,7 +214,6 @@ function ParticipantesAdmin() {
 
         <div>
           <label>Estatura</label>
-
           <input
             type="number"
             step="0.01"
@@ -279,7 +226,6 @@ function ParticipantesAdmin() {
 
         <div>
           <label>Peso</label>
-
           <input
             type="number"
             step="0.01"
@@ -290,17 +236,34 @@ function ParticipantesAdmin() {
           />
         </div>
 
+        <div>
+          <label>Teléfono del cliente</label>
+          <input
+            type="text"
+            name="telefono_cliente"
+            value={form.telefono_cliente}
+            onChange={handleChange}
+            placeholder="Se autocompleta al elegir la reserva"
+          />
+        </div>
+
+        <div>
+          <label>Teléfono del participante</label>
+          <input
+            type="text"
+            name="telefono_participante"
+            value={form.telefono_participante}
+            onChange={handleChange}
+            placeholder="Ej. 3009876543"
+          />
+        </div>
+
         <button type="submit">
-          {editandoId
-            ? "Actualizar participante"
-            : "Crear participante"}
+          {editandoId ? "Actualizar participante" : "Crear participante"}
         </button>
 
         {editandoId && (
-          <button
-            type="button"
-            onClick={limpiarFormulario}
-          >
+          <button type="button" onClick={limpiarFormulario}>
             Cancelar edición
           </button>
         )}
@@ -324,73 +287,38 @@ function ParticipantesAdmin() {
               <th>Edad</th>
               <th>Estatura</th>
               <th>Peso</th>
+              <th>Tel. cliente</th>
+              <th>Tel. participante</th>
               <th>Acciones</th>
             </tr>
           </thead>
 
           <tbody>
-            {participantes.map(
-              (participante) => (
-                <tr
-                  key={
-                    participante.id_participante
-                  }
-                >
-                  <td>
-                    {
-                      participante.id_participante
+            {participantes.map((participante) => (
+              <tr key={participante.id_participante}>
+                <td>{participante.id_participante}</td>
+                <td>{participante.id_reserva}</td>
+                <td>{participante.nombre}</td>
+                <td>{participante.edad ?? "-"}</td>
+                <td>{participante.estatura ?? "-"}</td>
+                <td>{participante.peso ?? "-"}</td>
+                <td>{participante.telefono_cliente ?? "-"}</td>
+                <td>{participante.telefono_participante ?? "-"}</td>
+                <td>
+                  <button onClick={() => handleEditar(participante)}>
+                    Editar
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      handleEliminar(participante.id_participante)
                     }
-                  </td>
-
-                  <td>
-                    {
-                      participante.id_reserva
-                    }
-                  </td>
-
-                  <td>
-                    {participante.nombre}
-                  </td>
-
-                  <td>
-                    {participante.edad ??
-                      "-"}
-                  </td>
-
-                  <td>
-                    {participante.estatura ??
-                      "-"}
-                  </td>
-
-                  <td>
-                    {participante.peso ??
-                      "-"}
-                  </td>
-
-                  <td>
-                    <button
-                      onClick={() =>
-                        handleEditar(
-                          participante
-                        )
-                      }
-                    >
-                      Editar
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        handleEliminar(
-                          participante.id_participante
-                        )
-                      }
-                    >
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              )
-            )}
+                  >
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

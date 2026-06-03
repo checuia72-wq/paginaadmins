@@ -5,17 +5,7 @@ import {
   updatePlan,
   deletePlan,
 } from "../../services/api.service";
-
-type Plan = {
-  id_plan: number;
-  nombre_plan: string;
-  precio_plan: number;
-  descripcion_basica: string;
-  descripcion_detallada: string;
-  fecha_plan: string;
-  hora_plan: string;
-  imagen_url: string;
-};
+import type { Plan } from "../../types";
 
 type PlanForm = {
   nombre_plan: string;
@@ -25,6 +15,7 @@ type PlanForm = {
   fecha_plan: string;
   hora_plan: string;
   imagen_url: string;
+  numero_plan: string;
 };
 
 const initialForm: PlanForm = {
@@ -35,6 +26,7 @@ const initialForm: PlanForm = {
   fecha_plan: "",
   hora_plan: "",
   imagen_url: "",
+  numero_plan: "",
 };
 
 function PlanesAdmin() {
@@ -91,10 +83,14 @@ function PlanesAdmin() {
     }
 
     const payload = {
-      ...form,
+      nombre_plan: form.nombre_plan,
       precio_plan: Number(form.precio_plan),
-      hora_plan: form.hora_plan || null,
+      descripcion_basica: form.descripcion_basica || null,
+      descripcion_detallada: form.descripcion_detallada || null,
       fecha_plan: form.fecha_plan || null,
+      hora_plan: form.hora_plan || null,
+      imagen_url: form.imagen_url || null,
+      numero_plan: form.numero_plan ? Number(form.numero_plan) : null,
     };
 
     try {
@@ -125,13 +121,12 @@ function PlanesAdmin() {
       fecha_plan: plan.fecha_plan ? plan.fecha_plan.substring(0, 10) : "",
       hora_plan: plan.hora_plan ? plan.hora_plan.substring(0, 5) : "",
       imagen_url: plan.imagen_url || "",
+      numero_plan: plan.numero_plan != null ? String(plan.numero_plan) : "",
     });
   };
 
   const handleEliminar = async (id: number) => {
-    const confirmar = confirm(
-      "¿Seguro que deseas eliminar este plan?"
-    );
+    const confirmar = confirm("¿Seguro que deseas eliminar este plan?");
 
     if (!confirmar) return;
 
@@ -162,6 +157,17 @@ function PlanesAdmin() {
             value={form.nombre_plan}
             onChange={handleChange}
             placeholder="Ej. Tour Guatapé"
+          />
+        </div>
+
+        <div>
+          <label>Número de plan</label>
+          <input
+            type="number"
+            name="numero_plan"
+            value={form.numero_plan}
+            onChange={handleChange}
+            placeholder="Ej. 1"
           />
         </div>
 
@@ -251,6 +257,7 @@ function PlanesAdmin() {
         <table>
           <thead>
             <tr>
+              <th>N°</th>
               <th>Nombre</th>
               <th>Precio</th>
               <th>Fecha</th>
@@ -263,6 +270,7 @@ function PlanesAdmin() {
           <tbody>
             {planes.map((plan) => (
               <tr key={plan.id_plan}>
+                <td>{plan.numero_plan ?? "-"}</td>
                 <td>{plan.nombre_plan}</td>
                 <td>{formatCOP(Number(plan.precio_plan))}</td>
                 <td>{plan.fecha_plan}</td>
@@ -279,13 +287,9 @@ function PlanesAdmin() {
                   )}
                 </td>
                 <td>
-                  <button onClick={() => handleEditar(plan)}>
-                    Editar
-                  </button>
+                  <button onClick={() => handleEditar(plan)}>Editar</button>
 
-                  <button
-                    onClick={() => handleEliminar(plan.id_plan)}
-                  >
+                  <button onClick={() => handleEliminar(plan.id_plan)}>
                     Eliminar
                   </button>
                 </td>

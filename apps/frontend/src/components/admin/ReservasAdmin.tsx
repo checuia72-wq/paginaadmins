@@ -7,35 +7,7 @@ import {
   getClientes,
   getPlanes,
 } from "../../services/api.service";
-
-type Reserva = {
-  id_reserva: number;
-  fecha_solicitud: string;
-  fecha_aprobacion: string | null;
-  cantidad_personas: number;
-  aprobado: boolean;
-
-  telefono_cliente: string;
-  atencion_humana?: boolean;
-
-  id_plan: number;
-  nombre_plan: string;
-  precio_plan: number;
-  fecha_plan: string;
-  hora_plan: string;
-  imagen_url: string | null;
-};
-
-type Cliente = {
-  telefono: string;
-  atencion_humana: boolean;
-};
-
-type Plan = {
-  id_plan: number;
-  nombre_plan: string;
-  precio_plan: number;
-};
+import type { Reserva, Cliente, Plan } from "../../types";
 
 type ReservaForm = {
   telefono_cliente: string;
@@ -129,12 +101,17 @@ function ReservasAdmin() {
     return new Date(fecha).toLocaleString("es-CO");
   };
 
-  const formatearPrecio = (precio: number) => {
+  const formatearPrecio = (precio: number | undefined) => {
+    if (precio == null) return "-";
     return Number(precio).toLocaleString("es-CO", {
       style: "currency",
       currency: "COP",
     });
   };
+
+  // El JOIN puede exponer el teléfono como telefono_cliente o telefono
+  const telefonoReserva = (reserva: Reserva) =>
+    reserva.telefono_cliente ?? reserva.telefono ?? "-";
 
   const handleAprobar = async (reserva: Reserva) => {
     try {
@@ -196,11 +173,7 @@ function ReservasAdmin() {
 
         <div>
           <label>Plan</label>
-          <select
-            name="id_plan"
-            value={form.id_plan}
-            onChange={handleChange}
-          >
+          <select name="id_plan" value={form.id_plan} onChange={handleChange}>
             <option value="">Selecciona un plan</option>
 
             {planes.map((plan) => (
@@ -258,7 +231,7 @@ function ReservasAdmin() {
             {reservas.map((reserva) => (
               <tr key={reserva.id_reserva}>
                 <td>{reserva.id_reserva}</td>
-                <td>{reserva.telefono_cliente}</td>
+                <td>{telefonoReserva(reserva)}</td>
                 <td>{reserva.atencion_humana ? "Sí" : "No"}</td>
                 <td>{reserva.nombre_plan}</td>
                 <td>{formatearPrecio(reserva.precio_plan)}</td>

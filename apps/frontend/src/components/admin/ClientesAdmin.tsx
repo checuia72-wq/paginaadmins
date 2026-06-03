@@ -4,25 +4,32 @@ import {
   createCliente,
   updateCliente,
   deleteCliente,
+  getPlanes,
 } from "../../services/api.service";
-
-type Cliente = {
-  telefono: string;
-  atencion_humana: boolean;
-};
+import {
+  ETAPAS_CONVERSACION,
+  type Cliente,
+  type EtapaConversacion,
+  type Plan,
+} from "../../types";
 
 type ClienteForm = {
   telefono: string;
   atencion_humana: boolean;
+  etapaconversacion: EtapaConversacion;
+  id_plan: string;
 };
 
 const initialForm: ClienteForm = {
   telefono: "",
   atencion_humana: false,
+  etapaconversacion: "saludo",
+  id_plan: "",
 };
 
 function ClientesAdmin() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [planes, setPlanes] = useState<Plan[]>([]);
   const [form, setForm] = useState<ClienteForm>(initialForm);
   const [editandoTelefono, setEditandoTelefono] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,16 +47,36 @@ function ClientesAdmin() {
     }
   };
 
+  const cargarPlanes = async () => {
+    try {
+      const data = await getPlanes();
+      setPlanes(data);
+    } catch (error) {
+      console.error(error);
+      alert("Error al cargar los planes");
+    }
+  };
+
   useEffect(() => {
     cargarClientes();
+    cargarPlanes();
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  const nombrePlan = (id_plan: number | null) => {
+    if (id_plan == null) return "-";
+    const plan = planes.find((p) => p.id_plan === id_plan);
+    return plan ? plan.nombre_plan : `#${id_plan}`;
+  };
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const target = e.target as HTMLInputElement;
+    const { name, value, type } = target;
 
     setForm({
       ...form,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: type === "checkbox" ? target.checked : value,
     });
   };
 
@@ -66,19 +93,21 @@ function ClientesAdmin() {
       return;
     }
 
+    const payload = {
+      atencion_humana: form.atencion_humana,
+      etapaconversacion: form.etapaconversacion,
+      id_plan: form.id_plan ? Number(form.id_plan) : null,
+    };
+
     try {
       if (editandoTelefono) {
-        await updateCliente(editandoTelefono, {
-          atencion_humana: form.atencion_humana,
-        });
-
+        await updateCliente(editandoTelefono, payload);
         alert("Cliente actualizado correctamente");
       } else {
         await createCliente({
           telefono: form.telefono,
-          atencion_humana: form.atencion_humana,
+          ...payload,
         });
-
         alert("Cliente creado correctamente");
       }
 
@@ -96,6 +125,8 @@ function ClientesAdmin() {
     setForm({
       telefono: cliente.telefono,
       atencion_humana: cliente.atencion_humana,
+      etapaconversacion: cliente.etapaconversacion || "saludo",
+      id_plan: cliente.id_plan != null ? String(cliente.id_plan) : "",
     });
   };
 
@@ -110,7 +141,9 @@ function ClientesAdmin() {
       cargarClientes();
     } catch (error) {
       console.error(error);
-      alert("No se pudo eliminar el cliente. Puede que tenga reservas asociadas.");
+      alert(
+        "No se pudo eliminar el cliente. Puede que tenga reservas asociadas."
+      );
     }
   };
 
@@ -131,6 +164,33 @@ function ClientesAdmin() {
             placeholder="Ej. 3001234567"
             disabled={!!editandoTelefono}
           />
+        </div>
+
+        <div>
+          <label>Etapa de conversación</label>
+          <select
+            name="etapaconversacion"
+            value={form.etapaconversacion}
+            onChange={handleChange}
+          >
+            {ETAPAS_CONVERSACION.map((etapa) => (
+              <option key={etapa} value={etapa}>
+                {etapa}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label>Plan asociado</label>
+          <select name="id_plan" value={form.id_plan} onChange={handleChange}>
+            <option value="">Sin plan</option>
+            {planes.map((plan) => (
+              <option key={plan.id_plan} value={plan.id_plan}>
+                {plan.nombre_plan}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -169,6 +229,8 @@ function ClientesAdmin() {
           <thead>
             <tr>
               <th>Teléfono</th>
+              <th>Etapa</th>
+              <th>Plan</th>
               <th>Atención humana</th>
               <th>Acciones</th>
             </tr>
@@ -178,11 +240,11 @@ function ClientesAdmin() {
             {clientes.map((cliente) => (
               <tr key={cliente.telefono}>
                 <td>{cliente.telefono}</td>
+                <td>{cliente.etapaconversacion}</td>
+                <td>{nombrePlan(cliente.id_plan)}</td>
                 <td>{cliente.atencion_humana ? "Sí" : "No"}</td>
                 <td>
-                  <button onClick={() => handleEditar(cliente)}>
-                    Editar
-                  </button>
+                  <button onClick={() => handleEditar(cliente)}>Editar</button>
 
                   <button onClick={() => handleEliminar(cliente.telefono)}>
                     Eliminar
