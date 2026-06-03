@@ -1,10 +1,7 @@
 import { Request, Response } from "express";
 import { pool } from "../config/database";
 
-export const getReservas = async (
-  req: Request,
-  res: Response
-) => {
+export const getReservas = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -25,27 +22,18 @@ export const getReservas = async (
         p.imagen_url
 
       FROM reserva r
-      INNER JOIN cliente c
-        ON r.telefono_cliente = c.telefono
-      INNER JOIN plan p
-        ON r.id_plan = p.id_plan
-
+      INNER JOIN cliente c ON r.telefono_cliente = c.telefono
+      INNER JOIN plan p ON r.id_plan = p.id_plan
       ORDER BY r.fecha_solicitud DESC
     `);
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      message: "Error al obtener reservas",
-      error,
-    });
+    res.status(500).json({ message: "Error al obtener reservas", error });
   }
 };
 
-export const getReservaById = async (
-  req: Request,
-  res: Response
-) => {
+export const getReservaById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -59,7 +47,7 @@ export const getReservaById = async (
         r.aprobado,
 
         c.telefono AS telefono_cliente,
-        c.nombre AS nombre_cliente,
+        c.atencion_humana,
 
         p.id_plan,
         p.nombre_plan,
@@ -71,90 +59,49 @@ export const getReservaById = async (
         p.imagen_url
 
       FROM reserva r
-      INNER JOIN cliente c
-        ON r.telefono_cliente = c.telefono
-      INNER JOIN plan p
-        ON r.id_plan = p.id_plan
-
+      INNER JOIN cliente c ON r.telefono_cliente = c.telefono
+      INNER JOIN plan p ON r.id_plan = p.id_plan
       WHERE r.id_reserva = $1
       `,
       [id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Reserva no encontrada",
-      });
+      return res.status(404).json({ message: "Reserva no encontrada" });
     }
 
     res.json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      message: "Error al obtener reserva",
-      error,
-    });
+    res.status(500).json({ message: "Error al obtener reserva", error });
   }
 };
 
-export const createReserva = async (
-  req: Request,
-  res: Response
-) => {
+export const createReserva = async (req: Request, res: Response) => {
   try {
-    const {
-      telefono_cliente,
-      id_plan,
-      cantidad_personas,
-      aprobado,
-    } = req.body;
+    const { telefono_cliente, id_plan, aprobado } = req.body;
 
-    // VALIDACIONES BÁSICAS
-    if (
-      !telefono_cliente ||
-      !id_plan ||
-      !cantidad_personas
-    ) {
+    if (!telefono_cliente || !id_plan) {
       return res.status(400).json({
-        message:
-          "Teléfono del cliente, plan y cantidad de personas son obligatorios",
+        message: "Teléfono del cliente y plan son obligatorios",
       });
     }
 
-    if (cantidad_personas <= 0) {
-      return res.status(400).json({
-        message:
-          "La cantidad de personas debe ser mayor a 0",
-      });
-    }
-
-    // VALIDAR CLIENTE EXISTENTE
     const clienteExiste = await pool.query(
-      `
-      SELECT * FROM cliente
-      WHERE telefono = $1
-      `,
+      "SELECT * FROM cliente WHERE telefono = $1",
       [telefono_cliente]
     );
 
     if (clienteExiste.rows.length === 0) {
-      return res.status(404).json({
-        message: "El cliente no existe",
-      });
+      return res.status(404).json({ message: "El cliente no existe" });
     }
 
-    // VALIDAR PLAN EXISTENTE
     const planExiste = await pool.query(
-      `
-      SELECT * FROM plan
-      WHERE id_plan = $1
-      `,
+      "SELECT * FROM plan WHERE id_plan = $1",
       [id_plan]
     );
 
     if (planExiste.rows.length === 0) {
-      return res.status(404).json({
-        message: "El plan no existe",
-      });
+      return res.status(404).json({ message: "El plan no existe" });
     }
 
     const result = await pool.query(
@@ -165,78 +112,42 @@ export const createReserva = async (
         cantidad_personas,
         aprobado
       )
-      VALUES ($1, $2, $3, $4)
+      VALUES ($1, $2, 0, $3)
       RETURNING *
       `,
-      [
-        telefono_cliente,
-        id_plan,
-        cantidad_personas,
-        aprobado ?? false,
-      ]
+      [telefono_cliente, id_plan, aprobado ?? false]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      message: "Error al crear reserva",
-      error,
-    });
+    res.status(500).json({ message: "Error al crear reserva", error });
   }
 };
 
-export const updateReserva = async (
-  req: Request,
-  res: Response
-) => {
+export const updateReserva = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
-    const {
-      telefono_cliente,
-      id_plan,
-      cantidad_personas,
-      aprobado,
-    } = req.body;
-
-    if (
-      cantidad_personas !== undefined &&
-      cantidad_personas <= 0
-    ) {
-      return res.status(400).json({
-        message: "La cantidad de personas debe ser mayor a 0",
-      });
-    }
+    const { telefono_cliente, id_plan, aprobado } = req.body;
 
     if (telefono_cliente !== undefined) {
       const clienteExiste = await pool.query(
-        `
-        SELECT * FROM cliente
-        WHERE telefono = $1
-        `,
+        "SELECT * FROM cliente WHERE telefono = $1",
         [telefono_cliente]
       );
 
       if (clienteExiste.rows.length === 0) {
-        return res.status(404).json({
-          message: "El cliente no existe",
-        });
+        return res.status(404).json({ message: "El cliente no existe" });
       }
     }
 
     if (id_plan !== undefined) {
       const planExiste = await pool.query(
-        `
-        SELECT * FROM plan
-        WHERE id_plan = $1
-        `,
+        "SELECT * FROM plan WHERE id_plan = $1",
         [id_plan]
       );
 
       if (planExiste.rows.length === 0) {
-        return res.status(404).json({
-          message: "El plan no existe",
-        });
+        return res.status(404).json({ message: "El plan no existe" });
       }
     }
 
@@ -246,56 +157,42 @@ export const updateReserva = async (
       SET
         telefono_cliente = COALESCE($1, telefono_cliente),
         id_plan = COALESCE($2, id_plan),
-        cantidad_personas = COALESCE($3, cantidad_personas),
-        aprobado = COALESCE($4, aprobado),
+        aprobado = COALESCE($3, aprobado),
         fecha_aprobacion =
           CASE
-            WHEN $4 = true THEN CURRENT_TIMESTAMP
-            WHEN $4 = false THEN NULL
+            WHEN $3 = true THEN CURRENT_TIMESTAMP
+            WHEN $3 = false THEN NULL
             ELSE fecha_aprobacion
           END
-      WHERE id_reserva = $5
+      WHERE id_reserva = $4
       RETURNING *
       `,
-      [
-        telefono_cliente,
-        id_plan,
-        cantidad_personas,
-        aprobado,
-        id,
-      ]
+      [telefono_cliente, id_plan, aprobado, id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Reserva no encontrada",
-      });
+      return res.status(404).json({ message: "Reserva no encontrada" });
     }
 
     res.json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      message: "Error al actualizar reserva",
-      error,
-    });
+    res.status(500).json({ message: "Error al actualizar reserva", error });
   }
 };
 
-export const deleteReserva = async (
-  req: Request,
-  res: Response
-) => {
+export const deleteReserva = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
     const participantes = await pool.query(
-      "SELECT * FROM participante WHERE id_reserva = $1",
+      "SELECT 1 FROM participante WHERE id_reserva = $1 LIMIT 1",
       [id]
     );
 
     if (participantes.rows.length > 0) {
       return res.status(400).json({
-        message: "No se puede eliminar la reserva porque tiene participantes registrados",
+        message:
+          "No se puede eliminar la reserva porque tiene participantes registrados",
       });
     }
 
@@ -309,18 +206,11 @@ export const deleteReserva = async (
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Reserva no encontrada",
-      });
+      return res.status(404).json({ message: "Reserva no encontrada" });
     }
 
-    res.json({
-      message: "Reserva eliminada correctamente",
-    });
+    res.json({ message: "Reserva eliminada correctamente" });
   } catch (error) {
-    res.status(500).json({
-      message: "Error al eliminar reserva",
-      error,
-    });
+    res.status(500).json({ message: "Error al eliminar reserva", error });
   }
 };

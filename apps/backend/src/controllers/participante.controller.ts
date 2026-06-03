@@ -4,9 +4,21 @@ import { pool } from "../config/database";
 export const getParticipantes = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(`
-      SELECT *
-      FROM participante
-      ORDER BY id_participante ASC
+      SELECT 
+        pa.id_participante,
+        pa.id_reserva,
+        pa.telefono_cliente,
+        pa.telefono_participante,
+        pa.nombre,
+        pa.edad,
+        pa.estatura,
+        pa.peso,
+        r.id_plan,
+        p.nombre_plan
+      FROM participante pa
+      INNER JOIN reserva r ON pa.id_reserva = r.id_reserva
+      INNER JOIN plan p ON r.id_plan = p.id_plan
+      ORDER BY pa.id_participante ASC
     `);
 
     res.json(result.rows);
@@ -23,7 +35,23 @@ export const getParticipanteById = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const result = await pool.query(
-      "SELECT * FROM participante WHERE id_participante = $1",
+      `
+      SELECT 
+        pa.id_participante,
+        pa.id_reserva,
+        pa.telefono_cliente,
+        pa.telefono_participante,
+        pa.nombre,
+        pa.edad,
+        pa.estatura,
+        pa.peso,
+        r.id_plan,
+        p.nombre_plan
+      FROM participante pa
+      INNER JOIN reserva r ON pa.id_reserva = r.id_reserva
+      INNER JOIN plan p ON r.id_plan = p.id_plan
+      WHERE pa.id_participante = $1
+      `,
       [id]
     );
 
@@ -44,11 +72,27 @@ export const getParticipanteById = async (req: Request, res: Response) => {
 
 export const createParticipante = async (req: Request, res: Response) => {
   try {
-    const { id_reserva, nombre, edad, estatura, peso } = req.body;
+    const {
+      id_reserva,
+      telefono_cliente,
+      telefono_participante,
+      nombre,
+      edad,
+      estatura,
+      peso,
+    } = req.body;
 
-    if (!id_reserva || !nombre) {
+    if (!id_reserva || !telefono_cliente || !telefono_participante || !nombre) {
       return res.status(400).json({
-        message: "La reserva y el nombre son obligatorios",
+        message:
+          "La reserva, el teléfono del cliente, el teléfono del participante y el nombre son obligatorios",
+      });
+    }
+
+    if (telefono_cliente === telefono_participante) {
+      return res.status(400).json({
+        message:
+          "El teléfono del participante no puede ser igual al teléfono del cliente",
       });
     }
 
@@ -71,13 +115,19 @@ export const createParticipante = async (req: Request, res: Response) => {
     }
 
     const reservaExiste = await pool.query(
-      "SELECT * FROM reserva WHERE id_reserva = $1",
-      [id_reserva]
+      `
+      SELECT *
+      FROM reserva
+      WHERE id_reserva = $1
+      AND telefono_cliente = $2
+      `,
+      [id_reserva, telefono_cliente]
     );
 
     if (reservaExiste.rows.length === 0) {
       return res.status(404).json({
-        message: "La reserva no existe",
+        message:
+          "La reserva no existe o no pertenece al cliente indicado",
       });
     }
 
@@ -85,19 +135,29 @@ export const createParticipante = async (req: Request, res: Response) => {
       `
       INSERT INTO participante (
         id_reserva,
+        telefono_cliente,
+        telefono_participante,
         nombre,
         edad,
         estatura,
         peso
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
       `,
-      [id_reserva, nombre, edad, estatura, peso]
+      [
+        id_reserva,
+        telefono_cliente,
+        telefono_participante,
+        nombre,
+        edad,
+        estatura,
+        peso,
+      ]
     );
 
     res.status(201).json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({
       message: "Error al crear participante",
       error,
@@ -108,11 +168,28 @@ export const createParticipante = async (req: Request, res: Response) => {
 export const updateParticipante = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { id_reserva, nombre, edad, estatura, peso } = req.body;
 
-    if (!id_reserva || !nombre) {
+    const {
+      id_reserva,
+      telefono_cliente,
+      telefono_participante,
+      nombre,
+      edad,
+      estatura,
+      peso,
+    } = req.body;
+
+    if (!id_reserva || !telefono_cliente || !telefono_participante || !nombre) {
       return res.status(400).json({
-        message: "La reserva y el nombre son obligatorios",
+        message:
+          "La reserva, el teléfono del cliente, el teléfono del participante y el nombre son obligatorios",
+      });
+    }
+
+    if (telefono_cliente === telefono_participante) {
+      return res.status(400).json({
+        message:
+          "El teléfono del participante no puede ser igual al teléfono del cliente",
       });
     }
 
@@ -135,13 +212,19 @@ export const updateParticipante = async (req: Request, res: Response) => {
     }
 
     const reservaExiste = await pool.query(
-      "SELECT * FROM reserva WHERE id_reserva = $1",
-      [id_reserva]
+      `
+      SELECT *
+      FROM reserva
+      WHERE id_reserva = $1
+      AND telefono_cliente = $2
+      `,
+      [id_reserva, telefono_cliente]
     );
 
     if (reservaExiste.rows.length === 0) {
       return res.status(404).json({
-        message: "La reserva no existe",
+        message:
+          "La reserva no existe o no pertenece al cliente indicado",
       });
     }
 
@@ -150,14 +233,25 @@ export const updateParticipante = async (req: Request, res: Response) => {
       UPDATE participante
       SET
         id_reserva = $1,
-        nombre = $2,
-        edad = $3,
-        estatura = $4,
-        peso = $5
-      WHERE id_participante = $6
+        telefono_cliente = $2,
+        telefono_participante = $3,
+        nombre = $4,
+        edad = $5,
+        estatura = $6,
+        peso = $7
+      WHERE id_participante = $8
       RETURNING *
       `,
-      [id_reserva, nombre, edad, estatura, peso, id]
+      [
+        id_reserva,
+        telefono_cliente,
+        telefono_participante,
+        nombre,
+        edad,
+        estatura,
+        peso,
+        id,
+      ]
     );
 
     if (result.rows.length === 0) {
@@ -167,7 +261,7 @@ export const updateParticipante = async (req: Request, res: Response) => {
     }
 
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({
       message: "Error al actualizar participante",
       error,
@@ -196,6 +290,7 @@ export const deleteParticipante = async (req: Request, res: Response) => {
 
     res.json({
       message: "Participante eliminado correctamente",
+      participante: result.rows[0],
     });
   } catch (error) {
     res.status(500).json({

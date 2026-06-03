@@ -34,7 +34,11 @@ export const getClienteByTelefono = async (req: Request, res: Response) => {
 
 export const createCliente = async (req: Request, res: Response) => {
   try {
-    const { telefono, atencion_humana = false } = req.body;
+    const {
+      telefono,
+      atencion_humana = false,
+      etapaconversacion = "saludo",
+    } = req.body;
 
     if (!telefono) {
       return res.status(400).json({
@@ -42,13 +46,21 @@ export const createCliente = async (req: Request, res: Response) => {
       });
     }
 
+    if (typeof atencion_humana !== "boolean") {
+      return res.status(400).json({
+        message: "El campo atencion_humana debe ser true o false",
+      });
+    }
+
     const result = await pool.query(
       `
-      INSERT INTO cliente (telefono, atencion_humana)
-      VALUES ($1, $2)
+      INSERT INTO cliente 
+        (telefono, atencion_humana, etapaconversacion)
+      VALUES 
+        ($1, $2, $3)
       RETURNING *
       `,
-      [telefono, atencion_humana]
+      [telefono, atencion_humana, etapaconversacion]
     );
 
     res.status(201).json(result.rows[0]);
@@ -69,7 +81,7 @@ export const createCliente = async (req: Request, res: Response) => {
 export const updateCliente = async (req: Request, res: Response) => {
   try {
     const { telefono } = req.params;
-    const { atencion_humana } = req.body;
+    const { atencion_humana, etapaconversacion } = req.body;
 
     if (typeof atencion_humana !== "boolean") {
       return res.status(400).json({
@@ -80,11 +92,13 @@ export const updateCliente = async (req: Request, res: Response) => {
     const result = await pool.query(
       `
       UPDATE cliente
-      SET atencion_humana = $1
-      WHERE telefono = $2
+      SET 
+        atencion_humana = $1,
+        etapaconversacion = COALESCE($2, etapaconversacion)
+      WHERE telefono = $3
       RETURNING *
       `,
-      [atencion_humana, telefono]
+      [atencion_humana, etapaconversacion, telefono]
     );
 
     if (result.rows.length === 0) {
@@ -115,6 +129,18 @@ export const deleteCliente = async (req: Request, res: Response) => {
       return res.status(400).json({
         message:
           "No se puede eliminar el cliente porque tiene reservas registradas",
+      });
+    }
+
+    const participantes = await pool.query(
+      "SELECT 1 FROM participante WHERE telefono_cliente = $1 LIMIT 1",
+      [telefono]
+    );
+
+    if (participantes.rows.length > 0) {
+      return res.status(400).json({
+        message:
+          "No se puede eliminar el cliente porque tiene participantes relacionados",
       });
     }
 
