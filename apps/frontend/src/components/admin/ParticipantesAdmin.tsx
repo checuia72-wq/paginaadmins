@@ -8,7 +8,7 @@ import {
 } from "../../services/api.service";
 import {
   Plus, Eye, Pencil, Trash2, Search, X,
-  ChevronLeft, ChevronRight, Users, Calendar, MoreVertical,
+  ChevronLeft, ChevronRight, Users, Calendar, MoreVertical, Phone,
 } from "lucide-react";
 import "../../styles/participantes.css";
 
@@ -20,6 +20,8 @@ interface Participante {
   edad: number | null;
   estatura: number | null;
   peso: number | null;
+  telefono_cliente?: string | null;
+  telefono_participante?: string | null;
   nombre_plan?: string | null;
 }
 
@@ -35,6 +37,8 @@ const emptyForm = {
   edad: "",
   estatura: "",
   peso: "",
+  telefono_cliente: "",
+  telefono_participante: "",
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -107,6 +111,8 @@ export default function ParticipantesAdmin() {
       edad: p.edad?.toString() ?? "",
       estatura: p.estatura?.toString() ?? "",
       peso: p.peso?.toString() ?? "",
+      telefono_cliente: p.telefono_cliente ?? "",
+      telefono_participante: p.telefono_participante ?? "",
     });
     setShowForm(true);
   };
@@ -133,6 +139,8 @@ export default function ParticipantesAdmin() {
         edad: formData.edad ? Number(formData.edad) : null,
         estatura: formData.estatura ? Number(formData.estatura) : null,
         peso: formData.peso ? Number(formData.peso) : null,
+        telefono_cliente: formData.telefono_cliente || null,
+        telefono_participante: formData.telefono_participante || null,
       };
       if (editing) {
         await updateParticipante(editing.id_participante, payload);
@@ -168,6 +176,8 @@ export default function ParticipantesAdmin() {
       String(p.id_participante).includes(q) ||
       p.nombre.toLowerCase().includes(q) ||
       String(p.id_reserva).includes(q) ||
+      (p.telefono_cliente ?? "").toLowerCase().includes(q) ||
+      (p.telefono_participante ?? "").toLowerCase().includes(q) ||
       (p.nombre_plan ?? "").toLowerCase().includes(q);
     const matchReserva =
       reservaFilter === "todas" ? true : String(p.id_reserva) === reservaFilter;
@@ -321,14 +331,16 @@ export default function ParticipantesAdmin() {
               <th>EDAD</th>
               <th>ESTATURA</th>
               <th>PESO</th>
+              <th>CLIENTE</th>
+              <th>TEL. PARTICIPANTE</th>
               <th>ACCIONES</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="pt-empty">Cargando...</td></tr>
+              <tr><td colSpan={9} className="pt-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={7} className="pt-empty">Sin resultados</td></tr>
+              <tr><td colSpan={9} className="pt-empty">Sin resultados</td></tr>
             ) : paginated.map((p) => (
               <tr key={p.id_participante}>
                 <td className="pt-id">#{p.id_participante}</td>
@@ -342,6 +354,20 @@ export default function ParticipantesAdmin() {
                 <td>{p.edad ?? <span className="rv-null">—</span>}</td>
                 <td>{fmtEstatura(p.estatura)}</td>
                 <td>{fmtPeso(p.peso)}</td>
+                <td>
+                  {p.telefono_cliente ? (
+                    <span className="pt-phone"><Phone size={13} /> {p.telefono_cliente}</span>
+                  ) : (
+                    <span className="rv-null">—</span>
+                  )}
+                </td>
+                <td>
+                  {p.telefono_participante ? (
+                    <span className="pt-phone"><Phone size={13} /> {p.telefono_participante}</span>
+                  ) : (
+                    <span className="rv-null">—</span>
+                  )}
+                </td>
                 <td><ActionButtons p={p} /></td>
               </tr>
             ))}
@@ -384,6 +410,18 @@ export default function ParticipantesAdmin() {
             <div className="pt-card-row">
               <Calendar size={14} /> Reserva #{p.id_reserva} — {planDeReserva(p)}
             </div>
+
+            {p.telefono_cliente && (
+              <div className="pt-card-row">
+                <Phone size={14} /> Cliente: {p.telefono_cliente}
+              </div>
+            )}
+
+            {p.telefono_participante && (
+              <div className="pt-card-row">
+                <Phone size={14} /> Participante: {p.telefono_participante}
+              </div>
+            )}
 
             <div className="pt-card-meta">
               <div className="pt-card-meta-item">
@@ -435,6 +473,8 @@ export default function ParticipantesAdmin() {
                 <div className="pt-detail-field"><label>Edad</label><span>{viewing.edad ?? "—"}</span></div>
                 <div className="pt-detail-field"><label>Estatura</label><span>{fmtEstatura(viewing.estatura)}</span></div>
                 <div className="pt-detail-field"><label>Peso</label><span>{fmtPeso(viewing.peso)}</span></div>
+                <div className="pt-detail-field"><label>Tel. cliente</label><span>{viewing.telefono_cliente || "—"}</span></div>
+                <div className="pt-detail-field"><label>Tel. participante</label><span>{viewing.telefono_participante || "—"}</span></div>
               </div>
             </div>
           </div>
@@ -454,7 +494,11 @@ export default function ParticipantesAdmin() {
                 <label>N° Reserva *</label>
                 <select
                   value={formData.id_reserva}
-                  onChange={(e) => setFormData({ ...formData, id_reserva: Number(e.target.value) })}
+                  onChange={(e) => {
+                    const idr = e.target.value === "" ? "" : Number(e.target.value);
+                    const tel = idr === "" ? "" : (reservas.find((r) => r.id_reserva === idr)?.telefono_cliente ?? "");
+                    setFormData({ ...formData, id_reserva: idr, telefono_cliente: tel });
+                  }}
                 >
                   <option value="">Seleccionar reserva</option>
                   {reservas.map((r) => (
@@ -500,6 +544,24 @@ export default function ParticipantesAdmin() {
                     value={formData.peso}
                     onChange={(e) => setFormData({ ...formData, peso: e.target.value })}
                     placeholder="Ej. 70.5"
+                  />
+                </div>
+              </div>
+              <div className="pt-form-row">
+                <div className="pt-form-group">
+                  <label>Tel. cliente</label>
+                  <input
+                    value={formData.telefono_cliente}
+                    onChange={(e) => setFormData({ ...formData, telefono_cliente: e.target.value })}
+                    placeholder="Se autocompleta con la reserva"
+                  />
+                </div>
+                <div className="pt-form-group">
+                  <label>Tel. participante</label>
+                  <input
+                    value={formData.telefono_participante}
+                    onChange={(e) => setFormData({ ...formData, telefono_participante: e.target.value })}
+                    placeholder="Ej. 3009876543"
                   />
                 </div>
               </div>

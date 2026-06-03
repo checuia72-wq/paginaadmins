@@ -4,11 +4,12 @@ import {
   createCliente,
   updateCliente,
   deleteCliente,
+  getPlanes,
 } from "../../services/api.service";
 import {
   Plus, Eye, Pencil, Trash2, Search, X,
   ChevronLeft, ChevronRight, Phone, Users, Headphones, Bot,
-  MessageSquare, MoreVertical,
+  MessageSquare, MoreVertical, Package,
 } from "lucide-react";
 import "../../styles/clientes.css";
 import { ETAPAS, getEtapaInfo } from "../../lib/etapas";
@@ -18,12 +19,19 @@ interface Cliente {
   telefono: string;
   atencion_humana: boolean;
   etapaconversacion?: string | null;
+  id_plan?: number | null;
+}
+
+interface Plan {
+  id_plan: number;
+  nombre_plan: string;
 }
 
 const emptyForm = {
   telefono: "",
   atencion_humana: false,
   etapaconversacion: "",
+  id_plan: "" as number | "",
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -32,6 +40,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50];
 /* ── Componente ────────────────────────────── */
 export default function ClientesAdmin() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [planes, setPlanes] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros
@@ -58,8 +67,9 @@ export default function ClientesAdmin() {
   const fetchClientes = async () => {
     try {
       setLoading(true);
-      const data = await getClientes();
+      const [data, planesData] = await Promise.all([getClientes(), getPlanes()]);
       setClientes(data);
+      setPlanes(planesData);
     } catch (e) {
       console.error(e);
     } finally {
@@ -94,6 +104,7 @@ export default function ClientesAdmin() {
       telefono: c.telefono,
       atencion_humana: c.atencion_humana,
       etapaconversacion: c.etapaconversacion ?? "",
+      id_plan: c.id_plan ?? "",
     });
     setShowForm(true);
   };
@@ -114,12 +125,14 @@ export default function ClientesAdmin() {
         await updateCliente(editing.telefono, {
           atencion_humana: formData.atencion_humana,
           etapaconversacion: formData.etapaconversacion || null,
+          id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
       } else {
         await createCliente({
           telefono: formData.telefono,
           atencion_humana: formData.atencion_humana,
           etapaconversacion: formData.etapaconversacion || null,
+          id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
       }
       setShowForm(false);
@@ -176,6 +189,17 @@ export default function ClientesAdmin() {
   const etapasDistintas = etapasDisponibles.length;
 
   /* ── Sub-componentes ── */
+  const nombrePlan = (id_plan?: number | null) => {
+    if (id_plan == null) return null;
+    return planes.find((p) => p.id_plan === id_plan)?.nombre_plan ?? `#${id_plan}`;
+  };
+
+  const PlanBadge = ({ id_plan }: { id_plan?: number | null }) => {
+    const nombre = nombrePlan(id_plan);
+    if (!nombre) return <span className="rv-null">—</span>;
+    return <span className="cl-badge cl-badge-plan"><Package size={12} /> {nombre}</span>;
+  };
+
   const AtencionBadge = ({ humana }: { humana: boolean }) =>
     humana
       ? <span className="cl-badge cl-badge-humana"><Headphones size={12} /> Humana</span>
@@ -343,19 +367,21 @@ export default function ClientesAdmin() {
               <th>TELÉFONO</th>
               <th>ATENCIÓN</th>
               <th>ETAPA</th>
+              <th>PLAN</th>
               <th>ACCIONES</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="cl-empty">Cargando...</td></tr>
+              <tr><td colSpan={5} className="cl-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={4} className="cl-empty">Sin resultados</td></tr>
+              <tr><td colSpan={5} className="cl-empty">Sin resultados</td></tr>
             ) : paginated.map((c) => (
               <tr key={c.telefono}>
                 <td><span className="cl-phone"><Phone size={13} /> {c.telefono}</span></td>
                 <td><AtencionBadge humana={c.atencion_humana} /></td>
                 <td><EtapaBadge etapa={c.etapaconversacion} /></td>
+                <td><PlanBadge id_plan={c.id_plan} /></td>
                 <td><ActionButtons c={c} /></td>
               </tr>
             ))}
@@ -394,6 +420,7 @@ export default function ClientesAdmin() {
             <div className="cl-card-badges">
               <AtencionBadge humana={c.atencion_humana} />
               <EtapaBadge etapa={c.etapaconversacion} />
+              <PlanBadge id_plan={c.id_plan} />
             </div>
           </div>
         ))}
@@ -427,6 +454,7 @@ export default function ClientesAdmin() {
               <div className="cl-detail-field"><label>Teléfono</label><span>{viewing.telefono}</span></div>
               <div className="cl-detail-field"><label>Atención</label><span><AtencionBadge humana={viewing.atencion_humana} /></span></div>
               <div className="cl-detail-field"><label>Etapa de conversación</label><span><EtapaBadge etapa={viewing.etapaconversacion} /></span></div>
+              <div className="cl-detail-field"><label>Plan asociado</label><span><PlanBadge id_plan={viewing.id_plan} /></span></div>
             </div>
           </div>
         </div>
@@ -457,6 +485,18 @@ export default function ClientesAdmin() {
                   onChange={(e) => setFormData({ ...formData, etapaconversacion: e.target.value })}
                   placeholder="Ej. saludo, confirmada..."
                 />
+              </div>
+              <div className="cl-form-group">
+                <label>Plan asociado</label>
+                <select
+                  value={formData.id_plan}
+                  onChange={(e) => setFormData({ ...formData, id_plan: e.target.value === "" ? "" : Number(e.target.value) })}
+                >
+                  <option value="">Sin plan</option>
+                  {planes.map((p) => (
+                    <option key={p.id_plan} value={p.id_plan}>#{p.id_plan} — {p.nombre_plan}</option>
+                  ))}
+                </select>
               </div>
               <div className="cl-form-check">
                 <input

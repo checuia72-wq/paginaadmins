@@ -1,9 +1,14 @@
 import { Request, Response } from "express";
-import { pool } from "../config/database";
+import { pool } from "../config/database.js";
 
 export const getPlans = async (req: Request, res: Response) => {
   try {
-    const result = await pool.query("SELECT * FROM plan ORDER BY id_plan ASC");
+    const result = await pool.query(`
+      SELECT *
+      FROM plan
+      ORDER BY numero_plan ASC NULLS LAST, id_plan ASC
+    `);
+
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener planes", error });
@@ -29,10 +34,7 @@ export const getPlanById = async (req: Request, res: Response) => {
   }
 };
 
-export const createPlan = async (
-  req: Request,
-  res: Response
-) => {
+export const createPlan = async (req: Request, res: Response) => {
   try {
     const {
       nombre_plan,
@@ -42,20 +44,18 @@ export const createPlan = async (
       fecha_plan,
       hora_plan,
       imagen_url,
+      numero_plan,
     } = req.body;
 
-    // VALIDACIONES
-    if (!nombre_plan || !precio_plan) {
+    if (!nombre_plan || precio_plan === undefined || precio_plan === null) {
       return res.status(400).json({
-        message:
-          "El nombre del plan y el precio son obligatorios",
+        message: "El nombre del plan y el precio son obligatorios",
       });
     }
 
-    if (precio_plan <= 0) {
+    if (Number(precio_plan) <= 0) {
       return res.status(400).json({
-        message:
-          "El precio del plan debe ser mayor a 0",
+        message: "El precio del plan debe ser mayor a 0",
       });
     }
 
@@ -68,9 +68,10 @@ export const createPlan = async (
         descripcion_detallada,
         fecha_plan,
         hora_plan,
-        imagen_url
+        imagen_url,
+        numero_plan
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *
       `,
       [
@@ -81,6 +82,7 @@ export const createPlan = async (
         fecha_plan,
         hora_plan,
         imagen_url,
+        numero_plan,
       ]
     );
 
@@ -93,10 +95,7 @@ export const createPlan = async (
   }
 };
 
-export const updatePlan = async (
-  req: Request,
-  res: Response
-) => {
+export const updatePlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -108,20 +107,18 @@ export const updatePlan = async (
       fecha_plan,
       hora_plan,
       imagen_url,
+      numero_plan,
     } = req.body;
 
-    // VALIDACIONES
-    if (!nombre_plan || !precio_plan) {
+    if (!nombre_plan || precio_plan === undefined || precio_plan === null) {
       return res.status(400).json({
-        message:
-          "El nombre del plan y el precio son obligatorios",
+        message: "El nombre del plan y el precio son obligatorios",
       });
     }
 
-    if (precio_plan <= 0) {
+    if (Number(precio_plan) <= 0) {
       return res.status(400).json({
-        message:
-          "El precio del plan debe ser mayor a 0",
+        message: "El precio del plan debe ser mayor a 0",
       });
     }
 
@@ -135,8 +132,9 @@ export const updatePlan = async (
         descripcion_detallada = $4,
         fecha_plan = $5,
         hora_plan = $6,
-        imagen_url = $7
-      WHERE id_plan = $8
+        imagen_url = $7,
+        numero_plan = $8
+      WHERE id_plan = $9
       RETURNING *
       `,
       [
@@ -147,6 +145,7 @@ export const updatePlan = async (
         fecha_plan,
         hora_plan,
         imagen_url,
+        numero_plan,
         id,
       ]
     );
@@ -169,6 +168,17 @@ export const updatePlan = async (
 export const deletePlan = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    const clientes = await pool.query(
+      "SELECT 1 FROM cliente WHERE id_plan = $1 LIMIT 1",
+      [id]
+    );
+
+    if (clientes.rows.length > 0) {
+      return res.status(400).json({
+        message: "No se puede eliminar el plan porque está asignado a clientes",
+      });
+    }
 
     const reservas = await pool.query(
       "SELECT 1 FROM reserva WHERE id_plan = $1 LIMIT 1",

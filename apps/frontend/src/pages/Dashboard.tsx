@@ -17,6 +17,9 @@ import {
 
 const DEMO_SESSION_KEY = "forigua:demo_session";
 
+/* Tiempo de inactividad antes de cerrar sesión automáticamente (15 min) */
+const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+
 const NAV_LINKS = [
   { to: "/app", label: "Resumen", icon: <LayoutDashboard size={16} />, end: true },
   { to: "/app/reservas", label: "Reservas", icon: <CalendarDays size={16} /> },
@@ -31,6 +34,7 @@ function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const drawerRef = useRef<HTMLDivElement>(null);
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* cierra el drawer al cambiar ruta */
   useEffect(() => {
@@ -55,10 +59,38 @@ function Dashboard() {
     return () => { document.body.style.overflow = ""; };
   }, [menuOpen]);
 
-  const handleLogout = async () => {
+  const cerrarSesion = async (porInactividad = false) => {
     await logout();
-    navigate("/", { replace: true });
+    localStorage.removeItem(DEMO_SESSION_KEY);
+    navigate("/", {
+      replace: true,
+      state: porInactividad ? { motivo: "inactividad" } : undefined,
+    });
   };
+
+  const handleLogout = () => cerrarSesion(false);
+
+  /* cierra sesión tras 15 min de inactividad */
+  useEffect(() => {
+    const reiniciar = () => {
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = setTimeout(() => {
+        cerrarSesion(true);
+      }, INACTIVITY_LIMIT_MS);
+    };
+
+    const eventos: (keyof DocumentEventMap)[] = [
+      "mousemove", "mousedown", "keydown", "scroll", "touchstart", "click",
+    ];
+    eventos.forEach((ev) => document.addEventListener(ev, reiniciar, { passive: true }));
+    reiniciar(); // inicia el contador
+
+    return () => {
+      eventos.forEach((ev) => document.removeEventListener(ev, reiniciar));
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const demoRaw = localStorage.getItem(DEMO_SESSION_KEY);

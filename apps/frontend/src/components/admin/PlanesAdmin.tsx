@@ -30,6 +30,7 @@ interface Plan {
   fecha_plan?: string | null;
   hora_plan?: string | null;
   imagen_url?: string | null;
+  numero_plan?: number | null;
 }
 
 const emptyPlan: Omit<Plan, "id_plan"> = {
@@ -40,6 +41,7 @@ const emptyPlan: Omit<Plan, "id_plan"> = {
   fecha_plan: null,
   hora_plan: null,
   imagen_url: null,
+  numero_plan: null,
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -123,6 +125,7 @@ export default function PlanesAdmin() {
       fecha_plan: plan.fecha_plan ?? null,
       hora_plan: plan.hora_plan ?? null,
       imagen_url: plan.imagen_url ?? null,
+      numero_plan: plan.numero_plan ?? null,
     });
     setShowForm(true);
   };
@@ -165,6 +168,7 @@ export default function PlanesAdmin() {
   const filtered = planes.filter((p) =>
     p.nombre_plan.toLowerCase().includes(search.toLowerCase()) ||
     String(p.id_plan).includes(search.toLowerCase()) ||
+    String(p.numero_plan ?? "").includes(search.toLowerCase()) ||
     (p.descripcion_basica ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
@@ -285,6 +289,7 @@ export default function PlanesAdmin() {
           <thead>
             <tr>
               <th>ID</th>
+              <th>N° PLAN</th>
               <th>PLAN</th>
               <th>PRECIO</th>
               <th>DESCRIPCIÓN</th>
@@ -295,12 +300,13 @@ export default function PlanesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
             ) : paginated.map((plan) => (
               <tr key={plan.id_plan}>
                 <td><strong>#{plan.id_plan}</strong></td>
+                <td>{plan.numero_plan ?? <span className="rv-null">—</span>}</td>
                 <td>
                   <div className="plan-name-cell">
                     {plan.imagen_url ? (
@@ -372,6 +378,9 @@ export default function PlanesAdmin() {
               <div className="plan-card-headtext">
                 <span className="plan-card-id">#{plan.id_plan}</span>
                 <span className="plan-card-name">{plan.nombre_plan}</span>
+                {plan.numero_plan != null && (
+                  <span className="plan-card-num">N° {plan.numero_plan}</span>
+                )}
               </div>
               <ActionMenu plan={plan} />
             </div>
@@ -429,6 +438,7 @@ export default function PlanesAdmin() {
                 <img src={viewing.imagen_url} alt={viewing.nombre_plan} className="modal-img" />
               )}
               <div className="modal-field"><label>Nombre</label><span>{viewing.nombre_plan}</span></div>
+              <div className="modal-field"><label>N° de plan</label><span>{viewing.numero_plan ?? "—"}</span></div>
               <div className="modal-field"><label>Precio</label><span>{fmtPrecio(viewing.precio_plan) ?? "—"}</span></div>
               <div className="modal-field"><label>Descripción básica</label><span>{viewing.descripcion_basica || "—"}</span></div>
               <div className="modal-field"><label>Descripción detallada</label><span>{viewing.descripcion_detallada || "—"}</span></div>
@@ -456,14 +466,25 @@ export default function PlanesAdmin() {
                   placeholder="Nombre del plan"
                 />
               </div>
-              <div className="form-group">
-                <label>Precio (COP)</label>
-                <input
-                  type="number"
-                  value={formData.precio_plan ?? ""}
-                  onChange={(e) => setFormData({ ...formData, precio_plan: e.target.value ? Number(e.target.value) : null })}
-                  placeholder="0"
-                />
+              <div className="form-row">
+                <div className="form-group">
+                  <label>N° de plan</label>
+                  <input
+                    type="number"
+                    value={formData.numero_plan ?? ""}
+                    onChange={(e) => setFormData({ ...formData, numero_plan: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="Ej. 1"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Precio (COP)</label>
+                  <input
+                    type="number"
+                    value={formData.precio_plan ?? ""}
+                    onChange={(e) => setFormData({ ...formData, precio_plan: e.target.value ? Number(e.target.value) : null })}
+                    placeholder="0"
+                  />
+                </div>
               </div>
               <div className="form-group">
                 <label>Descripción básica</label>

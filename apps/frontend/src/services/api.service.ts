@@ -56,8 +56,8 @@ export async function deletePlan(id: number) {
 export async function getClientes() {
   const { data, error } = await getClient()
     .from("cliente")
-    // Incluye: telefono, atencion_humana, etapaconversacion
-    .select("telefono, atencion_humana, etapaconversacion")
+    // Incluye: telefono, atencion_humana, etapaconversacion, id_plan
+    .select("telefono, atencion_humana, etapaconversacion, id_plan")
     .order("telefono", { ascending: true });
 
   if (error) throw error;
@@ -169,7 +169,8 @@ export async function deleteReserva(id: number) {
 }
 
 /* ─── PARTICIPANTES ──────────────────────────────────────── */
-// Campos reales: id_participante, id_reserva (FK), nombre, edad, estatura, peso
+// Campos reales: id_participante, id_reserva (FK), nombre, edad, estatura, peso,
+//                telefono_cliente, telefono_participante
 // El plan se obtiene a través de la reserva asociada.
 
 export async function getParticipantes() {
@@ -181,6 +182,8 @@ export async function getParticipantes() {
       edad,
       estatura,
       peso,
+      telefono_cliente,
+      telefono_participante,
       id_reserva,
       reserva (
         id_reserva,
@@ -202,6 +205,27 @@ export async function getParticipantes() {
     id_plan:     p.reserva?.id_plan ?? null,
     nombre_plan: p.reserva?.plan?.nombre_plan ?? null,
   }));
+}
+
+// Participantes de una reserva específica.
+export async function getParticipantesPorReserva(id_reserva: number) {
+  const { data, error } = await getClient()
+    .from("participante")
+    .select(`
+      id_participante,
+      nombre,
+      edad,
+      estatura,
+      peso,
+      telefono_cliente,
+      telefono_participante,
+      id_reserva
+    `)
+    .eq("id_reserva", id_reserva)
+    .order("id_participante", { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function createParticipante(payload: any) {

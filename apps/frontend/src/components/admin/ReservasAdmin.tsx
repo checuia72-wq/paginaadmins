@@ -6,11 +6,12 @@ import {
   deleteReserva,
   getPlanes,
   getClientes,
+  getParticipantesPorReserva,
 } from "../../services/api.service";
 import {
   Plus, Eye, Pencil, Trash2, Search, X,
   ChevronLeft, ChevronRight, Phone, CheckCircle, Clock, Users, Calendar,
-  MoreVertical,
+  MoreVertical, UserCheck,
 } from "lucide-react";
 import "../../styles/reservas.css";
 
@@ -29,6 +30,17 @@ interface Reserva {
 interface Plan {
   id_plan: number;
   nombre_plan: string;
+}
+
+interface Participante {
+  id_participante: number;
+  id_reserva: number;
+  nombre: string;
+  edad: number | null;
+  estatura: number | null;
+  peso: number | null;
+  telefono_cliente?: string | null;
+  telefono_participante?: string | null;
 }
 
 const emptyForm = {
@@ -70,6 +82,8 @@ export default function ReservasAdmin() {
 
   // Modal ver
   const [viewing, setViewing] = useState<Reserva | null>(null);
+  const [participantes, setParticipantes] = useState<Participante[]>([]);
+  const [loadingParticipantes, setLoadingParticipantes] = useState(false);
 
   // Confirmación de aprobar/desaprobar (toggle)
   const [confirmAprobar, setConfirmAprobar] = useState<Reserva | null>(null);
@@ -129,9 +143,20 @@ export default function ReservasAdmin() {
     setShowForm(true);
   };
 
-  const openView = (r: Reserva) => {
+  const openView = async (r: Reserva) => {
     setOpenMenu(null);
     setViewing(r);
+    setParticipantes([]);
+    setLoadingParticipantes(true);
+    try {
+      const data = await getParticipantesPorReserva(r.id_reserva);
+      setParticipantes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setParticipantes([]);
+    } finally {
+      setLoadingParticipantes(false);
+    }
   };
 
   const handleSave = async () => {
@@ -542,7 +567,7 @@ export default function ReservasAdmin() {
       {/* ── Modal Ver ── */}
       {viewing && (
         <div className="rv-overlay" onClick={() => setViewing(null)}>
-          <div className="rv-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="rv-modal rv-modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="rv-modal-header">
               <h2>Detalle reserva #{viewing.id_reserva}</h2>
               <button className="rv-modal-close" onClick={() => setViewing(null)}><X size={20} /></button>
@@ -557,6 +582,57 @@ export default function ReservasAdmin() {
                 </div>
                 <div className="rv-detail-field"><label>Fecha solicitud</label><span>{fmt(viewing.fecha_solicitud) ?? "—"}</span></div>
                 <div className="rv-detail-field"><label>Fecha aprobación</label><span>{fmt(viewing.fecha_aprobacion) ?? "—"}</span></div>
+              </div>
+
+              {/* Participantes de la reserva */}
+              <div className="rv-parts">
+                <div className="rv-parts-head">
+                  <h3 className="rv-parts-title">
+                    <UserCheck size={15} /> Participantes
+                  </h3>
+                  {!loadingParticipantes && (
+                    <span className="rv-parts-count">{participantes.length}</span>
+                  )}
+                </div>
+
+                {loadingParticipantes ? (
+                  <p className="rv-parts-empty">Cargando participantes…</p>
+                ) : participantes.length === 0 ? (
+                  <p className="rv-parts-empty">Esta reserva no tiene participantes registrados.</p>
+                ) : (
+                  <div className="rv-parts-table-wrap">
+                    <table className="rv-parts-table">
+                      <thead>
+                        <tr>
+                          <th>Nombre</th>
+                          <th>Teléfono</th>
+                          <th className="rv-parts-num">Edad</th>
+                          <th className="rv-parts-num">Estatura</th>
+                          <th className="rv-parts-num">Peso</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {participantes.map((p) => (
+                          <tr key={p.id_participante}>
+                            <td className="rv-parts-name">{p.nombre}</td>
+                            <td>
+                              {p.telefono_participante || p.telefono_cliente ? (
+                                <span className="rv-phone">
+                                  <Phone size={12} /> {p.telefono_participante || p.telefono_cliente}
+                                </span>
+                              ) : (
+                                <span className="rv-null">—</span>
+                              )}
+                            </td>
+                            <td className="rv-parts-num">{p.edad ?? <span className="rv-null">—</span>}</td>
+                            <td className="rv-parts-num">{p.estatura != null ? `${p.estatura} m` : <span className="rv-null">—</span>}</td>
+                            <td className="rv-parts-num">{p.peso != null ? `${p.peso} kg` : <span className="rv-null">—</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>

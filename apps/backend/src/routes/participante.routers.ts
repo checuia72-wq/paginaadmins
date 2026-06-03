@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getParticipantes,
   getParticipanteById,
+  getParticipantesByReserva,
   createParticipante,
   updateParticipante,
   deleteParticipante,
@@ -11,6 +12,7 @@ const router: Router = Router();
 
 router.get("/", getParticipantes);
 router.get("/:id", getParticipanteById);
+router.get("/reserva/:id_reserva", getParticipantesByReserva);
 router.post("/", createParticipante);
 router.put("/:id", updateParticipante);
 router.delete("/:id", deleteParticipante);

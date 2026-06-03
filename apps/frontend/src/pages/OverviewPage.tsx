@@ -165,10 +165,10 @@ export default function OverviewPage() {
 
       {/* KPI cards */}
       <div className="kpi-grid">
-        <KpiCard icon={<CalendarDays size={20} />} label="Total Reservas"   value={totalReservas}      delta="+12%" color="blue"   />
-        <KpiCard icon={<Package size={20} />}      label="Planes Activos"   value={planesActivos}      delta="+1"   color="amber"  />
-        <KpiCard icon={<Users size={20} />}        label="Clientes"         value={totalClientes}      delta="+8"   color="violet" />
-        <KpiCard icon={<UserCheck size={20} />}    label="Participantes"    value={totalParticipantes} delta="+5%"  color="teal"   />
+        <KpiCard to="/app/reservas"      icon={<CalendarDays size={20} />} label="Total Reservas"   value={totalReservas}      delta="+12%" color="blue"   />
+        <KpiCard to="/app/planes"        icon={<Package size={20} />}      label="Planes Activos"   value={planesActivos}      delta="+1"   color="amber"  />
+        <KpiCard to="/app/clientes"      icon={<Users size={20} />}        label="Clientes"         value={totalClientes}      delta="+8"   color="violet" />
+        <KpiCard to="/app/participantes" icon={<UserCheck size={20} />}    label="Participantes"    value={totalParticipantes} delta="+5%"  color="teal"   />
       </div>
 
       {/* grid principal */}
@@ -438,16 +438,17 @@ export default function OverviewPage() {
 
 /* ─── KpiCard ────────────────────────────────────────────── */
 function KpiCard({
-  icon, label, value, delta, color,
+  icon, label, value, delta, color, to,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number;
   delta: string;
   color: "blue" | "amber" | "violet" | "teal";
+  to: string;
 }) {
   return (
-    <div className={`kpi-card kpi-${color}`}>
+    <NavLink to={to} className={`kpi-card kpi-${color}`}>
       <div className={`kpi-icon-wrap kpi-icon-${color}`}>{icon}</div>
       <div className="kpi-body">
         <p className="kpi-label">{label}</p>
@@ -457,6 +458,6 @@ function KpiCard({
         <TrendingUp size={12} />
         {delta}
       </div>
-    </div>
+    </NavLink>
   );
 }
