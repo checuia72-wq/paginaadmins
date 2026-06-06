@@ -126,8 +126,10 @@ function Login() {
             Portal de Gestión Administrativa y Conservación Ambiental.
           </p>
           <div className="login-ornament">
-            <svg width="40" height="2" viewBox="0 0 40 2" fill="none">
-              <path d="M0 1H40" stroke="var(--checua-gold)" strokeOpacity="0.5"/>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-cactus">
+              <path d="M8 22V8a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v14"/>
+              <path d="M12 12h2a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h0"/>
+              <path d="M8 10H6a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h0"/>
             </svg>
           </div>
           <p className="login-footer-text">
