@@ -118,7 +118,7 @@ function Login() {
         {/* Panel lateral con textos descriptivos */}
         <div className="login-side">
           <img src="/logo.png" alt="Logo Checua" className="login-logo-main" />
-          <h2 className="login-side-title">Agencia Desierto de Checua</h2>
+          <h2 className="login-side-title">Desierto de Checua</h2>
           <div className="login-ornament">
             <Mountain size={24} />
           </div>
