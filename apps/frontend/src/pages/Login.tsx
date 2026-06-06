@@ -117,7 +117,7 @@ function Login() {
       <div className="login-layout">
         {/* Panel lateral con textos descriptivos */}
         <div className="login-side">
-          <img src="/logo.ico" alt="Logo Checua" className="login-logo-main" />
+          <img src="/logo.png" alt="Logo Checua" className="login-logo-main" />
           <h2 className="login-side-title">Agencia Desierto de Checua</h2>
           <div className="login-ornament">
             <Mountain size={24} />
@@ -139,9 +139,7 @@ function Login() {
         <div className="login-main">
           <form className="login-card" onSubmit={handleLogin}>
             <div className="login-card-header">
-              <div className="login-header-icon">
-                <Mountain size={48} strokeWidth={1} />
-              </div>
+              <img src="/icono.png" alt="Icono Checua" className="login-header-logo" />
               <h1 className="login-title">Bienvenido de nuevo</h1>
               <p className="login-desc">Ingresa a tu cuenta para continuar</p>
             </div>

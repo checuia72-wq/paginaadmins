@@ -113,10 +113,11 @@
   margin-bottom: 35px;
 }
 
-.login-header-icon {
-  color: var(--checua-gold);
-  margin-bottom: 20px;
-  opacity: 0.9;
+.login-header-logo {
+  width: 60px;
+  height: auto;
+  margin-bottom: 15px;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
 }
 
 .login-title {

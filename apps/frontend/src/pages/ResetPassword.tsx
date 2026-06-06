@@ -71,9 +71,7 @@ function ResetPassword() {
         <div className="login-main">
           <form className="login-card" onSubmit={handleResetPassword}>
             <div className="login-card-header">
-              <div className="login-header-icon">
-                <Lock size={48} strokeWidth={1} />
-              </div>
+              <img src="/icono.png" alt="Icono Checua" className="login-header-logo" />
               <h1 className="login-title">Nueva contraseña</h1>
               <p className="login-desc">Ingresa tu nueva contraseña para recuperar el acceso</p>
             </div>
