@@ -127,7 +127,7 @@ export default function PlanesAdmin() {
       const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      const { data, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("planes")
         .upload(filePath, file, {
           cacheControl: '3600',
