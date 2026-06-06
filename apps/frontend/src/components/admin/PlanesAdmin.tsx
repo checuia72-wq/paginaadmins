@@ -5,6 +5,8 @@ import {
   updatePlan,
   deletePlan,
 } from "../../services/api.service";
+import PlanImage from "../common/PlanImage";
+import "../../styles/planes.css";
 import { supabase } from "../../lib/supabase";
 import {
   Plus,
@@ -157,11 +159,11 @@ export default function PlanesAdmin() {
         throw uploadError;
       }
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: publicUrlData } = supabase.storage
         .from("planes")
         .getPublicUrl(filePath);
 
-      setFormData((prev) => ({ ...prev, imagen_url: publicUrl }));
+      setFormData((prev) => ({ ...prev, imagen_url: publicUrlData.publicUrl }));
     } catch (error) {
       console.error("Error subiendo imagen:", error);
       alert("No se pudo subir la imagen.");
@@ -392,16 +394,11 @@ export default function PlanesAdmin() {
                 <td>{plan.numero_plan ?? <span className="rv-null">—</span>}</td>
                 <td>
                   <div className="plan-name-cell">
-                    {plan.imagen_url ? (
-                      <img
-                        src={plan.imagen_url}
-                        alt={plan.nombre_plan}
-                        className="plan-thumb"
-                        onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                      />
-                    ) : (
-                      <div className="plan-thumb-placeholder"><Package size={18} /></div>
-                    )}
+                    <PlanImage 
+                      src={plan.imagen_url} 
+                      alt={plan.nombre_plan} 
+                      className="plan-thumb" 
+                    />
                     <div>
                       <div className="plan-name">{plan.nombre_plan}</div>
                       <div className="plan-desc-short">{plan.descripcion_basica ?? ""}</div>
@@ -545,9 +542,11 @@ export default function PlanesAdmin() {
               <button className="modal-close" onClick={() => setViewing(null)}><X size={20} /></button>
             </div>
             <div className="modal-body">
-              {viewing.imagen_url && (
-                <img src={viewing.imagen_url} alt={viewing.nombre_plan} className="modal-img" />
-              )}
+              <PlanImage 
+                src={viewing.imagen_url} 
+                alt={viewing.nombre_plan} 
+                className="modal-img" 
+              />
               <div className="modal-field"><label>Nombre</label><span>{viewing.nombre_plan}</span></div>
               <div className="modal-field"><label>N° de plan</label><span>{viewing.numero_plan ?? "—"}</span></div>
               <div className="modal-field"><label>Precio</label><span>{fmtPrecio(viewing.precio_plan) ?? "—"}</span></div>
@@ -772,7 +771,11 @@ export default function PlanesAdmin() {
                 <div className="image-upload-container">
                   {formData.imagen_url ? (
                     <div className="image-preview-wrap">
-                      <img src={formData.imagen_url} alt="Preview" className="image-preview" />
+                      <PlanImage 
+                        src={formData.imagen_url} 
+                        alt="Preview" 
+                        className="image-preview" 
+                      />
                       <button 
                         type="button" 
                         className="btn-remove-image" 
