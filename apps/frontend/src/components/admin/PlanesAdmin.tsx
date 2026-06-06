@@ -18,6 +18,8 @@ import {
   ChevronRight,
   RefreshCw,
   MoreVertical,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import "../../styles/planes.css";
 
@@ -65,6 +67,8 @@ export default function PlanesAdmin() {
   const [editing, setEditing] = useState<Plan | null>(null);
   const [formData, setFormData] = useState<Omit<Plan, "id_plan">>(emptyPlan);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // View modal
   const [viewing, setViewing] = useState<Plan | null>(null);
@@ -112,6 +116,35 @@ export default function PlanesAdmin() {
     setEditing(null);
     setFormData(emptyPlan);
     setShowForm(true);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !supabase) return;
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("planes")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("planes")
+        .getPublicUrl(filePath);
+
+      setFormData((prev) => ({ ...prev, imagen_url: publicUrl }));
+    } catch (error) {
+      console.error("Error subiendo imagen:", error);
+      alert("No se pudo subir la imagen.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const openEdit = (plan: Plan) => {
@@ -523,7 +556,47 @@ export default function PlanesAdmin() {
                 </div>
               </div>
               <div className="form-group">
-                <label>URL de imagen</label>
+                <label>Imagen del plan</label>
+                <div className="image-upload-container">
+                  {formData.imagen_url ? (
+                    <div className="image-preview-wrap">
+                      <img src={formData.imagen_url} alt="Preview" className="image-preview" />
+                      <button 
+                        type="button" 
+                        className="btn-remove-image" 
+                        onClick={() => setFormData({ ...formData, imagen_url: null })}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      type="button" 
+                      className="btn-upload-placeholder" 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? (
+                        <RefreshCw size={24} className="spin" />
+                      ) : (
+                        <>
+                          <Upload size={24} />
+                          <span>Subir imagen</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept="image/*"
+                    style={{ display: "none" }}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>O ingresar URL de imagen manualmente</label>
                 <input
                   value={formData.imagen_url ?? ""}
                   onChange={(e) => setFormData({ ...formData, imagen_url: e.target.value || null })}

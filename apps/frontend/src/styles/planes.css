@@ -617,6 +617,86 @@
 .btn-guardar:hover { background: #2563eb; }
 .btn-guardar:disabled { background: #93c5fd; cursor: not-allowed; }
 
+/* ── Image Upload Styles ── */
+.image-upload-container {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.btn-upload-placeholder {
+  width: 100%;
+  height: 120px;
+  border: 2px dashed #d1d5db;
+  border-radius: 10px;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.btn-upload-placeholder:hover:not(:disabled) {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+  color: #3b82f6;
+}
+
+.btn-upload-placeholder span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.image-preview-wrap {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.btn-remove-image {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: #ef4444;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+}
+
+.btn-remove-image:hover {
+  background: #ffffff;
+  transform: scale(1.1);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .planes-header { flex-direction: column; align-items: flex-start; }
