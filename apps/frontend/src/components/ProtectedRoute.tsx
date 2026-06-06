@@ -30,13 +30,20 @@ function ProtectedRoute({ children }: Props) {
 
       const { data, error } = await supabase.auth.getSession();
 
-      if (error) {
+      if (error || !data.session) {
         setIsAuth(false);
         setLoading(false);
         return;
       }
 
-      setIsAuth(Boolean(data.session));
+      // Verificar si el correo está confirmado
+      if (data.session.user && !data.session.user.email_confirmed_at) {
+        await supabase.auth.signOut();
+        setIsAuth(false);
+      } else {
+        setIsAuth(true);
+      }
+      
       setLoading(false);
     };
 
