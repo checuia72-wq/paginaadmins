@@ -19,7 +19,6 @@ import {
   RefreshCw,
   MoreVertical,
   Upload,
-  Image as ImageIcon,
 } from "lucide-react";
 import "../../styles/planes.css";
 
