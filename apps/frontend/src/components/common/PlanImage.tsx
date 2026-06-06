@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { Package } from "lucide-react";
 
 interface PlanImageProps {
   src?: string | null;

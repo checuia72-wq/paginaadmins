@@ -34,7 +34,10 @@ export async function createPlan(payload: any) {
 
   // Insertar fechas si existen
   if (plan_fechas && plan_fechas.length > 0) {
-    const fechasPayload = plan_fechas.map((f: any) => ({ ...f, id_plan: plan.id_plan }));
+    const fechasPayload = plan_fechas.map((f: any) => ({ 
+      fecha: f.fecha, 
+      id_plan: plan.id_plan 
+    }));
     const { error: fechasError } = await getClient()
       .from("plan_fechas")
       .insert(fechasPayload);
@@ -43,7 +46,10 @@ export async function createPlan(payload: any) {
 
   // Insertar horas si existen
   if (plan_horas && plan_horas.length > 0) {
-    const horasPayload = plan_horas.map((h: any) => ({ ...h, id_plan: plan.id_plan }));
+    const horasPayload = plan_horas.map((h: any) => ({ 
+      hora: h.hora, 
+      id_plan: plan.id_plan 
+    }));
     const { error: horasError } = await getClient()
       .from("plan_horas")
       .insert(horasPayload);
@@ -73,7 +79,10 @@ export async function updatePlan(id: number, payload: any) {
   if (delFechasError) throw delFechasError;
 
   if (plan_fechas && plan_fechas.length > 0) {
-    const fechasPayload = plan_fechas.map((f: any) => ({ ...f, id_plan: id }));
+    const fechasPayload = plan_fechas.map((f: any) => ({ 
+      fecha: f.fecha, 
+      id_plan: id 
+    }));
     const { error: insFechasError } = await getClient()
       .from("plan_fechas")
       .insert(fechasPayload);
@@ -88,7 +97,10 @@ export async function updatePlan(id: number, payload: any) {
   if (delHorasError) throw delHorasError;
 
   if (plan_horas && plan_horas.length > 0) {
-    const horasPayload = plan_horas.map((h: any) => ({ ...h, id_plan: id }));
+    const horasPayload = plan_horas.map((h: any) => ({ 
+      hora: h.hora, 
+      id_plan: id 
+    }));
     const { error: insHorasError } = await getClient()
       .from("plan_horas")
       .insert(horasPayload);
