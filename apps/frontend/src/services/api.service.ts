@@ -10,7 +10,11 @@ function getClient() {
 export async function getPlanes() {
   const { data, error } = await getClient()
     .from("plan")
-    .select("*")                        // incluye precio_plan, nombre_plan, etc.
+    .select(`
+      *,
+      plan_fechas (*),
+      plan_horas (*)
+    `)
     .order("id_plan", { ascending: true });
 
   if (error) throw error;
@@ -18,26 +22,80 @@ export async function getPlanes() {
 }
 
 export async function createPlan(payload: any) {
-  const { data, error } = await getClient()
+  const { plan_fechas, plan_horas, ...planData } = payload;
+
+  const { data: plan, error: planError } = await getClient()
     .from("plan")
-    .insert(payload)
+    .insert(planData)
     .select()
     .single();
 
-  if (error) throw error;
-  return data;
+  if (planError) throw planError;
+
+  // Insertar fechas si existen
+  if (plan_fechas && plan_fechas.length > 0) {
+    const fechasPayload = plan_fechas.map((f: any) => ({ ...f, id_plan: plan.id_plan }));
+    const { error: fechasError } = await getClient()
+      .from("plan_fechas")
+      .insert(fechasPayload);
+    if (fechasError) throw fechasError;
+  }
+
+  // Insertar horas si existen
+  if (plan_horas && plan_horas.length > 0) {
+    const horasPayload = plan_horas.map((h: any) => ({ ...h, id_plan: plan.id_plan }));
+    const { error: horasError } = await getClient()
+      .from("plan_horas")
+      .insert(horasPayload);
+    if (horasError) throw horasError;
+  }
+
+  return plan;
 }
 
 export async function updatePlan(id: number, payload: any) {
-  const { data, error } = await getClient()
+  const { plan_fechas, plan_horas, ...planData } = payload;
+
+  const { data: plan, error: planError } = await getClient()
     .from("plan")
-    .update(payload)
+    .update(planData)
     .eq("id_plan", id)
     .select()
     .single();
 
-  if (error) throw error;
-  return data;
+  if (planError) throw planError;
+
+  // Actualizar fechas: Eliminar anteriores e insertar nuevas
+  const { error: delFechasError } = await getClient()
+    .from("plan_fechas")
+    .delete()
+    .eq("id_plan", id);
+  if (delFechasError) throw delFechasError;
+
+  if (plan_fechas && plan_fechas.length > 0) {
+    const fechasPayload = plan_fechas.map((f: any) => ({ ...f, id_plan: id }));
+    const { error: insFechasError } = await getClient()
+      .from("plan_fechas")
+      .insert(fechasPayload);
+    if (insFechasError) throw insFechasError;
+  }
+
+  // Actualizar horas: Eliminar anteriores e insertar nuevas
+  const { error: delHorasError } = await getClient()
+    .from("plan_horas")
+    .delete()
+    .eq("id_plan", id);
+  if (delHorasError) throw delHorasError;
+
+  if (plan_horas && plan_horas.length > 0) {
+    const horasPayload = plan_horas.map((h: any) => ({ ...h, id_plan: id }));
+    const { error: insHorasError } = await getClient()
+      .from("plan_horas")
+      .insert(horasPayload);
+    if (insHorasError) throw insHorasError;
+  }
+
+  return plan;
 }
 
 export async function deletePlan(id: number) {

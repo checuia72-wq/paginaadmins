@@ -19,8 +19,22 @@ import {
   RefreshCw,
   MoreVertical,
   Upload,
+  Calendar,
+  Clock,
+  Trash,
 } from "lucide-react";
-import "../../styles/planes.css";
+
+interface PlanFecha {
+  id_fecha?: number;
+  id_plan?: number;
+  fecha: string;
+}
+
+interface PlanHora {
+  id_hora?: number;
+  id_plan?: number;
+  hora: string;
+}
 
 interface Plan {
   id_plan: number;
@@ -28,10 +42,12 @@ interface Plan {
   precio_plan?: number | null;
   descripcion_basica?: string | null;
   descripcion_detallada?: string | null;
-  fecha_plan?: string | null;
-  hora_plan?: string | null;
   imagen_url?: string | null;
   numero_plan?: number | null;
+  tipo_fecha: "cualquier_dia" | "fechas_especificas";
+  tipo_hora: "sin_hora" | "hora_fija" | "varias_horas";
+  plan_fechas?: PlanFecha[];
+  plan_horas?: PlanHora[];
 }
 
 const emptyPlan: Omit<Plan, "id_plan"> = {
@@ -39,10 +55,12 @@ const emptyPlan: Omit<Plan, "id_plan"> = {
   precio_plan: null,
   descripcion_basica: null,
   descripcion_detallada: null,
-  fecha_plan: null,
-  hora_plan: null,
   imagen_url: null,
   numero_plan: null,
+  tipo_fecha: "cualquier_dia",
+  tipo_hora: "sin_hora",
+  plan_fechas: [],
+  plan_horas: [],
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -160,10 +178,12 @@ export default function PlanesAdmin() {
       precio_plan: plan.precio_plan ?? null,
       descripcion_basica: plan.descripcion_basica ?? null,
       descripcion_detallada: plan.descripcion_detallada ?? null,
-      fecha_plan: plan.fecha_plan ?? null,
-      hora_plan: plan.hora_plan ?? null,
       imagen_url: plan.imagen_url ?? null,
       numero_plan: plan.numero_plan ?? null,
+      tipo_fecha: plan.tipo_fecha || "cualquier_dia",
+      tipo_hora: plan.tipo_hora || "sin_hora",
+      plan_fechas: plan.plan_fechas || [],
+      plan_horas: plan.plan_horas || [],
     });
     setShowForm(true);
   };
@@ -175,17 +195,43 @@ export default function PlanesAdmin() {
 
   const handleSave = async () => {
     if (!formData.nombre_plan.trim()) return;
+
+    // Validaciones de disponibilidad
+    if (formData.tipo_fecha === "fechas_especificas" && (!formData.plan_fechas || formData.plan_fechas.length === 0)) {
+      alert("Debe agregar al menos una fecha para el tipo de fecha específica.");
+      return;
+    }
+
+    if (formData.tipo_hora === "hora_fija" && (!formData.plan_horas || formData.plan_horas.length !== 1)) {
+      alert("Debe agregar exactamente una hora para el tipo de hora fija.");
+      return;
+    }
+
+    if (formData.tipo_hora === "varias_horas" && (!formData.plan_horas || formData.plan_horas.length === 0)) {
+      alert("Debe agregar al menos una hora para el tipo de varias horas.");
+      return;
+    }
+
     setSaving(true);
+
+    // Limpiar datos según tipos seleccionados antes de enviar
+    const finalPayload = {
+      ...formData,
+      plan_fechas: formData.tipo_fecha === "fechas_especificas" ? formData.plan_fechas : [],
+      plan_horas: formData.tipo_hora !== "sin_hora" ? formData.plan_horas : [],
+    };
+
     try {
       if (editing) {
-        await updatePlan(editing.id_plan, formData);
+        await updatePlan(editing.id_plan, finalPayload);
       } else {
-        await createPlan(formData);
+        await createPlan(finalPayload);
       }
       setShowForm(false);
       await fetchPlanes();
     } catch (e) {
       console.error(e);
+      alert("Ocurrió un error al guardar el plan.");
     } finally {
       setSaving(false);
     }
@@ -330,7 +376,6 @@ export default function PlanesAdmin() {
               <th>N° PLAN</th>
               <th>PLAN</th>
               <th>PRECIO</th>
-              <th>DESCRIPCIÓN</th>
               <th>FECHA</th>
               <th>HORA</th>
               <th>ACCIONES</th>
@@ -338,9 +383,9 @@ export default function PlanesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
             ) : paginated.map((plan) => (
               <tr key={plan.id_plan}>
                 <td><strong>#{plan.id_plan}</strong></td>
@@ -366,9 +411,26 @@ export default function PlanesAdmin() {
                 <td className="precio-cell">
                   {fmtPrecio(plan.precio_plan) ?? <span className="rv-null">—</span>}
                 </td>
-                <td className="descripcion-cell">{plan.descripcion_basica || <span className="rv-null">—</span>}</td>
-                <td>{plan.fecha_plan ?? <span className="rv-null">—</span>}</td>
-                <td>{plan.hora_plan ?? <span className="rv-null">—</span>}</td>
+                <td>
+                  <div className="disp-badge-cell">
+                    {plan.tipo_fecha === "cualquier_dia" ? (
+                      <span className="badge badge-gray">Cualquier día</span>
+                    ) : (
+                      <span className="badge badge-yellow">Fechas esp. ({plan.plan_fechas?.length || 0})</span>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  <div className="disp-badge-cell">
+                    {plan.tipo_hora === "sin_hora" ? (
+                      <span className="badge badge-gray">Sin hora</span>
+                    ) : plan.tipo_hora === "hora_fija" ? (
+                      <span className="badge badge-blue">Hora fija</span>
+                    ) : (
+                      <span className="badge badge-teal">Varias ({plan.plan_horas?.length || 0})</span>
+                    )}
+                  </div>
+                </td>
                 <td>
                   <ActionButtons plan={plan} />
                 </td>
@@ -480,8 +542,29 @@ export default function PlanesAdmin() {
               <div className="modal-field"><label>Precio</label><span>{fmtPrecio(viewing.precio_plan) ?? "—"}</span></div>
               <div className="modal-field"><label>Descripción básica</label><span>{viewing.descripcion_basica || "—"}</span></div>
               <div className="modal-field"><label>Descripción detallada</label><span>{viewing.descripcion_detallada || "—"}</span></div>
-              <div className="modal-field"><label>Fecha</label><span>{viewing.fecha_plan || "—"}</span></div>
-              <div className="modal-field"><label>Hora</label><span>{viewing.hora_plan || "—"}</span></div>
+              
+              <div className="modal-field">
+                <label>Disponibilidad de fecha</label>
+                <span>{viewing.tipo_fecha === "cualquier_dia" ? "Cualquier día" : "Fechas específicas"}</span>
+                {viewing.tipo_fecha === "fechas_especificas" && viewing.plan_fechas && (
+                  <div className="modal-sublist">
+                    {viewing.plan_fechas.map((f, i) => <div key={i} className="modal-subitem"><Calendar size={12} /> {f.fecha}</div>)}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-field">
+                <label>Disponibilidad de hora</label>
+                <span>
+                  {viewing.tipo_hora === "sin_hora" ? "Sin hora" : 
+                   viewing.tipo_hora === "hora_fija" ? "Hora fija" : "Varias horas"}
+                </span>
+                {viewing.tipo_hora !== "sin_hora" && viewing.plan_horas && (
+                  <div className="modal-sublist">
+                    {viewing.plan_horas.map((h, i) => <div key={i} className="modal-subitem"><Clock size={12} /> {h.hora}</div>)}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -496,6 +579,24 @@ export default function PlanesAdmin() {
               <button className="modal-close" onClick={() => setShowForm(false)}><X size={20} /></button>
             </div>
             <div className="modal-body">
+              <div className="form-group">
+                <label>Descripción básica</label>
+                <textarea
+                  value={formData.descripcion_basica ?? ""}
+                  onChange={(e) => setFormData({ ...formData, descripcion_basica: e.target.value || null })}
+                  rows={3}
+                  placeholder="Descripción corta..."
+                />
+              </div>
+              <div className="form-group">
+                <label>Descripción detallada</label>
+                <textarea
+                  value={formData.descripcion_detallada ?? ""}
+                  onChange={(e) => setFormData({ ...formData, descripcion_detallada: e.target.value || null })}
+                  rows={4}
+                  placeholder="Descripción larga..."
+                />
+              </div>
               <div className="form-group">
                 <label>Nombre *</label>
                 <input
@@ -524,41 +625,136 @@ export default function PlanesAdmin() {
                   />
                 </div>
               </div>
-              <div className="form-group">
-                <label>Descripción básica</label>
-                <textarea
-                  value={formData.descripcion_basica ?? ""}
-                  onChange={(e) => setFormData({ ...formData, descripcion_basica: e.target.value || null })}
-                  rows={3}
-                  placeholder="Descripción corta..."
-                />
-              </div>
-              <div className="form-group">
-                <label>Descripción detallada</label>
-                <textarea
-                  value={formData.descripcion_detallada ?? ""}
-                  onChange={(e) => setFormData({ ...formData, descripcion_detallada: e.target.value || null })}
-                  rows={4}
-                  placeholder="Descripción larga..."
-                />
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Fecha</label>
-                  <input
-                    type="date"
-                    value={formData.fecha_plan ?? ""}
-                    onChange={(e) => setFormData({ ...formData, fecha_plan: e.target.value || null })}
-                  />
+
+              {/* DISPONIBILIDAD DE FECHA */}
+              <div className="form-section">
+                <h3 className="section-title">Disponibilidad de fecha</h3>
+                <div className="radio-group">
+                  <label className="radio-label">
+                    <input 
+                      type="radio" 
+                      name="tipo_fecha" 
+                      value="cualquier_dia" 
+                      checked={formData.tipo_fecha === "cualquier_dia"}
+                      onChange={() => setFormData({ ...formData, tipo_fecha: "cualquier_dia", plan_fechas: [] })}
+                    />
+                    <span>Cualquier día</span>
+                  </label>
+                  <label className="radio-label">
+                    <input 
+                      type="radio" 
+                      name="tipo_fecha" 
+                      value="fechas_especificas" 
+                      checked={formData.tipo_fecha === "fechas_especificas"}
+                      onChange={() => setFormData({ ...formData, tipo_fecha: "fechas_especificas" })}
+                    />
+                    <span>Fechas específicas</span>
+                  </label>
                 </div>
-                <div className="form-group">
-                  <label>Hora</label>
-                  <input
-                    type="time"
-                    value={formData.hora_plan ?? ""}
-                    onChange={(e) => setFormData({ ...formData, hora_plan: e.target.value || null })}
-                  />
+
+                {formData.tipo_fecha === "fechas_especificas" && (
+                  <div className="dynamic-list">
+                    {formData.plan_fechas?.map((f, idx) => (
+                      <div key={idx} className="dynamic-item">
+                        <Calendar size={16} className="item-icon" />
+                        <input 
+                          type="date" 
+                          value={f.fecha} 
+                          onChange={(e) => {
+                            const newFechas = [...(formData.plan_fechas || [])];
+                            newFechas[idx].fecha = e.target.value;
+                            setFormData({ ...formData, plan_fechas: newFechas });
+                          }}
+                        />
+                        <button type="button" className="btn-remove-item" onClick={() => {
+                          const newFechas = formData.plan_fechas?.filter((_, i) => i !== idx);
+                          setFormData({ ...formData, plan_fechas: newFechas });
+                        }}>
+                          <Trash size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn-add-item" onClick={() => {
+                      setFormData({ ...formData, plan_fechas: [...(formData.plan_fechas || []), { fecha: "" }] });
+                    }}>
+                      <Plus size={14} /> Agregar fecha
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* DISPONIBILIDAD DE HORA */}
+              <div className="form-section">
+                <h3 className="section-title">Disponibilidad de hora</h3>
+                <div className="radio-group">
+                  <label className="radio-label">
+                    <input 
+                      type="radio" 
+                      name="tipo_hora" 
+                      value="sin_hora" 
+                      checked={formData.tipo_hora === "sin_hora"}
+                      onChange={() => setFormData({ ...formData, tipo_hora: "sin_hora", plan_horas: [] })}
+                    />
+                    <span>Sin hora</span>
+                  </label>
+                  <label className="radio-label">
+                    <input 
+                      type="radio" 
+                      name="tipo_hora" 
+                      value="hora_fija" 
+                      checked={formData.tipo_hora === "hora_fija"}
+                      onChange={() => {
+                        const newHoras = formData.plan_horas?.length ? [formData.plan_horas[0]] : [{ hora: "" }];
+                        setFormData({ ...formData, tipo_hora: "hora_fija", plan_horas: newHoras });
+                      }}
+                    />
+                    <span>Hora fija</span>
+                  </label>
+                  <label className="radio-label">
+                    <input 
+                      type="radio" 
+                      name="tipo_hora" 
+                      value="varias_horas" 
+                      checked={formData.tipo_hora === "varias_horas"}
+                      onChange={() => setFormData({ ...formData, tipo_hora: "varias_horas" })}
+                    />
+                    <span>Varias horas</span>
+                  </label>
                 </div>
+
+                {formData.tipo_hora !== "sin_hora" && (
+                  <div className="dynamic-list">
+                    {formData.plan_horas?.map((h, idx) => (
+                      <div key={idx} className="dynamic-item">
+                        <Clock size={16} className="item-icon" />
+                        <input 
+                          type="time" 
+                          value={h.hora} 
+                          onChange={(e) => {
+                            const newHoras = [...(formData.plan_horas || [])];
+                            newHoras[idx].hora = e.target.value;
+                            setFormData({ ...formData, plan_horas: newHoras });
+                          }}
+                        />
+                        {formData.tipo_hora === "varias_horas" && (
+                          <button type="button" className="btn-remove-item" onClick={() => {
+                            const newHoras = formData.plan_horas?.filter((_, i) => i !== idx);
+                            setFormData({ ...formData, plan_horas: newHoras });
+                          }}>
+                            <Trash size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {formData.tipo_hora === "varias_horas" && (
+                      <button type="button" className="btn-add-item" onClick={() => {
+                        setFormData({ ...formData, plan_horas: [...(formData.plan_horas || []), { hora: "" }] });
+                      }}>
+                        <Plus size={14} /> Agregar hora
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Imagen del plan</label>
