@@ -120,7 +120,10 @@ function Dashboard() {
         <div className="dash-header-inner">
           {/* Brand */}
           <div className="dash-brand">
-            <span className="dash-brand-name">Panel administrativo</span>
+            <div className="dash-brand-icon">
+              <img src="/icono.png" alt="Icono Checua" />
+            </div>
+            <span className="dash-brand-name">Desierto de Checua</span>
           </div>
 
           {/* Nav desktop */}

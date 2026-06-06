@@ -1,31 +1,40 @@
 /* global.css - Estilos compartidos para todo el proyecto Forigua Admin */
 
 :root {
-  --bg: #f1f5f9;
+  /* Paleta Desierto de Checua */
+  --checua-gold: #c5a368;
+  --checua-gold-light: #e0d1b3;
+  --checua-orange: #b35a33;
+  --checua-orange-dark: #8e4427;
+  --checua-bg-dark: #140f0a;
+  --checua-surface-dark: #1e1812;
+  --checua-border: rgba(197, 163, 104, 0.2);
+  
+  --bg: #faf9f6; /* Papel arena suave */
   --surface: #ffffff;
-  --border: #e2e8f0;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  --border: #e8e4db;
+  --text-primary: #2d241e;
+  --text-secondary: #6b5c51;
+  --text-muted: #a39489;
 
-  --blue: #3b82f6;
-  --blue-bg: #eff6ff;
-  --amber: #f59e0b;
-  --amber-bg: #fffbeb;
-  --violet: #8b5cf6;
-  --violet-bg: #f5f3ff;
-  --teal: #14b8a6;
-  --teal-bg: #f0fdfa;
-  --green: #22c55e;
-  --red: #ef4444;
-  --yellow: #f59e0b;
+  --blue: #4a7c9d; /* Azul mineral */
+  --blue-bg: #f0f4f7;
+  --amber: #c5a368; /* Oro Checua */
+  --amber-bg: #faf7f0;
+  --violet: #8e5a4a; /* Arcilla */
+  --violet-bg: #f7f1f0;
+  --teal: #8fb15d; /* Verde oliva */
+  --teal-bg: #f4f7f0;
+  --green: #8fb15d;
+  --red: #b35a33;
+  --yellow: #c5a368;
 
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 1px 3px 0 rgb(0 0 0 / .07), 0 1px 2px -1px rgb(0 0 0 / .05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / .08), 0 2px 4px -2px rgb(0 0 0 / .05);
+  --shadow: 0 1px 3px 0 rgba(45, 36, 30, 0.05), 0 1px 2px -1px rgba(45, 36, 30, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(45, 36, 30, 0.08), 0 2px 4px -2px rgba(45, 36, 30, 0.05);
 
-  --font: 'DM Sans', 'Inter', system-ui, sans-serif;
+  --font: 'Inter', system-ui, sans-serif;
 }
 
 /* Reset básico */
@@ -40,7 +49,7 @@ body {
 
 /* ── Botones comunes ── */
 .btn-primary {
-  background: var(--blue);
+  background: var(--checua-orange);
   color: white;
   border: none;
   padding: 9px 16px;
@@ -50,7 +59,7 @@ body {
   transition: all 0.2s;
   font-family: var(--font);
 }
-.btn-primary:hover { background: #2563eb; transform: translateY(-1px); }
+.btn-primary:hover { background: var(--checua-orange-dark); transform: translateY(-1px); }
 
 .btn-ghost {
   background: transparent;
@@ -61,6 +70,7 @@ body {
   cursor: pointer;
   font-family: var(--font);
 }
+.btn-ghost:hover { background: #fdfcfb; border-color: var(--checua-gold); color: var(--text-primary); }
 
 .btn-danger {
   background: var(--red);
@@ -71,6 +81,7 @@ body {
   font-family: var(--font);
   cursor: pointer;
 }
+.btn-danger:hover { opacity: 0.9; }
 
 /* ── Formularios ── */
 .form-grid-2 {
@@ -87,26 +98,29 @@ body {
 
 .form-field label {
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 
 .form-field input,
 .form-field select,
 .form-field textarea {
-  padding: 9px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-size: 13.5px;
   font-family: var(--font);
+  background: #ffffff;
+  color: var(--text-primary);
+  transition: all 0.2s;
 }
 
 .form-field input:focus,
 .form-field select:focus,
 .form-field textarea:focus {
   outline: none;
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: var(--checua-gold);
+  box-shadow: 0 0 0 3px rgba(197, 163, 104, 0.1);
 }
 
 /* ── Tablas ── */
@@ -117,32 +131,36 @@ body {
 }
 
 .data-table th {
-  background: transparent;
-  padding: 10px 12px;
+  background: #fbfaf8;
+  padding: 12px;
   text-align: left;
   font-size: 11px;
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: .06em;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
 }
 
 .data-table td {
   padding: 12px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
   color: var(--text-primary);
   font-size: 13px;
 }
+
+.data-table tr:hover td { background: #fdfcfb; }
 
 /* ── Badges ── */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 9999px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 /* ── Barra de filtros global ── */
