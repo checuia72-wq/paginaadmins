@@ -497,12 +497,23 @@ export default function PlanesAdmin() {
                 </span>
               </div>
               <div className="plan-card-meta-item">
-                <span className="plan-card-meta-label">Fecha</span>
-                <span className="plan-card-meta-value">{plan.fecha_plan ?? "—"}</span>
-              </div>
-              <div className="plan-card-meta-item">
-                <span className="plan-card-meta-label">Hora</span>
-                <span className="plan-card-meta-value">{plan.hora_plan ?? "—"}</span>
+                <span className="plan-card-meta-label">Disponibilidad</span>
+                <div className="plan-card-meta-value">
+                  <div className="disp-badge-cell">
+                    {plan.tipo_fecha === "cualquier_dia" ? (
+                      <span className="badge badge-gray">Cualquier día</span>
+                    ) : (
+                      <span className="badge badge-yellow">Fechas esp. ({plan.plan_fechas?.length || 0})</span>
+                    )}
+                    {plan.tipo_hora === "sin_hora" ? (
+                      <span className="badge badge-gray">Sin hora</span>
+                    ) : plan.tipo_hora === "hora_fija" ? (
+                      <span className="badge badge-blue">Hora fija</span>
+                    ) : (
+                      <span className="badge badge-teal">Varias ({plan.plan_horas?.length || 0})</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
