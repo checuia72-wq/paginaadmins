@@ -97,7 +97,11 @@ function Login() {
       });
 
       if (resetError) {
-        setError(resetError.message);
+        if (resetError.message.includes("rate limit")) {
+          setError("Has intentado restablecer tu contraseña demasiadas veces. Por favor, espera una hora antes de intentarlo de nuevo.");
+        } else {
+          setError(resetError.message);
+        }
       } else {
         setMessage("Se ha enviado un correo para restablecer tu contraseña.");
       }
