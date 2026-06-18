@@ -480,15 +480,21 @@ export default function ClientesAdmin() {
               </div>
               <div className="cl-form-group">
                 <label>Etapa de conversación</label>
-                <input
+                <select
+                  className="cl-select"
                   value={formData.etapaconversacion}
                   onChange={(e) => setFormData({ ...formData, etapaconversacion: e.target.value })}
-                  placeholder="Ej. saludo, confirmada..."
-                />
+                >
+                  <option value="">— Selecciona una etapa —</option>
+                  {ETAPAS.map((et) => (
+                    <option key={et.key} value={et.key}>{et.label}</option>
+                  ))}
+                </select>
               </div>
               <div className="cl-form-group">
                 <label>Plan asociado</label>
                 <select
+                  className="cl-select"
                   value={formData.id_plan}
                   onChange={(e) => setFormData({ ...formData, id_plan: e.target.value === "" ? "" : Number(e.target.value) })}
                 >

@@ -374,7 +374,6 @@ export default function PlanesAdmin() {
         <table className="planes-table">
           <thead>
             <tr>
-              <th>ID</th>
               <th>N° PLAN</th>
               <th>PLAN</th>
               <th>PRECIO</th>
@@ -385,12 +384,11 @@ export default function PlanesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
             ) : paginated.map((plan) => (
               <tr key={plan.id_plan}>
-                <td><strong>#{plan.id_plan}</strong></td>
                 <td>{plan.numero_plan ?? <span className="rv-null">—</span>}</td>
                 <td>
                   <div className="plan-name-cell">

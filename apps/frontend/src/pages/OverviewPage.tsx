@@ -120,8 +120,23 @@ export default function OverviewPage() {
   const etapaCounts = contarPorEtapa(clientes);
   const sinEtapa = clientes.filter((c) => !c.etapaconversacion).length;
 
-  const ultimasReservas      = reservas.slice(0, 4);
-  const ultimosParticipantes = participantes.slice(0, 5);
+  // Reservas: primero las pendientes, luego las aprobadas; dentro de cada grupo, las más nuevas primero
+  const ultimasReservas = [...reservas]
+    .sort((a, b) => {
+      const pa = a.aprobado ? 1 : 0;
+      const pb = b.aprobado ? 1 : 0;
+      if (pa !== pb) return pa - pb;           // pendientes (0) antes que aprobadas (1)
+      return b.id_reserva - a.id_reserva;       // más nuevas primero
+    })
+    .slice(0, 4);
+
+  // Participantes: los más nuevos primero
+  const ultimosParticipantes = [...participantes]
+    .sort((a, b) => b.id_participante - a.id_participante)
+    .slice(0, 5);
+
+  // Planes: el más nuevo primero
+  const planesOrdenados = [...planes].sort((a, b) => b.id_plan - a.id_plan);
 
   if (loading) {
     return (
@@ -254,7 +269,7 @@ export default function OverviewPage() {
             {planes.length === 0 ? (
               <p className="empty-text">Sin planes registrados</p>
             ) : (
-              planes.slice(0, 6).map((pl, i) => {
+              planesOrdenados.map((pl, i) => {
                 const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
                 return (
                   <div key={pl.id_plan} className="plan-row">

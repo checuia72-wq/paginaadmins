@@ -325,7 +325,6 @@ export default function ParticipantesAdmin() {
         <table className="pt-table">
           <thead>
             <tr>
-              <th>ID</th>
               <th>N° RESERVA</th>
               <th>NOMBRE</th>
               <th>EDAD</th>
@@ -338,12 +337,11 @@ export default function ParticipantesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="pt-empty">Cargando...</td></tr>
+              <tr><td colSpan={8} className="pt-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={9} className="pt-empty">Sin resultados</td></tr>
+              <tr><td colSpan={8} className="pt-empty">Sin resultados</td></tr>
             ) : paginated.map((p) => (
               <tr key={p.id_participante}>
-                <td className="pt-id">#{p.id_participante}</td>
                 <td>
                   <div className="pt-reserva-cell">
                     <span className="pt-reserva"><Calendar size={13} /> #{p.id_reserva}</span>
@@ -547,7 +545,7 @@ export default function ParticipantesAdmin() {
                   />
                 </div>
               </div>
-              <div className="pt-form-row">
+              <div className="pt-form-row pt-form-row-2">
                 <div className="pt-form-group">
                   <label>Tel. cliente</label>
                   <input
