@@ -3,7 +3,8 @@ import { getPlanes, getClientes, createCliente, updateCliente, createReserva } f
 
 const ReservaRapidaPage = () => {
   const [telefono, setTelefono] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState<string>('');
+  const [cantidadPersonas, setCantidadPersonas] = useState<string>('1');
   const [planes, setPlanes] = useState<any[]>([]);
   const [clientes, setClientes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ const ReservaRapidaPage = () => {
     setError('');
     setSuccess(false);
 
-    if (!telefono || !selectedPlan) {
+    if (!telefono || !selectedPlan || !cantidadPersonas) {
       setError('Por favor completa todos los campos');
       return;
     }
@@ -60,6 +61,7 @@ const ReservaRapidaPage = () => {
       await createReserva({
         telefono_cliente: telefono,
         id_plan: parseInt(selectedPlan),
+        cantidad_personas: parseInt(cantidadPersonas),
         aprobado: false
       });
 
@@ -69,6 +71,7 @@ const ReservaRapidaPage = () => {
       // Resetear formulario
       setTelefono('');
       setSelectedPlan('');
+      setCantidadPersonas('1');
 
       // Ocultar mensaje de éxito después de 3 segundos
       setTimeout(() => setSuccess(false), 3000);
@@ -87,93 +90,192 @@ const ReservaRapidaPage = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#0f172a]">
-      <div className="w-full max-w-md bg-[#1e293b] rounded-3xl shadow-2xl overflow-hidden border border-gray-700">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0f172a] via-[#1e293b] to-[#0f172a]">
+      <div className="w-full max-w-lg bg-[#1e293b] rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-700 relative">
         {/* Barra superior verde */}
-        <div className="h-2 bg-[#8fb15d]"></div>
+        <div className="h-2 bg-gradient-to-r from-[#8fb15d] via-[#a8d06a] to-[#8fb15d]"></div>
 
-        <div className="p-8">
-          <h1 className="text-3xl font-bold text-white text-center mb-2">BIENVENIDO A CHECUA</h1>
-          <p className="text-gray-400 text-center mb-8 text-sm">Por favor completa estos datos para iniciar tu reserva.</p>
+        <div className="p-8 md:p-10">
+          <h1 className="text-3xl md:text-4xl font-black text-white text-center mb-3 tracking-tight">
+            BIENVENIDO A CHECUA
+          </h1>
+          <p className="text-gray-400 text-center mb-10 text-sm font-medium">
+            Por favor completa estos datos para iniciar tu reserva.
+          </p>
 
           {/* Mensajes de éxito/error */}
           {success && (
-            <div className="mb-6 p-4 bg-green-900/30 border border-green-500 rounded-xl text-green-200 text-center">
-              ✅ Cliente registrado exitosamente!
+            <div className="mb-8 p-5 bg-green-900/20 border-2 border-green-500/30 rounded-2xl text-green-200 text-center backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <span className="text-2xl">✅</span>
+                <span className="font-bold text-lg">¡Perfecto!</span>
+              </div>
+              <p className="text-sm">Reserva creada exitosamente</p>
             </div>
           )}
           {error && (
-            <div className="mb-6 p-4 bg-red-900/30 border border-red-500 rounded-xl text-red-200 text-center">
-              ❌ {error}
+            <div className="mb-8 p-5 bg-red-900/20 border-2 border-red-500/30 rounded-2xl text-red-200 text-center backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <span className="text-2xl">❌</span>
+                <span className="font-bold text-lg">¡Error!</span>
+              </div>
+              <p className="text-sm">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-7">
             {/* Teléfono */}
-            <div>
-              <label className="block text-[#8fb15d] font-bold uppercase text-xs tracking-wider mb-2">
+            <div className="space-y-3">
+              <label className="block text-[#8fb15d] font-black uppercase text-[11px] tracking-[0.3em]">
                 Teléfono de contacto *
               </label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold">🇨🇴 +57</span>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                  <span className="text-white font-black text-lg">🇨🇴</span>
+                  <span className="text-white font-bold ml-2">+57</span>
+                </div>
                 <input
                   type="tel"
                   value={telefono}
                   onChange={(e) => setTelefono(e.target.value)}
                   placeholder="300 000 0000"
-                  className="w-full pl-24 pr-4 py-4 bg-[#0f172a] border border-gray-600 rounded-full text-white placeholder-gray-400 focus:outline-none focus:border-[#8fb15d] transition-colors"
+                  className="w-full pl-28 pr-5 py-5 bg-[#0f172a]/80 border-2 border-gray-600/50 rounded-[2rem] text-white placeholder-gray-400/60 focus:outline-none focus:border-[#8fb15d] focus:bg-[#0f172a] focus:ring-4 focus:ring-[#8fb15d]/10 transition-all duration-300 font-medium text-lg"
                 />
               </div>
-              <p className="text-gray-400 text-xs mt-2">Usa tu número de WhatsApp.</p>
+              <p className="text-gray-400/80 text-xs mt-2 ml-2 font-medium">
+                Usa tu número de WhatsApp.
+              </p>
             </div>
 
-            {/* Plan */}
-            <div>
-              <label className="block text-[#8fb15d] font-bold uppercase text-xs tracking-wider mb-2">
+            {/* Cantidad de personas */}
+            <div className="space-y-3">
+              <label className="block text-[#8fb15d] font-black uppercase text-[11px] tracking-[0.3em]">
+                Cantidad de personas *
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  value={cantidadPersonas}
+                  onChange={(e) => setCantidadPersonas(e.target.value)}
+                  placeholder="1"
+                  className="w-full px-5 py-5 bg-[#0f172a]/80 border-2 border-gray-600/50 rounded-[2rem] text-white placeholder-gray-400/60 focus:outline-none focus:border-[#8fb15d] focus:bg-[#0f172a] focus:ring-4 focus:ring-[#8fb15d]/10 transition-all duration-300 font-medium text-lg"
+                />
+              </div>
+            </div>
+
+            {/* Plan - Mejorado */}
+            <div className="space-y-3">
+              <label className="block text-[#8fb15d] font-black uppercase text-[11px] tracking-[0.3em]">
                 ¿Qué experiencia buscas? *
               </label>
-              <select
-                value={selectedPlan}
-                onChange={(e) => setSelectedPlan(e.target.value)}
-                className="w-full px-4 py-4 bg-[#0f172a] border border-gray-600 rounded-full text-white placeholder-gray-400 focus:outline-none focus:border-[#8fb15d] transition-colors appearance-none"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238fb15d' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 1rem center',
-                  backgroundSize: '1.25rem'
-                }}
-              >
-                <option value="">Selecciona un plan turístico</option>
-                {planes.map(plan => (
-                  <option key={plan.id_plan} value={plan.id_plan}>
-                    {plan.nombre_plan}
-                  </option>
-                ))}
-              </select>
+              
+              {/* Plan seleccionado (si hay uno) */}
+              {selectedPlan && (
+                <div className="mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {(() => {
+                    const plan = planes.find(p => p.id_plan.toString() === selectedPlan);
+                    return plan ? (
+                      <div className="bg-[#8fb15d]/10 border-2 border-[#8fb15d]/30 rounded-[2rem] p-6 flex items-center justify-between gap-4 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#8fb15d]/10 rounded-full -mr-16 -mt-16"></div>
+                        <div className="relative z-10">
+                          <p className="text-[10px] uppercase tracking-[0.25em] font-black text-[#8fb15d] mb-1">Plan seleccionado</p>
+                          <p className="text-white font-black text-xl">{plan.nombre_plan}</p>
+                          {plan.precio_plan && (
+                            <p className="text-[#8fb15d] font-bold text-lg mt-1">
+                              ${Number(plan.precio_plan).toLocaleString('es-CO')} COP
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPlan('')}
+                          className="relative z-10 w-10 h-10 rounded-full bg-[#1e293b] border border-gray-600 flex items-center justify-center text-gray-400 hover:text-white hover:border-[#8fb15d] transition-all"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              {/* Selector de planes */}
+              {!selectedPlan && (
+                <div className="grid gap-3">
+                  {loading ? (
+                    <div className="bg-[#0f172a]/80 border-2 border-dashed border-gray-600/50 rounded-[2rem] p-10 text-center">
+                      <div className="w-10 h-10 border-4 border-[#8fb15d] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-sm text-gray-400/80 font-medium">Cargando planes...</p>
+                    </div>
+                  ) : planes.length === 0 ? (
+                    <div className="bg-[#0f172a]/80 border-2 border-dashed border-gray-600/50 rounded-[2rem] p-10 text-center">
+                      <p className="text-sm text-gray-400/80 font-medium italic">No hay planes disponibles</p>
+                    </div>
+                  ) : (
+                    planes.map(plan => (
+                      <button
+                        key={plan.id_plan}
+                        type="button"
+                        onClick={() => setSelectedPlan(plan.id_plan.toString())}
+                        className="group w-full text-left p-5 bg-[#0f172a]/60 border-2 border-gray-600/30 rounded-[2rem] hover:border-[#8fb15d] hover:bg-[#0f172a]/90 transition-all duration-300 relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 left-0 w-1 h-full bg-transparent group-hover:bg-[#8fb15d] transition-all duration-300"></div>
+                        <div className="relative z-10">
+                          <p className="text-white font-bold text-lg">{plan.nombre_plan}</p>
+                          {plan.precio_plan && (
+                            <p className="text-[#8fb15d] font-semibold text-sm mt-1">
+                              ${Number(plan.precio_plan).toLocaleString('es-CO')} COP
+                            </p>
+                          )}
+                          {plan.descripcion_basica && (
+                            <p className="text-gray-400/80 text-sm mt-2">{plan.descripcion_basica}</p>
+                          )}
+                        </div>
+                        <div className="absolute right-5 top-1/2 -translate-y-1/2 w-6 h-6 border-2 border-gray-600 rounded-full group-hover:border-[#8fb15d] flex items-center justify-center transition-all">
+                          <div className="w-3 h-3 rounded-full bg-transparent group-hover:bg-[#8fb15d] transition-all"></div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Política de datos */}
-            <div className="text-gray-400 text-xs leading-relaxed">
-              <p>Autorizo el tratamiento de mis datos personales de acuerdo con la política de datos de la empresa.</p>
-            </div>
+            <div className="pt-4">
+              <p className="text-gray-400/70 text-xs leading-relaxed mb-4">
+                Autorizo el tratamiento de mis datos personales de acuerdo con la política de datos de la empresa.
+              </p>
 
-            {/* Checkbox de aceptación */}
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                id="accept"
-                required
-                className="mt-1 w-4 h-4 text-[#8fb15d] rounded"
-              />
-              <label htmlFor="accept" className="text-white text-sm font-semibold">
-                He leído y acepto la política de tratamiento de datos.
+              {/* Checkbox de aceptación */}
+              <label className="flex items-start gap-4 cursor-pointer group">
+                <div className="relative flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    id="accept"
+                    required
+                    className="peer sr-only"
+                  />
+                  <div className="w-7 h-7 border-2 border-gray-600 rounded-lg bg-[#0f172a] peer-checked:bg-[#8fb15d] peer-checked:border-[#8fb15d] transition-all duration-300 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white opacity-0 peer-checked:opacity-100 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                </div>
+                <span className="text-white text-sm font-semibold pt-1 select-none group-hover:text-[#8fb15d] transition-colors">
+                  He leído y acepto la política de tratamiento de datos.
+                </span>
               </label>
             </div>
 
             {/* Botón continuar */}
             <button
               type="submit"
-              className="w-full py-4 bg-[#8fb15d] text-white font-bold text-lg rounded-full uppercase tracking-wider hover:bg-[#7aa04d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!telefono || !selectedPlan || !cantidadPersonas}
+              className="w-full py-5 bg-gradient-to-r from-[#8fb15d] via-[#a8d06a] to-[#8fb15d] text-white font-black text-xl rounded-[2rem] uppercase tracking-[0.2em] hover:shadow-[0_0_30px_rgba(143,177,93,0.4)] hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
             >
               ✦ CONTINUAR ✦
             </button>
