@@ -411,7 +411,6 @@ export default function ReservasAdmin() {
         <table className="rv-table">
           <thead>
             <tr>
-              <th>ID</th>
               <th>Fecha solicitud</th>
               <th>Fecha aprobación</th>
               <th>TELÉFONO</th>
@@ -424,12 +423,11 @@ export default function ReservasAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="rv-empty">Cargando...</td></tr>
+              <tr><td colSpan={8} className="rv-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={9} className="rv-empty">Sin resultados</td></tr>
+              <tr><td colSpan={8} className="rv-empty">Sin resultados</td></tr>
             ) : paginated.map((r) => (
               <tr key={r.id_reserva}>
-                <td className="rv-id">#{r.id_reserva}</td>
                 <td>{fmt(r.fecha_solicitud) ?? <span className="rv-null">NULL</span>}</td>
                 <td>{fmt(r.fecha_aprobacion) ?? <span className="rv-null">NULL</span>}</td>
                 <td>

@@ -159,15 +159,17 @@
 .pt-detail-field { display: flex; flex-direction: column; gap: 3px; }
 .pt-detail-field label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; }
 .pt-detail-field span { font-size: 13.5px; color: var(--pt-text); font-weight: 500; }
-.pt-form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.pt-form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
 .pt-form-group label { font-size: 12.5px; font-weight: 600; color: #374151; }
 .pt-form-group input, .pt-form-group select {
+  width: 100%; box-sizing: border-box; min-width: 0;
   border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 12px;
   font-size: 13.5px; font-family: var(--pt-font); outline: none;
   transition: border-color 0.15s; color: var(--pt-text); background: white;
 }
 .pt-form-group input:focus, .pt-form-group select:focus { border-color: var(--pt-blue); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 .pt-form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.pt-form-row-2 { grid-template-columns: 1fr 1fr; }
 .pt-btn-cancel {
   padding: 8px 18px; border: 1px solid #d1d5db; border-radius: 8px; background: white;
   font-size: 13.5px; font-weight: 500; cursor: pointer; color: #374151;
