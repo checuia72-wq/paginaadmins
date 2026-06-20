@@ -10,6 +10,7 @@ import ReservasPage from "./pages/ReservasPage";
 import PlanesPage from "./pages/PlanesPage";
 import ClientesPage from "./pages/ClientesPage";
 import ParticipantesPage from "./pages/ParticipantesPage";
+import ReservaRapidaPage from "./pages/ReservaRapidaPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Importa los estilos globales del dashboard
@@ -33,6 +34,7 @@ export default function App() {
           {/* index → resumen general */}
           <Route index element={<OverviewPage />} />   {/* ← NUEVO */}
 
+          <Route path="reserva-rapida" element={<ReservaRapidaPage />} />
           <Route path="reservas"     element={<ReservasPage />} />
           <Route path="planes"       element={<PlanesPage />} />
           <Route path="clientes"     element={<ClientesPage />} />
