@@ -56,6 +56,13 @@ const ReservaRapidaPage = () => {
         });
       }
 
+      // Crear la reserva
+      await createReserva({
+        telefono_cliente: telefono,
+        id_plan: parseInt(selectedPlan),
+        aprobado: false
+      });
+
       // Mostrar éxito
       setSuccess(true);
       
