@@ -6,7 +6,7 @@ import {
   createParticipante,
   updateParticipante,
   deleteParticipante,
-} from "../controllers/participante.controller";
+} from "../controllers/participante.controller.js";
 
 const router: Router = Router();
 

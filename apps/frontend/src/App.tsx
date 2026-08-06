@@ -5,16 +5,14 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
-import OverviewPage from "./pages/OverviewPage";      // ← NUEVO
+import OverviewPage from "./pages/OverviewPage";
 import ReservasPage from "./pages/ReservasPage";
 import PlanesPage from "./pages/PlanesPage";
 import ClientesPage from "./pages/ClientesPage";
 import ParticipantesPage from "./pages/ParticipantesPage";
-import ReservaRapidaPage from "./pages/ReservaRapidaPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Importa los estilos globales del dashboard
-import "./styles/dashboard.css";                       // ← NUEVO
+import "./styles/dashboard.css";
 
 export default function App() {
   return (
@@ -31,10 +29,7 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          {/* index → resumen general */}
-          <Route index element={<OverviewPage />} />   {/* ← NUEVO */}
-
-          <Route path="reserva-rapida" element={<ReservaRapidaPage />} />
+          <Route index element={<OverviewPage />} />
           <Route path="reservas"     element={<ReservasPage />} />
           <Route path="planes"       element={<PlanesPage />} />
           <Route path="clientes"     element={<ClientesPage />} />

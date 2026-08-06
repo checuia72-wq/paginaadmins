@@ -1,9 +1,9 @@
 import { Router } from "express";
-import planRoutes from "./plan.routes";
-import clienteRoutes from "./cliente.routes";
-import reservaRoutes from "./reserva.routes";
-import participanteRoutes from "./participante.routers"
-import { authMiddleware } from "../middlewares/auth.middleware";
+import planRoutes from "./plan.routes.js";
+import clienteRoutes from "./cliente.routes.js";
+import reservaRoutes from "./reserva.routes.js";
+import participanteRoutes from "./participante.routers.js";
+import { authMiddleware } from "../middlewares/auth.middleware.js";
 
 const router: Router = Router();
 

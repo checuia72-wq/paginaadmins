@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { pool } from "../config/database.js";
+import { esEtapaValida, ETAPAS_VALIDAS } from "../lib/etapas.js";
 
 export const getClientes = async (req: Request, res: Response) => {
   try {
@@ -73,6 +74,14 @@ export const createCliente = async (req: Request, res: Response) => {
       });
     }
 
+    if (etapaconversacion !== null && etapaconversacion !== undefined) {
+      if (!esEtapaValida(etapaconversacion)) {
+        return res.status(400).json({
+          message: `Etapa de conversación inválida. Valores permitidos: ${ETAPAS_VALIDAS.join(", ")}`,
+        });
+      }
+    }
+
     if (id_plan !== null && id_plan !== undefined) {
       const planExiste = await pool.query(
         "SELECT 1 FROM plan WHERE id_plan = $1",
@@ -124,6 +133,14 @@ export const updateCliente = async (req: Request, res: Response) => {
       return res.status(400).json({
         message: "El campo atencion_humana debe ser true o false",
       });
+    }
+
+    if (etapaconversacion !== null && etapaconversacion !== undefined) {
+      if (!esEtapaValida(etapaconversacion)) {
+        return res.status(400).json({
+          message: `Etapa de conversación inválida. Valores permitidos: ${ETAPAS_VALIDAS.join(", ")}`,
+        });
+      }
     }
 
     if (id_plan !== null && id_plan !== undefined) {

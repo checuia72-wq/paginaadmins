@@ -5,7 +5,7 @@ import {
   createPlan,
   updatePlan,
   deletePlan,
-} from "../controllers/plan.controller";
+} from "../controllers/plan.controller.js";
 
 const router: Router = Router();
 

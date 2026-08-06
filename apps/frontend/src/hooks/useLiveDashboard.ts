@@ -23,6 +23,9 @@ import {
   getParticipantes,
 } from "../services/api.service";
 import { supabase } from "../lib/supabase";
+import type { EtapaConversacionValue } from "../lib/etapas";
+
+export type { EtapaConversacionValue };
 
 /* ── tipos re-exportados para que OverviewPage los importe de aquí ── */
 export interface Reserva {
@@ -46,20 +49,12 @@ export interface Plan {
   hora_plan?: string;
 }
 
-export type EtapaConversacion =
-  | "saludo"
-  | "descripcionincluye"
-  | "como_reservar"
-  | "por_confirmar"
-  | "confirmada"
-  | null;
-
 export interface Cliente {
   telefono: string;
   nombre?: string;
   email?: string;
   atencion_humana?: boolean;
-  etapaconversacion?: EtapaConversacion;
+  etapaconversacion?: EtapaConversacionValue | null;
 }
 
 export interface Participante {

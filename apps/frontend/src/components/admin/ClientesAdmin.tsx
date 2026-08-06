@@ -13,12 +13,13 @@ import {
 } from "lucide-react";
 import "../../styles/clientes.css";
 import { ETAPAS, getEtapaInfo } from "../../lib/etapas";
+import type { EtapaConversacionValue } from "../../lib/etapas";
 
 /* ── Tipos ─────────────────────────────────── */
 interface Cliente {
   telefono: string;
   atencion_humana: boolean;
-  etapaconversacion?: string | null;
+  etapaconversacion?: EtapaConversacionValue | null;
   id_plan?: number | null;
 }
 
@@ -30,7 +31,7 @@ interface Plan {
 const emptyForm = {
   telefono: "",
   atencion_humana: false,
-  etapaconversacion: "",
+  etapaconversacion: "" as EtapaConversacionValue | "",
   id_plan: "" as number | "",
 };
 
@@ -103,7 +104,7 @@ export default function ClientesAdmin() {
     setFormData({
       telefono: c.telefono,
       atencion_humana: c.atencion_humana,
-      etapaconversacion: c.etapaconversacion ?? "",
+      etapaconversacion: (c.etapaconversacion ?? "") as EtapaConversacionValue | "",
       id_plan: c.id_plan ?? "",
     });
     setShowForm(true);
@@ -483,7 +484,7 @@ export default function ClientesAdmin() {
                 <select
                   className="cl-select"
                   value={formData.etapaconversacion}
-                  onChange={(e) => setFormData({ ...formData, etapaconversacion: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, etapaconversacion: e.target.value as EtapaConversacionValue | "" })}
                 >
                   <option value="">— Selecciona una etapa —</option>
                   {ETAPAS.map((et) => (

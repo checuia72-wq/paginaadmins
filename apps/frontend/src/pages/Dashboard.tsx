@@ -13,7 +13,6 @@ import {
   Menu,
   X,
   LayoutDashboard,
-  Clock,
 } from "lucide-react";
 
 const DEMO_SESSION_KEY = "forigua:demo_session";
@@ -23,7 +22,6 @@ const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
 
 const NAV_LINKS = [
   { to: "/app", label: "Resumen", icon: <LayoutDashboard size={16} />, end: true },
-  { to: "/app/reserva-rapida", label: "Reserva Rápida", icon: <Clock size={16} /> },
   { to: "/app/reservas", label: "Reservas", icon: <CalendarDays size={16} /> },
   { to: "/app/planes", label: "Planes", icon: <Package size={16} /> },
   { to: "/app/clientes", label: "Clientes", icon: <Users size={16} /> },
