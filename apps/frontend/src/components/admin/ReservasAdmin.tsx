@@ -51,7 +51,6 @@ interface Participante {
   id_participante: number;
   id_reserva: number;
   nombre: string;
-  fecha_nacimiento?: string | null;
   edad: number | null;
   estatura: number | null;
   peso: number | null;
@@ -300,7 +299,6 @@ export default function ReservasAdmin() {
         telefono_cliente: editing.telefono_cliente,
         telefono_participante: newPart.telefono_participante.trim(),
         nombre: newPart.nombre.trim(),
-        fecha_nacimiento: newPart.fecha_nacimiento || null,
         edad: edadCalculada,
         estatura: newPart.estatura ? Number(newPart.estatura) : null,
         peso: newPart.peso ? Number(newPart.peso) : null,
@@ -722,7 +720,6 @@ export default function ReservasAdmin() {
                         <tr>
                           <th>Nombre</th>
                           <th>Teléfono</th>
-                          <th className="rv-parts-num">F. Nac.</th>
                           <th className="rv-parts-num">Edad</th>
                           <th className="rv-parts-num">Estatura</th>
                           <th className="rv-parts-num">Peso</th>
@@ -740,11 +737,6 @@ export default function ReservasAdmin() {
                               ) : (
                                 <span className="rv-null">—</span>
                               )}
-                            </td>
-                            <td className="rv-parts-num">
-                              {p.fecha_nacimiento
-                                ? new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")
-                                : <span className="rv-null">—</span>}
                             </td>
                             <td className="rv-parts-num">{p.edad ?? <span className="rv-null">—</span>}</td>
                             <td className="rv-parts-num">{p.estatura != null ? `${p.estatura} m` : <span className="rv-null">—</span>}</td>
@@ -849,36 +841,30 @@ export default function ReservasAdmin() {
                     <div className="rv-parts-table-wrap" style={{ marginBottom: 16 }}>
                       <table className="rv-parts-table">
                         <thead>
-                          <tr>
-                            <th>Nombre</th>
-                            <th>Teléfono</th>
-                            <th className="rv-parts-num">F. Nac.</th>
-                            <th className="rv-parts-num">Edad</th>
-                            <th className="rv-parts-num">Estatura</th>
-                            <th className="rv-parts-num">Peso</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {editParticipantes.map((p) => (
-                            <tr key={p.id_participante}>
-                              <td className="rv-parts-name">{p.nombre}</td>
-                              <td>
-                                {p.telefono_participante ? (
-                                  <span className="rv-phone"><Phone size={12} /> {p.telefono_participante}</span>
-                                ) : (
-                                  <span className="rv-null">—</span>
-                                )}
-                              </td>
-                              <td className="rv-parts-num">
-                                {p.fecha_nacimiento
-                                  ? new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")
-                                  : <span className="rv-null">—</span>}
-                              </td>
-                              <td className="rv-parts-num">{p.edad ?? <span className="rv-null">—</span>}</td>
-                              <td className="rv-parts-num">{p.estatura != null ? `${p.estatura} m` : <span className="rv-null">—</span>}</td>
-                              <td className="rv-parts-num">{p.peso != null ? `${p.peso} kg` : <span className="rv-null">—</span>}</td>
-                              <td style={{ textAlign: "right" }}>
+                        <tr>
+                          <th>Nombre</th>
+                          <th>Teléfono</th>
+                          <th className="rv-parts-num">Edad</th>
+                          <th className="rv-parts-num">Estatura</th>
+                          <th className="rv-parts-num">Peso</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editParticipantes.map((p) => (
+                          <tr key={p.id_participante}>
+                            <td className="rv-parts-name">{p.nombre}</td>
+                            <td>
+                              {p.telefono_participante ? (
+                                <span className="rv-phone"><Phone size={12} /> {p.telefono_participante}</span>
+                              ) : (
+                                <span className="rv-null">—</span>
+                              )}
+                            </td>
+                            <td className="rv-parts-num">{p.edad ?? <span className="rv-null">—</span>}</td>
+                            <td className="rv-parts-num">{p.estatura != null ? `${p.estatura} m` : <span className="rv-null">—</span>}</td>
+                            <td className="rv-parts-num">{p.peso != null ? `${p.peso} kg` : <span className="rv-null">—</span>}</td>
+                            <td style={{ textAlign: "right" }}>
                                 <button
                                   type="button"
                                   className="action-btn action-eliminar"

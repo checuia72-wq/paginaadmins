@@ -249,7 +249,6 @@ export async function getParticipantes() {
     .select(`
       id_participante,
       nombre,
-      fecha_nacimiento,
       edad,
       estatura,
       peso,
@@ -283,7 +282,6 @@ export async function getParticipantesPorReserva(id_reserva: number) {
     .select(`
       id_participante,
       nombre,
-      fecha_nacimiento,
       edad,
       estatura,
       peso,

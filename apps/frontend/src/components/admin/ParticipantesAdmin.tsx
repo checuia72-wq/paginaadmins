@@ -30,7 +30,6 @@ interface Participante {
   id_participante: number;
   id_reserva: number;
   nombre: string;
-  fecha_nacimiento?: string | null;
   edad: number | null;
   estatura: number | null;
   peso: number | null;
@@ -123,9 +122,7 @@ export default function ParticipantesAdmin() {
     setFormData({
       id_reserva: p.id_reserva,
       nombre: p.nombre,
-      fecha_nacimiento: p.fecha_nacimiento
-        ? new Date(p.fecha_nacimiento).toISOString().split("T")[0]
-        : "",
+      fecha_nacimiento: "",
       edad: p.edad?.toString() ?? "",
       estatura: p.estatura?.toString() ?? "",
       peso: p.peso?.toString() ?? "",
@@ -158,7 +155,6 @@ export default function ParticipantesAdmin() {
       const payload = {
         id_reserva: Number(formData.id_reserva),
         nombre: formData.nombre,
-        fecha_nacimiento: formData.fecha_nacimiento || null,
         edad: edadCalculada,
         estatura: formData.estatura ? Number(formData.estatura) : null,
         peso: formData.peso ? Number(formData.peso) : null,
@@ -350,7 +346,6 @@ export default function ParticipantesAdmin() {
             <tr>
               <th>N° RESERVA</th>
               <th>NOMBRE</th>
-              <th>F. NACIMIENTO</th>
               <th>EDAD</th>
               <th>ESTATURA</th>
               <th>PESO</th>
@@ -361,9 +356,9 @@ export default function ParticipantesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="pt-empty">Cargando...</td></tr>
+              <tr><td colSpan={8} className="pt-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={9} className="pt-empty">Sin resultados</td></tr>
+              <tr><td colSpan={8} className="pt-empty">Sin resultados</td></tr>
             ) : paginated.map((p) => (
               <tr key={p.id_participante}>
                 <td>
@@ -373,13 +368,6 @@ export default function ParticipantesAdmin() {
                   </div>
                 </td>
                 <td className="pt-nombre">{p.nombre}</td>
-                <td>
-                  {p.fecha_nacimiento ? (
-                    <span><Cake size={12} /> {new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")}</span>
-                  ) : (
-                    <span className="rv-null">—</span>
-                  )}
-                </td>
                 <td>{p.edad ?? <span className="rv-null">—</span>}</td>
                 <td>{fmtEstatura(p.estatura)}</td>
                 <td>{fmtPeso(p.peso)}</td>
@@ -452,12 +440,6 @@ export default function ParticipantesAdmin() {
               </div>
             )}
 
-            {p.fecha_nacimiento && (
-              <div className="pt-card-row">
-                <Cake size={14} /> Nacimiento: {new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")}
-              </div>
-            )}
-
             <div className="pt-card-meta">
               <div className="pt-card-meta-item">
                 <span className="pt-card-meta-label">Edad</span>
@@ -505,7 +487,6 @@ export default function ParticipantesAdmin() {
                 <div className="pt-detail-field"><label>ID</label><span>#{viewing.id_participante}</span></div>
                 <div className="pt-detail-field"><label>N° Reserva</label><span>#{viewing.id_reserva} — {planDeReserva(viewing)}</span></div>
                 <div className="pt-detail-field"><label>Nombre</label><span>{viewing.nombre}</span></div>
-                <div className="pt-detail-field"><label>F. Nacimiento</label><span>{viewing.fecha_nacimiento ? new Date(viewing.fecha_nacimiento).toLocaleDateString("es-CO") : "—"}</span></div>
                 <div className="pt-detail-field"><label>Edad</label><span>{viewing.edad ?? "—"}</span></div>
                 <div className="pt-detail-field"><label>Estatura</label><span>{fmtEstatura(viewing.estatura)}</span></div>
                 <div className="pt-detail-field"><label>Peso</label><span>{fmtPeso(viewing.peso)}</span></div>

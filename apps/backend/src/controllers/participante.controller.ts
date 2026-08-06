@@ -21,7 +21,6 @@ export const getParticipantes = async (req: Request, res: Response) => {
         pa.telefono_cliente,
         pa.telefono_participante,
         pa.nombre,
-        pa.fecha_nacimiento,
         pa.edad,
         pa.estatura,
         pa.peso,
@@ -54,7 +53,6 @@ export const getParticipanteById = async (req: Request, res: Response) => {
         pa.telefono_cliente,
         pa.telefono_participante,
         pa.nombre,
-        pa.fecha_nacimiento,
         pa.edad,
         pa.estatura,
         pa.peso,
@@ -90,7 +88,6 @@ export const createParticipante = async (req: Request, res: Response) => {
       telefono_cliente,
       telefono_participante,
       nombre,
-      fecha_nacimiento,
       edad,
       estatura,
       peso,
@@ -110,12 +107,7 @@ export const createParticipante = async (req: Request, res: Response) => {
       });
     }
 
-    let edadCalculada: number | undefined | null = edad;
-    if (fecha_nacimiento) {
-      edadCalculada = calcularEdad(fecha_nacimiento);
-    }
-
-    if (edadCalculada !== undefined && edadCalculada !== null && edadCalculada <= 0) {
+    if (edad !== undefined && edad !== null && edad <= 0) {
       return res.status(400).json({
         message: "La edad debe ser mayor a 0",
       });
@@ -157,12 +149,11 @@ export const createParticipante = async (req: Request, res: Response) => {
         telefono_cliente,
         telefono_participante,
         nombre,
-        fecha_nacimiento,
         edad,
         estatura,
         peso
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
       `,
       [
@@ -170,8 +161,7 @@ export const createParticipante = async (req: Request, res: Response) => {
         telefono_cliente,
         telefono_participante,
         nombre,
-        fecha_nacimiento ?? null,
-        edadCalculada ?? null,
+        edad ?? null,
         estatura ?? null,
         peso ?? null,
       ]
@@ -195,7 +185,6 @@ export const updateParticipante = async (req: Request, res: Response) => {
       telefono_cliente,
       telefono_participante,
       nombre,
-      fecha_nacimiento,
       edad,
       estatura,
       peso,
@@ -215,12 +204,7 @@ export const updateParticipante = async (req: Request, res: Response) => {
       });
     }
 
-    let edadCalculada: number | undefined | null = edad;
-    if (fecha_nacimiento) {
-      edadCalculada = calcularEdad(fecha_nacimiento);
-    }
-
-    if (edadCalculada !== undefined && edadCalculada !== null && edadCalculada <= 0) {
+    if (edad !== undefined && edad !== null && edad <= 0) {
       return res.status(400).json({
         message: "La edad debe ser mayor a 0",
       });
@@ -263,11 +247,10 @@ export const updateParticipante = async (req: Request, res: Response) => {
         telefono_cliente = $2,
         telefono_participante = $3,
         nombre = $4,
-        fecha_nacimiento = COALESCE($5, fecha_nacimiento),
-        edad = COALESCE($6, edad),
-        estatura = COALESCE($7, estatura),
-        peso = COALESCE($8, peso)
-      WHERE id_participante = $9
+        edad = COALESCE($5, edad),
+        estatura = COALESCE($6, estatura),
+        peso = COALESCE($7, peso)
+      WHERE id_participante = $8
       RETURNING *
       `,
       [
@@ -275,8 +258,7 @@ export const updateParticipante = async (req: Request, res: Response) => {
         telefono_cliente,
         telefono_participante,
         nombre,
-        fecha_nacimiento ?? null,
-        edadCalculada ?? null,
+        edad ?? null,
         estatura ?? null,
         peso ?? null,
         id,
@@ -341,7 +323,6 @@ export const getParticipantesByReserva = async (req: Request, res: Response) => 
         telefono_cliente,
         telefono_participante,
         nombre,
-        fecha_nacimiento,
         edad,
         estatura,
         peso
