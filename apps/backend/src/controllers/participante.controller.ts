@@ -1,6 +1,17 @@
 import { Request, Response } from "express";
 import { pool } from "../config/database.js";
 
+export function calcularEdad(fechaNacimiento: string | Date): number {
+  const nacimiento = new Date(fechaNacimiento);
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nacimiento.getFullYear();
+  const mes = hoy.getMonth() - nacimiento.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+    edad--;
+  }
+  return edad >= 0 ? edad : 0;
+}
+
 export const getParticipantes = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(`
@@ -10,6 +21,7 @@ export const getParticipantes = async (req: Request, res: Response) => {
         pa.telefono_cliente,
         pa.telefono_participante,
         pa.nombre,
+        pa.fecha_nacimiento,
         pa.edad,
         pa.estatura,
         pa.peso,
@@ -42,6 +54,7 @@ export const getParticipanteById = async (req: Request, res: Response) => {
         pa.telefono_cliente,
         pa.telefono_participante,
         pa.nombre,
+        pa.fecha_nacimiento,
         pa.edad,
         pa.estatura,
         pa.peso,
@@ -77,6 +90,7 @@ export const createParticipante = async (req: Request, res: Response) => {
       telefono_cliente,
       telefono_participante,
       nombre,
+      fecha_nacimiento,
       edad,
       estatura,
       peso,
@@ -96,19 +110,24 @@ export const createParticipante = async (req: Request, res: Response) => {
       });
     }
 
-    if (edad !== undefined && edad <= 0) {
+    let edadCalculada: number | undefined | null = edad;
+    if (fecha_nacimiento) {
+      edadCalculada = calcularEdad(fecha_nacimiento);
+    }
+
+    if (edadCalculada !== undefined && edadCalculada !== null && edadCalculada <= 0) {
       return res.status(400).json({
         message: "La edad debe ser mayor a 0",
       });
     }
 
-    if (estatura !== undefined && estatura <= 0) {
+    if (estatura !== undefined && estatura !== null && estatura <= 0) {
       return res.status(400).json({
         message: "La estatura debe ser mayor a 0",
       });
     }
 
-    if (peso !== undefined && peso <= 0) {
+    if (peso !== undefined && peso !== null && peso <= 0) {
       return res.status(400).json({
         message: "El peso debe ser mayor a 0",
       });
@@ -138,11 +157,12 @@ export const createParticipante = async (req: Request, res: Response) => {
         telefono_cliente,
         telefono_participante,
         nombre,
+        fecha_nacimiento,
         edad,
         estatura,
         peso
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
       `,
       [
@@ -150,9 +170,10 @@ export const createParticipante = async (req: Request, res: Response) => {
         telefono_cliente,
         telefono_participante,
         nombre,
-        edad,
-        estatura,
-        peso,
+        fecha_nacimiento ?? null,
+        edadCalculada ?? null,
+        estatura ?? null,
+        peso ?? null,
       ]
     );
 
@@ -174,6 +195,7 @@ export const updateParticipante = async (req: Request, res: Response) => {
       telefono_cliente,
       telefono_participante,
       nombre,
+      fecha_nacimiento,
       edad,
       estatura,
       peso,
@@ -193,19 +215,24 @@ export const updateParticipante = async (req: Request, res: Response) => {
       });
     }
 
-    if (edad !== undefined && edad <= 0) {
+    let edadCalculada: number | undefined | null = edad;
+    if (fecha_nacimiento) {
+      edadCalculada = calcularEdad(fecha_nacimiento);
+    }
+
+    if (edadCalculada !== undefined && edadCalculada !== null && edadCalculada <= 0) {
       return res.status(400).json({
         message: "La edad debe ser mayor a 0",
       });
     }
 
-    if (estatura !== undefined && estatura <= 0) {
+    if (estatura !== undefined && estatura !== null && estatura <= 0) {
       return res.status(400).json({
         message: "La estatura debe ser mayor a 0",
       });
     }
 
-    if (peso !== undefined && peso <= 0) {
+    if (peso !== undefined && peso !== null && peso <= 0) {
       return res.status(400).json({
         message: "El peso debe ser mayor a 0",
       });
@@ -236,10 +263,11 @@ export const updateParticipante = async (req: Request, res: Response) => {
         telefono_cliente = $2,
         telefono_participante = $3,
         nombre = $4,
-        edad = $5,
-        estatura = $6,
-        peso = $7
-      WHERE id_participante = $8
+        fecha_nacimiento = COALESCE($5, fecha_nacimiento),
+        edad = COALESCE($6, edad),
+        estatura = COALESCE($7, estatura),
+        peso = COALESCE($8, peso)
+      WHERE id_participante = $9
       RETURNING *
       `,
       [
@@ -247,9 +275,10 @@ export const updateParticipante = async (req: Request, res: Response) => {
         telefono_cliente,
         telefono_participante,
         nombre,
-        edad,
-        estatura,
-        peso,
+        fecha_nacimiento ?? null,
+        edadCalculada ?? null,
+        estatura ?? null,
+        peso ?? null,
         id,
       ]
     );
@@ -306,7 +335,16 @@ export const getParticipantesByReserva = async (req: Request, res: Response) => 
 
     const result = await pool.query(
       `
-      SELECT *
+      SELECT
+        id_participante,
+        id_reserva,
+        telefono_cliente,
+        telefono_participante,
+        nombre,
+        fecha_nacimiento,
+        edad,
+        estatura,
+        peso
       FROM participante
       WHERE id_reserva = $1
       ORDER BY id_participante ASC

@@ -8,15 +8,29 @@ import {
 } from "../../services/api.service";
 import {
   Plus, Eye, Pencil, Trash2, Search, X,
-  ChevronLeft, ChevronRight, Users, Calendar, MoreVertical, Phone,
+  ChevronLeft, ChevronRight, Users, Calendar, MoreVertical, Phone, Cake,
 } from "lucide-react";
 import "../../styles/participantes.css";
+
+export function calcularEdad(fechaNacimiento: string): number | null {
+  if (!fechaNacimiento) return null;
+  const nacimiento = new Date(fechaNacimiento);
+  if (isNaN(nacimiento.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nacimiento.getFullYear();
+  const mes = hoy.getMonth() - nacimiento.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+    edad--;
+  }
+  return edad >= 0 ? edad : null;
+}
 
 /* ── Tipos ── */
 interface Participante {
   id_participante: number;
   id_reserva: number;
   nombre: string;
+  fecha_nacimiento?: string | null;
   edad: number | null;
   estatura: number | null;
   peso: number | null;
@@ -34,6 +48,7 @@ interface Reserva {
 const emptyForm = {
   id_reserva: "" as number | "",
   nombre: "",
+  fecha_nacimiento: "",
   edad: "",
   estatura: "",
   peso: "",
@@ -108,6 +123,9 @@ export default function ParticipantesAdmin() {
     setFormData({
       id_reserva: p.id_reserva,
       nombre: p.nombre,
+      fecha_nacimiento: p.fecha_nacimiento
+        ? new Date(p.fecha_nacimiento).toISOString().split("T")[0]
+        : "",
       edad: p.edad?.toString() ?? "",
       estatura: p.estatura?.toString() ?? "",
       peso: p.peso?.toString() ?? "",
@@ -133,10 +151,15 @@ export default function ParticipantesAdmin() {
     }
     setSaving(true);
     try {
+      const edadCalculada = formData.fecha_nacimiento
+        ? calcularEdad(formData.fecha_nacimiento)
+        : (formData.edad ? Number(formData.edad) : null);
+
       const payload = {
         id_reserva: Number(formData.id_reserva),
         nombre: formData.nombre,
-        edad: formData.edad ? Number(formData.edad) : null,
+        fecha_nacimiento: formData.fecha_nacimiento || null,
+        edad: edadCalculada,
         estatura: formData.estatura ? Number(formData.estatura) : null,
         peso: formData.peso ? Number(formData.peso) : null,
         telefono_cliente: formData.telefono_cliente || null,
@@ -327,6 +350,7 @@ export default function ParticipantesAdmin() {
             <tr>
               <th>N° RESERVA</th>
               <th>NOMBRE</th>
+              <th>F. NACIMIENTO</th>
               <th>EDAD</th>
               <th>ESTATURA</th>
               <th>PESO</th>
@@ -337,9 +361,9 @@ export default function ParticipantesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="pt-empty">Cargando...</td></tr>
+              <tr><td colSpan={9} className="pt-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={8} className="pt-empty">Sin resultados</td></tr>
+              <tr><td colSpan={9} className="pt-empty">Sin resultados</td></tr>
             ) : paginated.map((p) => (
               <tr key={p.id_participante}>
                 <td>
@@ -349,6 +373,13 @@ export default function ParticipantesAdmin() {
                   </div>
                 </td>
                 <td className="pt-nombre">{p.nombre}</td>
+                <td>
+                  {p.fecha_nacimiento ? (
+                    <span><Cake size={12} /> {new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")}</span>
+                  ) : (
+                    <span className="rv-null">—</span>
+                  )}
+                </td>
                 <td>{p.edad ?? <span className="rv-null">—</span>}</td>
                 <td>{fmtEstatura(p.estatura)}</td>
                 <td>{fmtPeso(p.peso)}</td>
@@ -421,6 +452,12 @@ export default function ParticipantesAdmin() {
               </div>
             )}
 
+            {p.fecha_nacimiento && (
+              <div className="pt-card-row">
+                <Cake size={14} /> Nacimiento: {new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")}
+              </div>
+            )}
+
             <div className="pt-card-meta">
               <div className="pt-card-meta-item">
                 <span className="pt-card-meta-label">Edad</span>
@@ -468,6 +505,7 @@ export default function ParticipantesAdmin() {
                 <div className="pt-detail-field"><label>ID</label><span>#{viewing.id_participante}</span></div>
                 <div className="pt-detail-field"><label>N° Reserva</label><span>#{viewing.id_reserva} — {planDeReserva(viewing)}</span></div>
                 <div className="pt-detail-field"><label>Nombre</label><span>{viewing.nombre}</span></div>
+                <div className="pt-detail-field"><label>F. Nacimiento</label><span>{viewing.fecha_nacimiento ? new Date(viewing.fecha_nacimiento).toLocaleDateString("es-CO") : "—"}</span></div>
                 <div className="pt-detail-field"><label>Edad</label><span>{viewing.edad ?? "—"}</span></div>
                 <div className="pt-detail-field"><label>Estatura</label><span>{fmtEstatura(viewing.estatura)}</span></div>
                 <div className="pt-detail-field"><label>Peso</label><span>{fmtPeso(viewing.peso)}</span></div>
@@ -514,16 +552,35 @@ export default function ParticipantesAdmin() {
                   placeholder="Nombre del participante"
                 />
               </div>
-              <div className="pt-form-row">
+              <div className="pt-form-row pt-form-row-2">
                 <div className="pt-form-group">
-                  <label>Edad</label>
+                  <label><Cake size={14} /> Fecha de nacimiento</label>
+                  <input
+                    type="date"
+                    value={formData.fecha_nacimiento}
+                    onChange={(e) => {
+                      const fn = e.target.value;
+                      const edadCalc = fn ? calcularEdad(fn) : null;
+                      setFormData({
+                        ...formData,
+                        fecha_nacimiento: fn,
+                        edad: edadCalc != null ? String(edadCalc) : "",
+                      });
+                    }}
+                  />
+                </div>
+                <div className="pt-form-group">
+                  <label>Edad {formData.fecha_nacimiento && "(calculada)"}</label>
                   <input
                     type="number"
                     value={formData.edad}
-                    onChange={(e) => setFormData({ ...formData, edad: e.target.value })}
-                    placeholder="Edad"
+                    disabled={!!formData.fecha_nacimiento}
+                    onChange={(e) => !formData.fecha_nacimiento && setFormData({ ...formData, edad: e.target.value })}
+                    placeholder={formData.fecha_nacimiento ? "Auto" : "Edad"}
                   />
                 </div>
+              </div>
+              <div className="pt-form-row">
                 <div className="pt-form-group">
                   <label>Estatura (m)</label>
                   <input
@@ -555,7 +612,7 @@ export default function ParticipantesAdmin() {
                   />
                 </div>
                 <div className="pt-form-group">
-                  <label>Tel. participante</label>
+                  <label>Tel. participante *</label>
                   <input
                     value={formData.telefono_participante}
                     onChange={(e) => setFormData({ ...formData, telefono_participante: e.target.value })}

@@ -249,6 +249,7 @@ export async function getParticipantes() {
     .select(`
       id_participante,
       nombre,
+      fecha_nacimiento,
       edad,
       estatura,
       peso,
@@ -269,7 +270,6 @@ export async function getParticipantes() {
 
   if (error) throw error;
 
-  // Normalizar: subir nombre_plan y id_plan al nivel raíz
   return (data ?? []).map((p: any) => ({
     ...p,
     id_plan:     p.reserva?.id_plan ?? null,
@@ -277,13 +277,13 @@ export async function getParticipantes() {
   }));
 }
 
-// Participantes de una reserva específica.
 export async function getParticipantesPorReserva(id_reserva: number) {
   const { data, error } = await getClient()
     .from("participante")
     .select(`
       id_participante,
       nombre,
+      fecha_nacimiento,
       edad,
       estatura,
       peso,

@@ -7,13 +7,28 @@ import {
   getPlanes,
   getClientes,
   getParticipantesPorReserva,
+  createParticipante,
+  deleteParticipante,
 } from "../../services/api.service";
 import {
   Plus, Eye, Pencil, Trash2, Search, X,
   ChevronLeft, ChevronRight, Phone, CheckCircle, Clock, Users, Calendar,
-  MoreVertical, UserCheck,
+  MoreVertical, UserCheck, Cake,
 } from "lucide-react";
 import "../../styles/reservas.css";
+
+export function calcularEdad(fechaNacimiento: string): number | null {
+  if (!fechaNacimiento) return null;
+  const nacimiento = new Date(fechaNacimiento);
+  if (isNaN(nacimiento.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nacimiento.getFullYear();
+  const mes = hoy.getMonth() - nacimiento.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+    edad--;
+  }
+  return edad >= 0 ? edad : null;
+}
 
 /* ── Tipos ─────────────────────────────────── */
 interface Reserva {
@@ -36,6 +51,7 @@ interface Participante {
   id_participante: number;
   id_reserva: number;
   nombre: string;
+  fecha_nacimiento?: string | null;
   edad: number | null;
   estatura: number | null;
   peso: number | null;
@@ -48,6 +64,15 @@ const emptyForm = {
   id_plan: "" as number | "",
   cantidad_personas: "" as number | "",
   aprobado: false,
+};
+
+const emptyNewParticipante = {
+  nombre: "",
+  fecha_nacimiento: "",
+  edad: "",
+  estatura: "",
+  peso: "",
+  telefono_participante: "",
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -79,6 +104,13 @@ export default function ReservasAdmin() {
   const [formData, setFormData] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [telefonoError, setTelefonoError] = useState<string | null>(null);
+
+  // Participantes dentro del modal de edición
+  const [editParticipantes, setEditParticipantes] = useState<Participante[]>([]);
+  const [loadingEditParticipantes, setLoadingEditParticipantes] = useState(false);
+  const [showNewPart, setShowNewPart] = useState(false);
+  const [newPart, setNewPart] = useState(emptyNewParticipante);
+  const [savingPart, setSavingPart] = useState(false);
 
   // Modal ver
   const [viewing, setViewing] = useState<Reserva | null>(null);
@@ -127,10 +159,13 @@ export default function ReservasAdmin() {
     setEditing(null);
     setFormData(emptyForm);
     setTelefonoError(null);
+    setEditParticipantes([]);
+    setShowNewPart(false);
+    setNewPart(emptyNewParticipante);
     setShowForm(true);
   };
 
-  const openEdit = (r: Reserva) => {
+  const openEdit = async (r: Reserva) => {
     setOpenMenu(null);
     setEditing(r);
     setFormData({
@@ -140,7 +175,21 @@ export default function ReservasAdmin() {
       aprobado: r.aprobado ?? false,
     });
     setTelefonoError(null);
+    setShowNewPart(false);
+    setNewPart(emptyNewParticipante);
+    setEditParticipantes([]);
     setShowForm(true);
+
+    setLoadingEditParticipantes(true);
+    try {
+      const data = await getParticipantesPorReserva(r.id_reserva);
+      setEditParticipantes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setEditParticipantes([]);
+    } finally {
+      setLoadingEditParticipantes(false);
+    }
   };
 
   const openView = async (r: Reserva) => {
@@ -208,6 +257,75 @@ export default function ReservasAdmin() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  /* ── Helpers: participantes en edición ───── */
+  const refreshEditParticipantes = async () => {
+    if (!editing) return;
+    setLoadingEditParticipantes(true);
+    try {
+      const data = await getParticipantesPorReserva(editing.id_reserva);
+      setEditParticipantes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setEditParticipantes([]);
+    } finally {
+      setLoadingEditParticipantes(false);
+    }
+  };
+
+  const handleAgregarParticipante = async () => {
+    if (!editing) return;
+    if (!newPart.nombre.trim()) {
+      alert("El nombre del participante es obligatorio");
+      return;
+    }
+    if (!newPart.telefono_participante.trim()) {
+      alert("El teléfono del participante es obligatorio");
+      return;
+    }
+    if (editing.telefono_cliente === newPart.telefono_participante.trim()) {
+      alert("El teléfono del participante no puede ser igual al teléfono del cliente");
+      return;
+    }
+    setSavingPart(true);
+    try {
+      const edadCalculada = newPart.fecha_nacimiento
+        ? calcularEdad(newPart.fecha_nacimiento)
+        : (newPart.edad ? Number(newPart.edad) : null);
+
+      await createParticipante({
+        id_reserva: editing.id_reserva,
+        telefono_cliente: editing.telefono_cliente,
+        telefono_participante: newPart.telefono_participante.trim(),
+        nombre: newPart.nombre.trim(),
+        fecha_nacimiento: newPart.fecha_nacimiento || null,
+        edad: edadCalculada,
+        estatura: newPart.estatura ? Number(newPart.estatura) : null,
+        peso: newPart.peso ? Number(newPart.peso) : null,
+      });
+      setNewPart(emptyNewParticipante);
+      setShowNewPart(false);
+      await refreshEditParticipantes();
+      await fetchAll();
+    } catch (e: any) {
+      console.error(e);
+      alert("No se pudo agregar el participante: " + (e?.message ?? "error desconocido"));
+    } finally {
+      setSavingPart(false);
+    }
+  };
+
+  const handleEliminarParticipante = async (p: Participante) => {
+    if (!confirm(`¿Eliminar a ${p.nombre} de esta reserva?`)) return;
+    try {
+      await deleteParticipante(p.id_participante);
+      await refreshEditParticipantes();
+      await fetchAll();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo eliminar el participante.");
     }
   };
 
@@ -604,6 +722,7 @@ export default function ReservasAdmin() {
                         <tr>
                           <th>Nombre</th>
                           <th>Teléfono</th>
+                          <th className="rv-parts-num">F. Nac.</th>
                           <th className="rv-parts-num">Edad</th>
                           <th className="rv-parts-num">Estatura</th>
                           <th className="rv-parts-num">Peso</th>
@@ -621,6 +740,11 @@ export default function ReservasAdmin() {
                               ) : (
                                 <span className="rv-null">—</span>
                               )}
+                            </td>
+                            <td className="rv-parts-num">
+                              {p.fecha_nacimiento
+                                ? new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")
+                                : <span className="rv-null">—</span>}
                             </td>
                             <td className="rv-parts-num">{p.edad ?? <span className="rv-null">—</span>}</td>
                             <td className="rv-parts-num">{p.estatura != null ? `${p.estatura} m` : <span className="rv-null">—</span>}</td>
@@ -640,7 +764,7 @@ export default function ReservasAdmin() {
       {/* ── Modal Crear / Editar ── */}
       {showForm && (
         <div className="rv-overlay" onClick={() => setShowForm(false)}>
-          <div className="rv-modal" onClick={(e) => e.stopPropagation()}>
+          <div className={`rv-modal ${editing ? "rv-modal-lg" : ""}`} onClick={(e) => e.stopPropagation()}>
             <div className="rv-modal-header">
               <h2>{editing ? `Editar reserva #${editing.id_reserva}` : "Nueva reserva"}</h2>
               <button className="rv-modal-close" onClick={() => setShowForm(false)}><X size={20} /></button>
@@ -691,6 +815,197 @@ export default function ReservasAdmin() {
                 />
                 <label htmlFor="aprobado-check">Marcar como aprobada</label>
               </div>
+
+              {/* ── Sección de participantes (solo edición) ── */}
+              {editing && (
+                <div className="rv-parts" style={{ marginTop: 24, borderTop: "1px solid #e5e7eb", paddingTop: 20 }}>
+                  <div className="rv-parts-head" style={{ marginBottom: 12 }}>
+                    <h3 className="rv-parts-title">
+                      <UserCheck size={15} /> Participantes de la reserva
+                    </h3>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span className="rv-parts-count">{editParticipantes.length}</span>
+                      <button
+                        type="button"
+                        className="rv-btn-new"
+                        style={{ padding: "6px 12px", fontSize: 13 }}
+                        onClick={() => {
+                          setNewPart(emptyNewParticipante);
+                          setShowNewPart((s) => !s);
+                        }}
+                      >
+                        <Plus size={14} /> {showNewPart ? "Cancelar" : "Agregar participante"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {loadingEditParticipantes ? (
+                    <p className="rv-parts-empty">Cargando participantes…</p>
+                  ) : editParticipantes.length === 0 && !showNewPart ? (
+                    <p className="rv-parts-empty">Esta reserva no tiene participantes. Usa el botón superior para agregar uno.</p>
+                  ) : null}
+
+                  {editParticipantes.length > 0 && (
+                    <div className="rv-parts-table-wrap" style={{ marginBottom: 16 }}>
+                      <table className="rv-parts-table">
+                        <thead>
+                          <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th className="rv-parts-num">F. Nac.</th>
+                            <th className="rv-parts-num">Edad</th>
+                            <th className="rv-parts-num">Estatura</th>
+                            <th className="rv-parts-num">Peso</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editParticipantes.map((p) => (
+                            <tr key={p.id_participante}>
+                              <td className="rv-parts-name">{p.nombre}</td>
+                              <td>
+                                {p.telefono_participante ? (
+                                  <span className="rv-phone"><Phone size={12} /> {p.telefono_participante}</span>
+                                ) : (
+                                  <span className="rv-null">—</span>
+                                )}
+                              </td>
+                              <td className="rv-parts-num">
+                                {p.fecha_nacimiento
+                                  ? new Date(p.fecha_nacimiento).toLocaleDateString("es-CO")
+                                  : <span className="rv-null">—</span>}
+                              </td>
+                              <td className="rv-parts-num">{p.edad ?? <span className="rv-null">—</span>}</td>
+                              <td className="rv-parts-num">{p.estatura != null ? `${p.estatura} m` : <span className="rv-null">—</span>}</td>
+                              <td className="rv-parts-num">{p.peso != null ? `${p.peso} kg` : <span className="rv-null">—</span>}</td>
+                              <td style={{ textAlign: "right" }}>
+                                <button
+                                  type="button"
+                                  className="action-btn action-eliminar"
+                                  style={{ padding: "4px 8px" }}
+                                  onClick={() => handleEliminarParticipante(p)}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Formulario nuevo participante */}
+                  {showNewPart && (
+                    <div
+                      className="rv-part-form"
+                      style={{
+                        background: "#f9fafb",
+                        borderRadius: 10,
+                        padding: 16,
+                        border: "1px solid #e5e7eb",
+                      }}
+                    >
+                      <h4 style={{ margin: 0, marginBottom: 12, color: "#111827" }}>
+                        <Plus size={14} style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 6 }} />
+                        Nuevo participante
+                      </h4>
+
+                      <div className="pt-form-group" style={{ marginBottom: 12 }}>
+                        <label>Nombre completo *</label>
+                        <input
+                          value={newPart.nombre}
+                          onChange={(e) => setNewPart({ ...newPart, nombre: e.target.value })}
+                          placeholder="Ej. María Gómez"
+                        />
+                      </div>
+
+                      <div className="pt-form-group" style={{ marginBottom: 12 }}>
+                        <label>Teléfono del participante *</label>
+                        <input
+                          value={newPart.telefono_participante}
+                          onChange={(e) => setNewPart({ ...newPart, telefono_participante: e.target.value })}
+                          placeholder="Ej. 3009876543"
+                        />
+                      </div>
+
+                      <div className="pt-form-row pt-form-row-2" style={{ marginBottom: 12 }}>
+                        <div className="pt-form-group">
+                          <label><Cake size={14} /> Fecha de nacimiento</label>
+                          <input
+                            type="date"
+                            value={newPart.fecha_nacimiento}
+                            onChange={(e) => {
+                              const fn = e.target.value;
+                              const edadCalc = fn ? calcularEdad(fn) : null;
+                              setNewPart({
+                                ...newPart,
+                                fecha_nacimiento: fn,
+                                edad: edadCalc != null ? String(edadCalc) : "",
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className="pt-form-group">
+                          <label>Edad {newPart.fecha_nacimiento && "(calculada)"}</label>
+                          <input
+                            type="number"
+                            value={newPart.edad}
+                            disabled={!!newPart.fecha_nacimiento}
+                            onChange={(e) => !newPart.fecha_nacimiento && setNewPart({ ...newPart, edad: e.target.value })}
+                            placeholder={newPart.fecha_nacimiento ? "Automática" : "Ingresa edad"}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-form-row" style={{ marginBottom: 12 }}>
+                        <div className="pt-form-group">
+                          <label>Estatura (m)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={newPart.estatura}
+                            onChange={(e) => setNewPart({ ...newPart, estatura: e.target.value })}
+                            placeholder="Ej. 1.72"
+                          />
+                        </div>
+                        <div className="pt-form-group">
+                          <label>Peso (kg)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={newPart.peso}
+                            onChange={(e) => setNewPart({ ...newPart, peso: e.target.value })}
+                            placeholder="Ej. 70.5"
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                        <button
+                          type="button"
+                          className="rv-btn-cancel"
+                          onClick={() => {
+                            setShowNewPart(false);
+                            setNewPart(emptyNewParticipante);
+                          }}
+                          disabled={savingPart}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="rv-btn-save"
+                          onClick={handleAgregarParticipante}
+                          disabled={savingPart}
+                        >
+                          {savingPart ? "Agregando..." : "Agregar participante"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="rv-modal-footer">
               <button className="rv-btn-cancel" onClick={() => setShowForm(false)}>Cancelar</button>
