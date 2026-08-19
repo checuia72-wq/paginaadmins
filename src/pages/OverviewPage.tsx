@@ -99,15 +99,16 @@ export default function OverviewPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!supabase) return;
-    const channel = supabase
+    const client = supabase;
+    if (!client) return;
+    const channel = client
       .channel("crm-dashboard-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "reserva" }, () => load(true))
       .on("postgres_changes", { event: "*", schema: "public", table: "plan" }, () => load(true))
       .on("postgres_changes", { event: "*", schema: "public", table: "cliente" }, () => load(true))
       .on("postgres_changes", { event: "*", schema: "public", table: "participante" }, () => load(true))
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { client.removeChannel(channel); };
   }, [load]);
 
   const metrics = useMemo(() => {
@@ -297,82 +298,50 @@ export default function OverviewPage() {
           </div>
           <div className="crm-cash-total"><span>Recaudado</span><strong>{money(metrics.totalCobrado)}</strong><small>de {money(metrics.ventasTotal)} vendidos</small></div>
           <div className="crm-progress"><div style={{ width: `${metrics.ventasTotal ? Math.min(100, (metrics.totalCobrado / metrics.ventasTotal) * 100) : 0}%` }} /></div>
-          <div className="crm-payment-breakdown">
+          <div className="crm-cash-grid">
             <div><span>Efectivo</span><strong>{money(metrics.efectivo)}</strong></div>
             <div><span>Transferencia</span><strong>{money(metrics.transferencia)}</strong></div>
-            <div className="danger"><span>Por cobrar</span><strong>{money(metrics.cartera)}</strong></div>
+            <div className="pending"><span>Pendiente</span><strong>{money(metrics.cartera)}</strong></div>
           </div>
         </section>
       </div>
 
       <section className="crm-card crm-ranking-card">
-        <div className="crm-card-head crm-ranking-head">
-          <div><span className="crm-card-kicker">Rentabilidad comercial</span><h2>Ranking real de planes vendidos</h2><p>Ordenado por ingresos generados en reservas aprobadas. Permite identificar qué experiencias sostienen las ventas.</p></div>
-          <NavLink to="/app/planes" className="crm-link">Gestionar planes <ArrowRight size={14} /></NavLink>
+        <div className="crm-card-head">
+          <div><span className="crm-card-kicker">Portafolio</span><h2>Rentabilidad y demanda por plan</h2><p>Comparación comercial para identificar qué experiencias generan mayor valor.</p></div>
+          <Package size={20} />
         </div>
-
-        <div className="crm-ranking-table-wrap">
-          <table className="crm-ranking-table">
-            <thead><tr><th>#</th><th>Plan</th><th>Reservas</th><th>Personas</th><th>Ingresos</th><th>Ticket prom.</th><th>Participación</th><th>Desempeño</th></tr></thead>
-            <tbody>
-              {metrics.ranking.length === 0 ? (
-                <tr><td colSpan={8} className="crm-empty">No hay planes registrados.</td></tr>
-              ) : metrics.ranking.map((p, index) => (
-                <tr key={p.id} className={index === 0 && p.reservas > 0 ? "leader" : ""}>
-                  <td><span className="crm-rank">{index + 1}</span></td>
-                  <td><div className="crm-plan-name">{index === 0 && p.reservas > 0 && <Trophy size={14} />}<strong>{p.nombre}</strong></div></td>
-                  <td>{p.reservas}</td>
-                  <td>{p.personas}</td>
-                  <td className="crm-money">{money(p.ingresos)}</td>
-                  <td>{money(p.ticket)}</td>
-                  <td>{pct(p.participacion)}</td>
-                  <td><div className="crm-plan-progress"><div style={{ width: `${(p.ingresos / maxPlanRevenue) * 100}%` }} /></div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {!metrics.ranking.length ? <div className="crm-empty">Aún no hay planes registrados.</div> : <div className="crm-ranking-table">
+          <div className="crm-ranking-row header"><span>Plan</span><span>Reservas</span><span>Personas</span><span>Ingresos</span><span>Ticket</span><span>Participación</span></div>
+          {metrics.ranking.map((p, index) => (
+            <div className="crm-ranking-row" key={p.id}>
+              <div className="crm-plan-name"><span className={`crm-rank ${index < 3 ? `top-${index + 1}` : ""}`}>{index + 1}</span><div><strong>{p.nombre}</strong><div className="crm-mini-track"><div style={{ width: `${(p.ingresos / maxPlanRevenue) * 100}%` }} /></div></div></div>
+              <strong>{p.reservas}</strong><strong>{p.personas}</strong><strong>{money(p.ingresos)}</strong><span>{money(p.ticket)}</span><span>{pct(p.participacion)}</span>
+            </div>
+          ))}
+        </div>}
       </section>
 
-      <div className="crm-bottom-grid">
-        <section className="crm-card crm-opportunity-card">
-          <div className="crm-card-head"><div><span className="crm-card-kicker">Oportunidad comercial</span><h2>Embudo de reservas</h2></div><Package size={20} /></div>
-          <div className="crm-funnel-row"><span>Solicitudes recibidas</span><strong>{metrics.totalReservas}</strong></div>
-          <div className="crm-funnel-row success"><span>Reservas aprobadas</span><strong>{metrics.aprobadas}</strong></div>
-          <div className="crm-funnel-row warning"><span>Pendientes por cerrar</span><strong>{metrics.pendientes}</strong></div>
-          <div className="crm-funnel-conversion"><span>Tasa de cierre actual</span><strong>{pct(metrics.conversion)}</strong></div>
-          <NavLink to="/app/reservas" className="crm-action-link">Ir a reservas <ArrowRight size={14} /></NavLink>
+      <div className="crm-grid crm-grid-bottom">
+        <section className="crm-card crm-funnel-card">
+          <div className="crm-card-head"><div><span className="crm-card-kicker">Conversión</span><h2>Embudo comercial</h2></div><Percent size={20} /></div>
+          <div className="crm-funnel">
+            <div><span>Reservas recibidas</span><strong>{metrics.totalReservas}</strong><div className="crm-funnel-bar"><i style={{ width: "100%" }} /></div></div>
+            <div><span>Aprobadas</span><strong>{metrics.aprobadas}</strong><div className="crm-funnel-bar"><i style={{ width: `${metrics.totalReservas ? (metrics.aprobadas / metrics.totalReservas) * 100 : 0}%` }} /></div></div>
+            <div><span>Pendientes</span><strong>{metrics.pendientes}</strong><div className="crm-funnel-bar pending"><i style={{ width: `${metrics.totalReservas ? (metrics.pendientes / metrics.totalReservas) * 100 : 0}%` }} /></div></div>
+          </div>
         </section>
-
-        <section className="crm-card crm-notes-card">
-          <div className="crm-card-head"><div><span className="crm-card-kicker">Lectura administrativa</span><h2>Cómo interpretar este resumen</h2></div><CircleDollarSign size={20} /></div>
-          <div className="crm-insight"><strong>Ventas</strong><span>Solo cuentan reservas aprobadas; así los planes pendientes no inflan resultados.</span></div>
-          <div className="crm-insight"><strong>Ingresos</strong><span>Se usa el valor total de la reserva. Si falta, se calcula con el precio unitario o precio vigente del plan y la cantidad de personas.</span></div>
-          <div className="crm-insight"><strong>Recaudo</strong><span>Corresponde a valor abonado + saldo pagado. La diferencia contra ventas es cartera pendiente.</span></div>
-          <div className="crm-insight"><strong>Ranking</strong><span>Compara ingresos, reservas, personas, ticket y participación para decidir qué planes impulsar.</span></div>
+        <section className="crm-card crm-actions-card">
+          <div className="crm-card-head"><div><span className="crm-card-kicker">Acción</span><h2>Prioridades comerciales</h2></div><ArrowRight size={20} /></div>
+          <NavLink to="/app/reservas"><div><Clock3 size={17} /><span><strong>{metrics.pendientes} reservas pendientes</strong><small>Revisar y convertir solicitudes</small></span></div><ArrowRight size={17} /></NavLink>
+          <NavLink to="/app/control-operativo"><div><WalletCards size={17} /><span><strong>{money(metrics.cartera)} por cobrar</strong><small>Gestionar saldos de reservas aprobadas</small></span></div><ArrowRight size={17} /></NavLink>
+          <NavLink to="/app/planes"><div><Trophy size={17} /><span><strong>{metrics.mejorPlan?.nombre || "Planes"}</strong><small>{metrics.mejorPlan ? "Plan con mayor ingreso acumulado" : "Configurar portafolio comercial"}</small></span></div><ArrowRight size={17} /></NavLink>
         </section>
       </div>
     </div>
   );
 }
 
-function Kpi({
-  icon,
-  label,
-  value,
-  helper,
-  tone,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  helper: string;
-  tone: "gold" | "green" | "red" | "blue" | "violet" | "teal";
-}) {
-  return (
-    <div className={`crm-kpi crm-kpi-${tone}`}>
-      <div className="crm-kpi-icon">{icon}</div>
-      <div><span>{label}</span><strong>{value}</strong><small>{helper}</small></div>
-    </div>
-  );
+function Kpi({ icon, label, value, helper, tone }: { icon: React.ReactNode; label: string; value: string; helper: string; tone: string }) {
+  return <div className={`crm-kpi ${tone}`}><div className="crm-kpi-top"><div className="crm-kpi-icon">{icon}</div><span>{label}</span></div><strong>{value}</strong><small>{helper}</small></div>;
 }
