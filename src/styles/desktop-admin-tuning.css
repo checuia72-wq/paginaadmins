@@ -1,0 +1,479 @@
+/* Ajustes visuales de escritorio.
+   Mantiene el uso completo del viewport, pero mejora jerarquía, densidad y reparto de columnas. */
+
+@media (min-width: 1200px) {
+  .dash-main {
+    padding-top: 28px !important;
+    padding-bottom: 46px !important;
+    padding-inline: clamp(30px, 2.35vw, 48px) !important;
+  }
+
+  .rv-page,
+  .cl-page,
+  .pt-page,
+  .planes-page {
+    gap: 22px !important;
+  }
+
+  .rv-header,
+  .cl-header,
+  .pt-header,
+  .planes-header {
+    min-height: 62px;
+    align-items: center !important;
+  }
+
+  .rv-title,
+  .cl-title,
+  .pt-title,
+  .planes-title {
+    font-size: 30px !important;
+    line-height: 1.1 !important;
+    letter-spacing: -.45px;
+  }
+
+  .rv-subtitle,
+  .cl-subtitle,
+  .pt-subtitle,
+  .planes-subtitle {
+    font-size: 15px !important;
+    line-height: 1.45 !important;
+    margin-top: 6px !important;
+  }
+
+  .rv-btn-new,
+  .cl-btn-new,
+  .pt-btn-new,
+  .btn-nuevo-plan {
+    min-height: 44px;
+    padding-inline: 20px !important;
+    font-size: 14px !important;
+    border-radius: 9px !important;
+  }
+
+  .rv-kpis,
+  .cl-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  .pt-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  .rv-kpi,
+  .cl-kpi,
+  .pt-kpi,
+  .planes-kpi {
+    min-height: 92px;
+    padding: 18px 20px !important;
+  }
+
+  .rv-kpi-icon,
+  .cl-kpi-icon,
+  .pt-kpi-icon {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .rv-kpi-label,
+  .cl-kpi-label,
+  .pt-kpi-label {
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+  }
+
+  .rv-kpi-value,
+  .cl-kpi-value,
+  .pt-kpi-value {
+    font-size: 30px !important;
+    line-height: 1.05 !important;
+  }
+
+  .rv-filter-bar,
+  .cl-filter-bar,
+  .pt-filter-bar,
+  .planes-filter-bar {
+    min-height: 58px;
+    padding: 11px 16px !important;
+    gap: 12px !important;
+  }
+
+  .rv-search-input,
+  .cl-search-input,
+  .pt-search-input,
+  .planes-search-input {
+    font-size: 15px !important;
+  }
+
+  .rv-filter-label,
+  .cl-filter-label,
+  .pt-filter-label,
+  .planes-filter-label {
+    font-size: 13.5px !important;
+  }
+
+  .rv-filter-select,
+  .cl-filter-select,
+  .pt-filter-select,
+  .planes-filter-select,
+  .rv-clear-btn,
+  .cl-clear-btn,
+  .pt-clear-btn,
+  .planes-clear-btn {
+    font-size: 13.5px !important;
+    min-height: 34px;
+  }
+
+  .rv-table-wrap,
+  .cl-table-wrap,
+  .pt-table-wrap,
+  .planes-table-wrap {
+    border-radius: 14px !important;
+  }
+
+  .rv-table th,
+  .cl-table th,
+  .pt-table th,
+  .planes-table th {
+    padding: 13px 17px !important;
+    font-size: 11.5px !important;
+    letter-spacing: .055em !important;
+  }
+
+  .rv-table td,
+  .cl-table td,
+  .pt-table td,
+  .planes-table td {
+    padding: 15px 17px !important;
+    font-size: 14.5px !important;
+    line-height: 1.42 !important;
+  }
+
+  .rv-table td small,
+  .cl-table td small,
+  .pt-table td small,
+  .planes-table td small {
+    font-size: 12.5px !important;
+  }
+
+  .action-btn {
+    min-height: 31px;
+    padding: 7px 11px !important;
+    font-size: 12.5px !important;
+  }
+
+  .action-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .badge,
+  .cl-badge,
+  .cl-etapa,
+  .pt-badge,
+  .rv-badge,
+  .plan-badge {
+    font-size: 12.5px !important;
+  }
+
+  .cl-table {
+    table-layout: fixed;
+    min-width: 1050px !important;
+  }
+
+  .cl-table th:nth-child(1), .cl-table td:nth-child(1) { width: 15%; }
+  .cl-table th:nth-child(2), .cl-table td:nth-child(2) { width: 10%; }
+  .cl-table th:nth-child(3), .cl-table td:nth-child(3) { width: 10%; }
+  .cl-table th:nth-child(4), .cl-table td:nth-child(4) { width: 44%; }
+  .cl-table th:nth-child(5), .cl-table td:nth-child(5) { width: 21%; }
+
+  .cl-table td:nth-child(4) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .cl-table td:last-child .action-buttons {
+    justify-content: flex-start;
+  }
+
+  .pt-table {
+    table-layout: fixed;
+    min-width: 1260px !important;
+  }
+
+  .pt-table th:nth-child(1), .pt-table td:nth-child(1) { width: 18%; }
+  .pt-table th:nth-child(2), .pt-table td:nth-child(2) { width: 15%; }
+  .pt-table th:nth-child(3), .pt-table td:nth-child(3) { width: 6%; }
+  .pt-table th:nth-child(4), .pt-table td:nth-child(4) { width: 8%; }
+  .pt-table th:nth-child(5), .pt-table td:nth-child(5) { width: 8%; }
+  .pt-table th:nth-child(6), .pt-table td:nth-child(6) { width: 15%; }
+  .pt-table th:nth-child(7), .pt-table td:nth-child(7) { width: 14%; }
+  .pt-table th:nth-child(8), .pt-table td:nth-child(8) { width: 16%; }
+
+  .pt-reserva-plan {
+    max-width: none !important;
+    white-space: normal !important;
+    font-size: 12.5px !important;
+    line-height: 1.35 !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .pt-table td:last-child .action-buttons {
+    justify-content: flex-start;
+  }
+
+  .cl-pagination,
+  .pt-pagination,
+  .rv-pagination,
+  .planes-pagination {
+    min-height: 56px;
+    padding: 12px 17px !important;
+  }
+
+  .cl-pag-info,
+  .pt-pag-info,
+  .rv-pag-info,
+  .planes-pag-info,
+  .cl-pag-current,
+  .pt-pag-current,
+  .rv-pag-current,
+  .planes-pag-current {
+    font-size: 13.5px !important;
+  }
+
+  .crm-header h1 {
+    font-size: 31px !important;
+    line-height: 1.08 !important;
+  }
+
+  .crm-header p {
+    font-size: 15px !important;
+    line-height: 1.45 !important;
+  }
+
+  .crm-eyebrow,
+  .crm-card-kicker {
+    font-size: 11.5px !important;
+  }
+
+  .crm-kpi {
+    min-height: 94px;
+    padding: 18px !important;
+  }
+
+  .crm-kpi-icon {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .crm-kpi span {
+    font-size: 13px !important;
+  }
+
+  .crm-kpi strong {
+    font-size: 27px !important;
+  }
+
+  .crm-kpi small {
+    font-size: 11.5px !important;
+  }
+
+  .crm-decision-main strong {
+    font-size: 24px !important;
+  }
+
+  .crm-decision-item strong {
+    font-size: 15px !important;
+  }
+
+  .crm-card-head h2 {
+    font-size: 18px !important;
+  }
+
+  .crm-card-head p {
+    font-size: 12px !important;
+  }
+
+  .crm-ranking-table {
+    font-size: 12.5px !important;
+  }
+
+  .crm-ranking-table th {
+    font-size: 10px !important;
+    padding: 12px 14px !important;
+  }
+
+  .crm-ranking-table td {
+    padding: 14px !important;
+  }
+
+  .crm-insight strong,
+  .crm-insight span,
+  .crm-funnel-row,
+  .crm-funnel-conversion,
+  .crm-payment-breakdown span,
+  .crm-payment-breakdown strong {
+    font-size: 12.5px !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  .dash-main {
+    padding-inline: clamp(38px, 2.7vw, 58px) !important;
+    padding-top: 32px !important;
+  }
+
+  .rv-page,
+  .cl-page,
+  .pt-page,
+  .planes-page {
+    gap: 24px !important;
+  }
+
+  .rv-title,
+  .cl-title,
+  .pt-title,
+  .planes-title,
+  .crm-header h1 {
+    font-size: 32px !important;
+  }
+
+  .rv-kpi,
+  .cl-kpi,
+  .pt-kpi,
+  .planes-kpi,
+  .crm-kpi {
+    min-height: 100px;
+  }
+
+  .rv-table td,
+  .cl-table td,
+  .pt-table td,
+  .planes-table td {
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+    font-size: 15px !important;
+  }
+
+  .rv-table th,
+  .cl-table th,
+  .pt-table th,
+  .planes-table th {
+    font-size: 12px !important;
+  }
+
+  .action-btn {
+    font-size: 13px !important;
+  }
+
+  .crm-chart {
+    min-height: 285px !important;
+  }
+}
+
+/* Refuerzo final: escala toda la interfaz de escritorio con mayor especificidad.
+   Se aplica aunque los CSS de cada página se carguen después. */
+@media (min-width: 1200px) {
+  .dash-root .dash-sidebar {
+    width: 280px !important;
+    flex-basis: 280px !important;
+  }
+  .dash-root .dash-sidebar.collapsed {
+    width: 84px !important;
+    flex-basis: 84px !important;
+  }
+  .dash-root .sidebar-brand { height: 92px !important; padding-inline: 20px !important; }
+  .dash-root .sidebar-brand-icon { width: 46px !important; height: 46px !important; }
+  .dash-root .sidebar-brand-copy strong { font-size: 14px !important; }
+  .dash-root .sidebar-brand-copy span { font-size: 10px !important; }
+  .dash-root .sidebar-nav { padding: 24px 14px 18px !important; gap: 8px !important; }
+  .dash-root .sidebar-link { min-height: 50px !important; padding-inline: 14px !important; font-size: 13px !important; gap: 13px !important; }
+  .dash-root .sidebar-link svg { width: 20px !important; height: 20px !important; flex-basis: 20px !important; }
+  .dash-root .sidebar-footer { padding: 14px !important; }
+  .dash-root .sidebar-user { padding: 10px 10px 14px !important; }
+  .dash-root .sidebar-avatar { width: 38px !important; height: 38px !important; font-size: 13px !important; }
+  .dash-root .sidebar-user-copy span:first-child { font-size: 10.5px !important; }
+  .dash-root .sidebar-user-copy span:last-child { font-size: 10.5px !important; }
+  .dash-root .sidebar-logout { height: 44px !important; font-size: 13px !important; }
+  .dash-root .sidebar-collapse-btn { width: 34px !important; height: 34px !important; right: -17px !important; }
+
+  .dash-root .dash-content .dash-main { padding: 34px 42px 54px !important; }
+
+  .dash-root .dash-content .crm-dashboard { gap: 22px !important; }
+  .dash-root .dash-content .crm-header h1 { font-size: 34px !important; }
+  .dash-root .dash-content .crm-header p { font-size: 16px !important; }
+  .dash-root .dash-content .crm-eyebrow,
+  .dash-root .dash-content .crm-card-kicker { font-size: 12px !important; }
+  .dash-root .dash-content .crm-live { font-size: 13px !important; padding: 9px 12px !important; }
+  .dash-root .dash-content .crm-kpi { min-height: 108px !important; padding: 20px !important; }
+  .dash-root .dash-content .crm-kpi-icon { width: 50px !important; height: 50px !important; }
+  .dash-root .dash-content .crm-kpi span { font-size: 14px !important; }
+  .dash-root .dash-content .crm-kpi strong { font-size: 30px !important; }
+  .dash-root .dash-content .crm-kpi small { font-size: 12.5px !important; }
+  .dash-root .dash-content .crm-decision-strip > div { padding: 19px 21px !important; }
+  .dash-root .dash-content .crm-decision-main span,
+  .dash-root .dash-content .crm-decision-item span { font-size: 12px !important; }
+  .dash-root .dash-content .crm-decision-main strong { font-size: 26px !important; }
+  .dash-root .dash-content .crm-decision-item strong { font-size: 16px !important; }
+  .dash-root .dash-content .crm-decision-main small,
+  .dash-root .dash-content .crm-decision-item small { font-size: 11px !important; }
+  .dash-root .dash-content .crm-card-head { padding: 20px 22px 15px !important; }
+  .dash-root .dash-content .crm-card-head h2 { font-size: 20px !important; }
+  .dash-root .dash-content .crm-card-head p { font-size: 13px !important; }
+  .dash-root .dash-content .crm-ranking-table { font-size: 14px !important; }
+  .dash-root .dash-content .crm-ranking-table th { font-size: 11px !important; padding: 14px 16px !important; }
+  .dash-root .dash-content .crm-ranking-table td { padding: 16px !important; }
+  .dash-root .dash-content .crm-funnel-row,
+  .dash-root .dash-content .crm-funnel-conversion,
+  .dash-root .dash-content .crm-insight strong,
+  .dash-root .dash-content .crm-insight span,
+  .dash-root .dash-content .crm-payment-breakdown span,
+  .dash-root .dash-content .crm-payment-breakdown strong { font-size: 14px !important; }
+  .dash-root .dash-content .crm-month strong { font-size: 13px !important; }
+  .dash-root .dash-content .crm-month span,
+  .dash-root .dash-content .crm-month-value { font-size: 10.5px !important; }
+
+  .dash-root .dash-content .rv-title,
+  .dash-root .dash-content .cl-title,
+  .dash-root .dash-content .pt-title,
+  .dash-root .dash-content .planes-title { font-size: 32px !important; }
+  .dash-root .dash-content .rv-subtitle,
+  .dash-root .dash-content .cl-subtitle,
+  .dash-root .dash-content .pt-subtitle,
+  .dash-root .dash-content .planes-subtitle { font-size: 16px !important; }
+
+  .dash-root .dash-content .rv-kpi,
+  .dash-root .dash-content .cl-kpi,
+  .dash-root .dash-content .pt-kpi,
+  .dash-root .dash-content .planes-kpi { min-height: 104px !important; padding: 20px 22px !important; }
+  .dash-root .dash-content .rv-kpi-label,
+  .dash-root .dash-content .cl-kpi-label,
+  .dash-root .dash-content .pt-kpi-label { font-size: 14px !important; }
+  .dash-root .dash-content .rv-kpi-value,
+  .dash-root .dash-content .cl-kpi-value,
+  .dash-root .dash-content .pt-kpi-value { font-size: 31px !important; }
+
+  .dash-root .dash-content .rv-filter-bar,
+  .dash-root .dash-content .cl-filter-bar,
+  .dash-root .dash-content .pt-filter-bar,
+  .dash-root .dash-content .planes-filter-bar { min-height: 62px !important; padding: 13px 18px !important; }
+  .dash-root .dash-content .rv-search-input,
+  .dash-root .dash-content .cl-search-input,
+  .dash-root .dash-content .pt-search-input,
+  .dash-root .dash-content .planes-search-input { font-size: 15.5px !important; }
+
+  .dash-root .dash-content .rv-table th,
+  .dash-root .dash-content .cl-table th,
+  .dash-root .dash-content .pt-table th,
+  .dash-root .dash-content .planes-table th { font-size: 12.5px !important; padding: 15px 18px !important; }
+  .dash-root .dash-content .rv-table td,
+  .dash-root .dash-content .cl-table td,
+  .dash-root .dash-content .pt-table td,
+  .dash-root .dash-content .planes-table td { font-size: 15.5px !important; padding: 17px 18px !important; }
+  .dash-root .dash-content .action-btn { font-size: 13.5px !important; min-height: 34px !important; padding: 8px 12px !important; }
+}
