@@ -1,0 +1,136 @@
+/* Ajustes visuales de la tabla de Control Operativo.
+   Solo presentación: no cambia filtros, cálculos ni edición. */
+
+.op-table-wrap{
+  border-radius:14px;
+  overflow:auto;
+  background:#fff;
+  box-shadow:0 8px 26px rgba(62,45,24,.06);
+}
+
+.op-table{
+  min-width:1760px;
+  table-layout:fixed;
+  font-size:11px;
+}
+
+.op-table th{
+  height:38px;
+  padding:0 10px;
+  vertical-align:middle;
+  font-size:9px;
+  letter-spacing:.035em;
+}
+
+.op-table td{
+  min-height:46px;
+  padding:10px;
+  vertical-align:middle;
+  line-height:1.35;
+}
+
+/* Dejamos fijo únicamente el código. Fijar también Plan hacía que visualmente
+   una columna quedara montada encima de la siguiente durante el scroll. */
+.op-table th:nth-child(2),
+.op-table td:nth-child(2){
+  position:static;
+  left:auto;
+  z-index:auto;
+  box-shadow:none;
+}
+
+.op-table th:first-child,
+.op-table td:first-child{
+  width:108px;
+  min-width:108px;
+  max-width:108px;
+}
+
+.op-table th:nth-child(2),
+.op-table td:nth-child(2){
+  width:210px;
+  min-width:210px;
+  max-width:210px;
+}
+
+/* Las columnas de texto largo pueden usar dos líneas en vez de quedar
+   aplastadas o parecer superpuestas. */
+.op-table td:nth-child(2),
+.op-table td:nth-child(17),
+.op-table td:nth-child(19),
+.op-table td:nth-child(21){
+  white-space:normal;
+  overflow:hidden;
+  display:table-cell;
+  word-break:break-word;
+}
+
+.op-table td:nth-child(2){
+  font-weight:650;
+  color:#365c4d;
+}
+
+.op-table td:nth-child(17),
+.op-table td:nth-child(19){
+  line-height:1.2;
+}
+
+/* Acciones siempre visibles al extremo derecho. */
+.op-table th:last-child,
+.op-table td:last-child{
+  position:sticky;
+  right:0;
+  width:64px;
+  min-width:64px;
+  max-width:64px;
+  text-align:center;
+  z-index:5;
+  box-shadow:-6px 0 12px -12px rgba(31,25,18,.75);
+}
+
+.op-table th:last-child{
+  z-index:11;
+  background:#2f6958;
+}
+
+.op-table tbody td:last-child{
+  background:#fffdf9;
+}
+
+.op-table tbody tr:nth-child(even) td:last-child{
+  background:#faf7f2;
+}
+
+.op-table tbody tr:hover td:last-child{
+  background:#fff2dc;
+}
+
+.op-table tbody tr{
+  height:48px;
+}
+
+.op-table tbody tr.group-start td{
+  border-top:1px solid #c9ad7d;
+}
+
+.op-table tbody tr + tr td{
+  border-top:0;
+}
+
+.op-icon-btn{
+  margin:0 auto;
+}
+
+@media (max-width:1300px){
+  .op-table{min-width:1660px}
+}
+
+@media (max-width:900px){
+  .op-table{min-width:1580px}
+  .op-table th:nth-child(2),
+  .op-table td:nth-child(2){
+    width:185px;
+    min-width:185px;
+    max-width:185px;
+  }
+}

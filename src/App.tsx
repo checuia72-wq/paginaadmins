@@ -11,6 +11,7 @@ import ClientesPage from "./pages/ClientesPage";
 import ParticipantesPage from "./pages/ParticipantesPage";
 import ControlOperativoPage from "./pages/ControlOperativoPage";
 import CrearPage from "./pages/CrearPage";
+import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 
@@ -23,14 +24,7 @@ export default function App() {
         <Route path="/" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        <Route
-          path="/app"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        >
+        <Route path="/app" element={<ProtectedRoute><Dashboard /></ProtectedRoute>}>
           <Route index element={<RoleRoute allow={["administrador"]}><OverviewPage /></RoleRoute>} />
           <Route path="reservas" element={<RoleRoute allow={["administrador", "atencion"]}><ReservasPage /></RoleRoute>} />
           <Route path="control-operativo" element={<RoleRoute allow={["administrador", "atencion"]}><ControlOperativoPage /></RoleRoute>} />
@@ -38,6 +32,7 @@ export default function App() {
           <Route path="clientes" element={<RoleRoute allow={["administrador"]}><ClientesPage /></RoleRoute>} />
           <Route path="participantes" element={<RoleRoute allow={["administrador"]}><ParticipantesPage /></RoleRoute>} />
           <Route path="crear" element={<RoleRoute allow={["administrador"]}><CrearPage /></RoleRoute>} />
+          <Route path="codigos-operativos" element={<RoleRoute allow={["administrador"]}><CodigosOperativosPage /></RoleRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

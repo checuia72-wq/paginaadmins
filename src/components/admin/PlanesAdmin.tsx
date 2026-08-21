@@ -1,43 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  getPlanes,
-  createPlan,
-  updatePlan,
-  deletePlan,
-} from "../../services/api.service";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getPlanes, createPlan, updatePlan, deletePlan } from "../../services/api.service";
+import { getCodigosOperativos, type CodigoOperativo } from "../../services/codigoOperativo.service";
 import PlanImage from "../common/PlanImage";
 import "../../styles/planes.css";
 import { supabase } from "../../lib/supabase";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Eye,
-  Package,
-  Search,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  MoreVertical,
-  Upload,
-  Calendar,
-  Clock,
-  Trash,
-} from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Package, Search, X, ChevronLeft, ChevronRight, RefreshCw, MoreVertical, Upload, Calendar, Clock, Trash } from "lucide-react";
 
-interface PlanFecha {
-  id_fecha?: number;
-  id_plan?: number;
-  fecha: string;
-}
-
-interface PlanHora {
-  id_hora?: number;
-  id_plan?: number;
-  hora: string;
-}
-
+interface PlanFecha { id_fecha?: number; id_plan?: number; fecha: string; }
+interface PlanHora { id_hora?: number; id_plan?: number; hora: string; }
 interface Plan {
   id_plan: number;
   nombre_plan: string;
@@ -53,745 +23,76 @@ interface Plan {
   plan_horas?: PlanHora[];
 }
 
-const emptyPlan: Omit<Plan, "id_plan"> = {
-  nombre_plan: "",
-  codigo_plan: null,
-  precio_plan: null,
-  descripcion_basica: null,
-  descripcion_detallada: null,
-  imagen_url: null,
-  numero_plan: null,
-  tipo_fecha: "cualquier_dia",
-  tipo_hora: "sin_hora",
-  plan_fechas: [],
-  plan_horas: [],
-};
+type PlanForm = Omit<Plan, "id_plan" | "codigo_plan">;
+const emptyPlan: PlanForm = { nombre_plan:"", precio_plan:null, descripcion_basica:null, descripcion_detallada:null, imagen_url:null, numero_plan:null, tipo_fecha:"cualquier_dia", tipo_hora:"sin_hora", plan_fechas:[], plan_horas:[] };
+const PAGE_SIZE_OPTIONS=[10,25,50];
+const fmtPrecio=(v?:number|null)=>v==null?null:"$"+Number(v).toLocaleString("es-CO");
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
-const CODIGO_PLAN_REGEX = /^CH\d{3}$/;
+export default function PlanesAdmin(){
+  const [planes,setPlanes]=useState<Plan[]>([]);
+  const [codigos,setCodigos]=useState<CodigoOperativo[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [search,setSearch]=useState("");
+  const [pageSize,setPageSize]=useState(10);
+  const [page,setPage]=useState(1);
+  const [showForm,setShowForm]=useState(false);
+  const [editing,setEditing]=useState<Plan|null>(null);
+  const [formData,setFormData]=useState<PlanForm>(emptyPlan);
+  const [saving,setSaving]=useState(false);
+  const [uploading,setUploading]=useState(false);
+  const [viewing,setViewing]=useState<Plan|null>(null);
+  const [openMenu,setOpenMenu]=useState<number|null>(null);
+  const fileInputRef=useRef<HTMLInputElement>(null);
+  const menuRef=useRef<HTMLDivElement|null>(null);
 
-function fmtPrecio(v?: number | null) {
-  if (v == null) return null;
-  return "$" + Number(v).toLocaleString("es-CO");
-}
+  const fetchData=async()=>{try{const[p,c]=await Promise.all([getPlanes(),getCodigosOperativos()]);setPlanes(p);setCodigos(c);}catch(e){console.error(e);}finally{setLoading(false);}};
+  useEffect(()=>{fetchData();},[]);
+  useEffect(()=>{if(!supabase)return;const channel=supabase.channel("planes-admin").on("postgres_changes",{event:"*",schema:"public",table:"plan"},fetchData).on("postgres_changes",{event:"*",schema:"public",table:"codigo_operativo"},fetchData).subscribe();return()=>{supabase?.removeChannel(channel);};},[]);
+  useEffect(()=>{if(openMenu==null)return;const handler=(e:MouseEvent)=>{if(menuRef.current&&!menuRef.current.contains(e.target as Node))setOpenMenu(null);};document.addEventListener("mousedown",handler);return()=>document.removeEventListener("mousedown",handler);},[openMenu]);
 
-function normalizarCodigoPlan(value: string) {
-  return value.toUpperCase().replace(/\s/g, "").slice(0, 5);
-}
+  const codigosPorPlan=useMemo(()=>{const map=new Map<number,CodigoOperativo[]>();for(const c of codigos){if(c.id_plan==null)continue;if(!map.has(c.id_plan))map.set(c.id_plan,[]);map.get(c.id_plan)!.push(c);}for(const[,list]of map)list.sort((a,b)=>a.codigo_ch.localeCompare(b.codigo_ch));return map;},[codigos]);
+  const codesFor=(id:number)=>codigosPorPlan.get(id)??[];
+  const codeLabel=(c:CodigoOperativo)=>c.incluye_almuerzo?`${c.codigo_ch} · almuerzo${c.restaurante?` ${c.restaurante}`:""}`:`${c.codigo_ch} · sin almuerzo`;
 
-export default function PlanesAdmin() {
-  const [planes, setPlanes] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [pageSize, setPageSize] = useState(10);
-  const [page, setPage] = useState(1);
+  const openCreate=()=>{setEditing(null);setFormData(emptyPlan);setShowForm(true);};
+  const openEdit=(plan:Plan)=>{setOpenMenu(null);setEditing(plan);setFormData({nombre_plan:plan.nombre_plan,precio_plan:plan.precio_plan??null,descripcion_basica:plan.descripcion_basica??null,descripcion_detallada:plan.descripcion_detallada??null,imagen_url:plan.imagen_url??null,numero_plan:plan.numero_plan??null,tipo_fecha:plan.tipo_fecha||"cualquier_dia",tipo_hora:plan.tipo_hora||"sin_hora",plan_fechas:plan.plan_fechas||[],plan_horas:plan.plan_horas||[]});setShowForm(true);};
+  const openView=(plan:Plan)=>{setOpenMenu(null);setViewing(plan);};
 
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Plan | null>(null);
-  const [formData, setFormData] = useState<Omit<Plan, "id_plan">>(emptyPlan);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleFileUpload=async(e:React.ChangeEvent<HTMLInputElement>)=>{const file=e.target.files?.[0];if(!file||!supabase)return;setUploading(true);try{const ext=file.name.split(".").pop();const name=`${Math.random().toString(36).substring(2)}-${Date.now()}.${ext}`;const{error}=await supabase.storage.from("planes").upload(name,file,{cacheControl:"3600",upsert:false});if(error)throw error;const{data}=supabase.storage.from("planes").getPublicUrl(name);setFormData(p=>({...p,imagen_url:data.publicUrl}));}catch(e){console.error(e);alert("No se pudo subir la imagen.");}finally{setUploading(false);}};
 
-  const [viewing, setViewing] = useState<Plan | null>(null);
-  const [openMenu, setOpenMenu] = useState<number | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const fetchPlanes = async () => {
-    try {
-      const data = await getPlanes();
-      setPlanes(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPlanes();
-  }, []);
-
-  useEffect(() => {
-    if (!supabase) return;
-    const client = supabase;
-    const channel = client
-      .channel("planes-admin")
-      .on("postgres_changes", { event: "*", schema: "public", table: "plan" }, fetchPlanes)
-      .subscribe();
-
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (openMenu == null) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenu(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [openMenu]);
-
-  const openCreate = () => {
-    setEditing(null);
-    setFormData(emptyPlan);
-    setShowForm(true);
-  };
-
-  const openEdit = (plan: Plan) => {
-    setOpenMenu(null);
-    setEditing(plan);
-    setFormData({
-      nombre_plan: plan.nombre_plan,
-      codigo_plan: plan.codigo_plan ?? null,
-      precio_plan: plan.precio_plan ?? null,
-      descripcion_basica: plan.descripcion_basica ?? null,
-      descripcion_detallada: plan.descripcion_detallada ?? null,
-      imagen_url: plan.imagen_url ?? null,
-      numero_plan: plan.numero_plan ?? null,
-      tipo_fecha: plan.tipo_fecha || "cualquier_dia",
-      tipo_hora: plan.tipo_hora || "sin_hora",
-      plan_fechas: plan.plan_fechas || [],
-      plan_horas: plan.plan_horas || [],
-    });
-    setShowForm(true);
-  };
-
-  const openView = (plan: Plan) => {
-    setOpenMenu(null);
-    setViewing(plan);
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !supabase) return;
-
-    setUploading(true);
-    try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from("planes")
-        .upload(fileName, file, { cacheControl: "3600", upsert: false });
-
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage
-        .from("planes")
-        .getPublicUrl(fileName);
-
-      setFormData((prev) => ({ ...prev, imagen_url: publicUrlData.publicUrl }));
-    } catch (error) {
-      console.error("Error subiendo imagen:", error);
-      alert("No se pudo subir la imagen.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!formData.nombre_plan.trim()) {
-      alert("El nombre del plan es obligatorio.");
-      return;
-    }
-
-    const codigo = normalizarCodigoPlan(formData.codigo_plan ?? "");
-    if (!CODIGO_PLAN_REGEX.test(codigo)) {
-      alert("El código del plan es obligatorio y debe tener el formato CH000, por ejemplo CH034.");
-      return;
-    }
-
-    const codigoDuplicado = planes.some(
-      (p) => p.id_plan !== editing?.id_plan && (p.codigo_plan ?? "").toUpperCase() === codigo
-    );
-    if (codigoDuplicado) {
-      alert(`El código ${codigo} ya está asignado a otro plan.`);
-      return;
-    }
-
-    if (
-      formData.tipo_fecha === "fechas_especificas" &&
-      (!formData.plan_fechas || formData.plan_fechas.length === 0)
-    ) {
-      alert("Debe agregar al menos una fecha para el tipo de fecha específica.");
-      return;
-    }
-
-    if (
-      formData.tipo_hora === "hora_fija" &&
-      (!formData.plan_horas || formData.plan_horas.length !== 1)
-    ) {
-      alert("Debe agregar exactamente una hora para el tipo de hora fija.");
-      return;
-    }
-
-    if (
-      formData.tipo_hora === "varias_horas" &&
-      (!formData.plan_horas || formData.plan_horas.length === 0)
-    ) {
-      alert("Debe agregar al menos una hora para el tipo de varias horas.");
-      return;
-    }
-
+  const handleSave=async()=>{
+    if(!formData.nombre_plan.trim()){alert("El nombre del plan es obligatorio.");return;}
+    if(formData.tipo_fecha==="fechas_especificas"&&(!formData.plan_fechas||!formData.plan_fechas.length)){alert("Debe agregar al menos una fecha para el tipo de fecha específica.");return;}
+    if(formData.tipo_hora==="hora_fija"&&(!formData.plan_horas||formData.plan_horas.length!==1)){alert("Debe agregar exactamente una hora para el tipo de hora fija.");return;}
+    if(formData.tipo_hora==="varias_horas"&&(!formData.plan_horas||!formData.plan_horas.length)){alert("Debe agregar al menos una hora para el tipo de varias horas.");return;}
     setSaving(true);
-
-    const finalPayload = {
-      ...formData,
-      codigo_plan: codigo,
-      plan_fechas:
-        formData.tipo_fecha === "fechas_especificas" ? formData.plan_fechas : [],
-      plan_horas: formData.tipo_hora !== "sin_hora" ? formData.plan_horas : [],
-    };
-
-    try {
-      if (editing) {
-        await updatePlan(editing.id_plan, finalPayload);
-      } else {
-        await createPlan(finalPayload);
-      }
-      setShowForm(false);
-      await fetchPlanes();
-    } catch (e: any) {
-      console.error(e);
-      const message = String(e?.message ?? "");
-      if (message.toLowerCase().includes("duplicate") || message.includes("codigo_plan")) {
-        alert("No se pudo guardar: verifica que el código del plan no esté repetido.");
-      } else {
-        alert("Ocurrió un error al guardar el plan.");
-      }
-    } finally {
-      setSaving(false);
-    }
+    const payload={...formData,plan_fechas:formData.tipo_fecha==="fechas_especificas"?formData.plan_fechas:[],plan_horas:formData.tipo_hora!=="sin_hora"?formData.plan_horas:[]};
+    try{if(editing)await updatePlan(editing.id_plan,payload);else await createPlan(payload);setShowForm(false);await fetchData();}
+    catch(e:any){console.error(e);alert(e?.message||"Ocurrió un error al guardar el plan.");}
+    finally{setSaving(false);}
   };
 
-  const handleDelete = async (plan: Plan) => {
-    setOpenMenu(null);
-    if (!confirm(`¿Eliminar "${plan.nombre_plan}"?`)) return;
-    try {
-      await deletePlan(plan.id_plan);
-      await fetchPlanes();
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo eliminar el plan. Puede estar relacionado con reservas existentes.");
-    }
-  };
+  const handleDelete=async(plan:Plan)=>{setOpenMenu(null);if(!confirm(`¿Eliminar "${plan.nombre_plan}"?`))return;try{await deletePlan(plan.id_plan);await fetchData();}catch(e){console.error(e);alert("No se pudo eliminar el plan. Puede estar relacionado con reservas o códigos operativos.");}};
+  const filtered=planes.filter(p=>{const q=search.toLowerCase().trim();const ch=codesFor(p.id_plan).map(c=>`${c.codigo_ch} ${c.descripcion} ${c.restaurante??""}`).join(" ").toLowerCase();return p.nombre_plan.toLowerCase().includes(q)||String(p.id_plan).includes(q)||String(p.numero_plan??"").includes(q)||(p.descripcion_basica??"").toLowerCase().includes(q)||ch.includes(q);});
+  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
+  const paginated=filtered.slice((page-1)*pageSize,page*pageSize);
+  const planesConCodigo=planes.filter(p=>codesFor(p.id_plan).some(c=>c.activo)).length;
+  const codigosVinculados=codigos.filter(c=>c.id_plan!=null).length;
+  const handleClear=()=>{setSearch("");setPage(1);};
 
-  const filtered = planes.filter((p) => {
-    const query = search.toLowerCase().trim();
-    return (
-      p.nombre_plan.toLowerCase().includes(query) ||
-      String(p.id_plan).includes(query) ||
-      String(p.numero_plan ?? "").includes(query) ||
-      (p.codigo_plan ?? "").toLowerCase().includes(query) ||
-      (p.descripcion_basica ?? "").toLowerCase().includes(query)
-    );
-  });
+  const Codes=({plan,compact=false}:{plan:Plan;compact?:boolean})=>{const list=codesFor(plan.id_plan);if(!list.length)return <span className="rv-null">Sin CH vinculado</span>;return <div style={{display:"flex",gap:5,flexWrap:"wrap",maxWidth:compact?260:360}}>{list.map(c=><span key={c.id_codigo_operativo} className={`badge ${c.activo?"badge-blue":"badge-gray"}`} title={codeLabel(c)}>{c.codigo_ch}{c.incluye_almuerzo?" 🍽️":""}</span>)}</div>;};
+  const ActionButtons=({plan}:{plan:Plan})=><div className="action-buttons"><button className="action-btn action-ver" onClick={()=>openView(plan)}><Eye size={15}/> Ver</button><button className="action-btn action-editar" onClick={()=>openEdit(plan)}><Pencil size={15}/> Editar</button><button className="action-btn action-eliminar" onClick={()=>handleDelete(plan)}><Trash2 size={15}/> Eliminar</button></div>;
+  const ActionMenu=({plan}:{plan:Plan})=><div className="plan-card-menu" ref={openMenu===plan.id_plan?menuRef:undefined}><button className="plan-menu-trigger" onClick={()=>setOpenMenu(openMenu===plan.id_plan?null:plan.id_plan)}><MoreVertical size={18}/></button>{openMenu===plan.id_plan&&<div className="plan-menu-dropdown"><button onClick={()=>openView(plan)}><Eye size={15}/> Ver</button><button onClick={()=>openEdit(plan)}><Pencil size={15}/> Editar</button><button className="plan-menu-danger" onClick={()=>handleDelete(plan)}><Trash2 size={15}/> Eliminar</button></div>}</div>;
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const codigosConfigurados = planes.filter((p) => CODIGO_PLAN_REGEX.test(p.codigo_plan ?? "")).length;
+  return <div className="planes-page">
+    <div className="planes-header"><div><h1 className="planes-title">Planes</h1><p className="planes-subtitle">Gestión de planes, precios y disponibilidad. Los CH se administran en Códigos operativos.</p></div><button className="btn-nuevo-plan" onClick={openCreate}><Plus size={16}/> Nuevo plan</button></div>
+    <div className="planes-kpis"><div className="kpi-card line-blue"><div className="kpi-icon" style={{background:"#dbeafe",color:"#1e40af"}}><Package size={24}/></div><div className="kpi-info"><h3>{planes.length}</h3><p>Total planes</p></div></div><div className="kpi-card line-green"><div className="kpi-icon" style={{background:"#ecfdf5",color:"#0f766e"}}><Package size={24}/></div><div className="kpi-info"><h3>{planesConCodigo}</h3><p>Planes con CH · {codigosVinculados} códigos vinculados</p></div></div></div>
+    <div className="planes-filter-bar"><div className="planes-search-wrap"><Search size={18} className="planes-search-icon"/><input className="planes-search-input" placeholder="Buscar por CH, nombre o descripción..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}}/></div><div className="planes-filter-divider"/><button className="planes-clear-btn" onClick={handleClear}><X size={14}/> Limpiar</button><div className="planes-filter-divider"/><span className="planes-rows-label">Filas:</span><select className="planes-rows-select" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}}>{PAGE_SIZE_OPTIONS.map(n=><option key={n} value={n}>{n}</option>)}</select><button onClick={fetchData} className="btn-refresh"><RefreshCw size={18}/></button></div>
+    <div className="planes-table-wrap planes-desktop-only"><table className="planes-table"><thead><tr><th>N° PLAN</th><th>CÓDIGOS CH</th><th>PLAN</th><th>PRECIO</th><th>FECHA</th><th>HORA</th><th>ACCIONES</th></tr></thead><tbody>{loading?<tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Cargando...</td></tr>:paginated.length===0?<tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Sin resultados</td></tr>:paginated.map(plan=><tr key={plan.id_plan}><td>{plan.numero_plan??<span className="rv-null">—</span>}</td><td><Codes plan={plan}/></td><td><div className="plan-name-cell"><PlanImage src={plan.imagen_url} alt={plan.nombre_plan} className="plan-thumb"/><div><div className="plan-name">{plan.nombre_plan}</div><div className="plan-desc-short">{plan.descripcion_basica??""}</div></div></div></td><td className="precio-cell">{fmtPrecio(plan.precio_plan)??<span className="rv-null">—</span>}</td><td><div className="disp-badge-cell">{plan.tipo_fecha==="cualquier_dia"?<span className="badge badge-gray">Cualquier día</span>:<span className="badge badge-yellow">Fechas esp. ({plan.plan_fechas?.length||0})</span>}</div></td><td><div className="disp-badge-cell">{plan.tipo_hora==="sin_hora"?<span className="badge badge-gray">Sin hora</span>:plan.tipo_hora==="hora_fija"?<span className="badge badge-blue">Hora fija</span>:<span className="badge badge-teal">Varias ({plan.plan_horas?.length||0})</span>}</div></td><td><ActionButtons plan={plan}/></td></tr>)}</tbody></table><div className="planes-pagination"><span className="planes-pag-info">Mostrando {filtered.length===0?0:(page-1)*pageSize+1}–{Math.min(page*pageSize,filtered.length)} de {filtered.length}</span><div className="planes-pag-controls"><button className="planes-pag-btn" disabled={page===1} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={15}/> Anterior</button><span className="planes-pag-current">Página {page} / {totalPages}</span><button className="planes-pag-btn" disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)}>Siguiente <ChevronRight size={15}/></button></div></div></div>
+    <div className="planes-cards planes-mobile-only">{loading?<div className="plan-card-empty">Cargando...</div>:paginated.length===0?<div className="plan-card-empty">Sin resultados</div>:paginated.map(plan=><div className="plan-card" key={plan.id_plan}><div className="plan-card-top">{plan.imagen_url?<img src={plan.imagen_url} alt={plan.nombre_plan} className="plan-card-thumb" onError={e=>((e.target as HTMLImageElement).style.display="none")}/>:<div className="plan-card-thumb-ph"><Package size={20}/></div>}<div className="plan-card-headtext"><span className="plan-card-id">#{plan.id_plan}</span><span className="plan-card-name">{plan.nombre_plan}</span><Codes plan={plan} compact/>{plan.numero_plan!=null&&<span className="plan-card-num">N° {plan.numero_plan}</span>}</div><ActionMenu plan={plan}/></div>{plan.descripcion_basica&&<p className="plan-card-desc">{plan.descripcion_basica}</p>}<div className="plan-card-meta"><div className="plan-card-meta-item"><span className="plan-card-meta-label">Precio</span><span className="plan-card-meta-value precio-cell">{fmtPrecio(plan.precio_plan)??"—"}</span></div></div></div>)}<div className="planes-pagination planes-pagination-mobile"><span className="planes-pag-info">{filtered.length===0?0:(page-1)*pageSize+1}–{Math.min(page*pageSize,filtered.length)} de {filtered.length}</span><div className="planes-pag-controls"><button className="planes-pag-btn" disabled={page===1} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={15}/></button><span className="planes-pag-current">{page} / {totalPages}</span><button className="planes-pag-btn" disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)}><ChevronRight size={15}/></button></div></div></div>
 
-  const handleClear = () => {
-    setSearch("");
-    setPage(1);
-  };
+    {viewing&&<div className="modal-overlay"><div className="modal-card"><div className="modal-header"><h2>Detalle del plan</h2><button className="modal-close" onClick={()=>setViewing(null)}><X size={20}/></button></div><div className="modal-body"><PlanImage src={viewing.imagen_url} alt={viewing.nombre_plan} className="modal-img"/><div className="modal-field"><label>Códigos operativos CH</label><div>{codesFor(viewing.id_plan).length?codesFor(viewing.id_plan).map(c=><div key={c.id_codigo_operativo} style={{marginBottom:5}}><strong>{c.codigo_ch}</strong> — {c.incluye_almuerzo?`Con almuerzo${c.restaurante?` · ${c.restaurante}`:""}`:"Sin almuerzo"}{!c.activo?" · Inactivo":""}</div>):"Sin CH vinculado"}</div></div><div className="modal-field"><label>Nombre</label><span>{viewing.nombre_plan}</span></div><div className="modal-field"><label>N° de plan</label><span>{viewing.numero_plan??"—"}</span></div><div className="modal-field"><label>Precio</label><span>{fmtPrecio(viewing.precio_plan)??"—"}</span></div><div className="modal-field"><label>Descripción básica</label><span>{viewing.descripcion_basica||"—"}</span></div><div className="modal-field"><label>Descripción detallada</label><span>{viewing.descripcion_detallada||"—"}</span></div><div className="modal-field"><label>Disponibilidad de fecha</label><span>{viewing.tipo_fecha==="cualquier_dia"?"Cualquier día":"Fechas específicas"}</span>{viewing.tipo_fecha==="fechas_especificas"&&viewing.plan_fechas&&<div className="modal-sublist">{viewing.plan_fechas.map((f,i)=><div key={i} className="modal-subitem"><Calendar size={12}/> {f.fecha}</div>)}</div>}</div><div className="modal-field"><label>Disponibilidad de hora</label><span>{viewing.tipo_hora==="sin_hora"?"Sin hora":viewing.tipo_hora==="hora_fija"?"Hora fija":"Varias horas"}</span>{viewing.tipo_hora!=="sin_hora"&&viewing.plan_horas&&<div className="modal-sublist">{viewing.plan_horas.map((h,i)=><div key={i} className="modal-subitem"><Clock size={12}/> {h.hora}</div>)}</div>}</div></div></div></div>}
 
-  const ActionButtons = ({ plan }: { plan: Plan }) => (
-    <div className="action-buttons">
-      <button className="action-btn action-ver" onClick={() => openView(plan)} title="Ver">
-        <Eye size={15} /> Ver
-      </button>
-      <button className="action-btn action-editar" onClick={() => openEdit(plan)} title="Editar">
-        <Pencil size={15} /> Editar
-      </button>
-      <button className="action-btn action-eliminar" onClick={() => handleDelete(plan)} title="Eliminar">
-        <Trash2 size={15} /> Eliminar
-      </button>
-    </div>
-  );
-
-  const ActionMenu = ({ plan }: { plan: Plan }) => (
-    <div className="plan-card-menu" ref={openMenu === plan.id_plan ? menuRef : undefined}>
-      <button
-        className="plan-menu-trigger"
-        onClick={() => setOpenMenu(openMenu === plan.id_plan ? null : plan.id_plan)}
-        aria-label="Acciones"
-      >
-        <MoreVertical size={18} />
-      </button>
-      {openMenu === plan.id_plan && (
-        <div className="plan-menu-dropdown">
-          <button onClick={() => openView(plan)}><Eye size={15} /> Ver</button>
-          <button onClick={() => openEdit(plan)}><Pencil size={15} /> Editar</button>
-          <button className="plan-menu-danger" onClick={() => handleDelete(plan)}>
-            <Trash2 size={15} /> Eliminar
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="planes-page">
-      <div className="planes-header">
-        <div>
-          <h1 className="planes-title">Planes</h1>
-          <p className="planes-subtitle">Gestión de planes, códigos, precios y disponibilidad</p>
-        </div>
-        <button className="btn-nuevo-plan" onClick={openCreate}>
-          <Plus size={16} /> Nuevo plan
-        </button>
-      </div>
-
-      <div className="planes-kpis">
-        <div className="kpi-card line-blue">
-          <div className="kpi-icon" style={{ background: "#dbeafe", color: "#1e40af" }}>
-            <Package size={24} />
-          </div>
-          <div className="kpi-info">
-            <h3>{planes.length}</h3>
-            <p>Total planes</p>
-          </div>
-        </div>
-        <div className="kpi-card line-green">
-          <div className="kpi-icon" style={{ background: "#ecfdf5", color: "#0f766e" }}>
-            <Package size={24} />
-          </div>
-          <div className="kpi-info">
-            <h3>{codigosConfigurados}</h3>
-            <p>Códigos configurados</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="planes-filter-bar">
-        <div className="planes-search-wrap">
-          <Search size={18} className="planes-search-icon" />
-          <input
-            className="planes-search-input"
-            placeholder="Buscar por código, nombre o descripción..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          />
-        </div>
-        <div className="planes-filter-divider" />
-        <button className="planes-clear-btn" onClick={handleClear}>
-          <X size={14} /> Limpiar
-        </button>
-        <div className="planes-filter-divider" />
-        <span className="planes-rows-label">Filas:</span>
-        <select
-          className="planes-rows-select"
-          value={pageSize}
-          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-        >
-          {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <button onClick={fetchPlanes} className="btn-refresh" title="Recargar">
-          <RefreshCw size={18} />
-        </button>
-      </div>
-
-      <div className="planes-table-wrap planes-desktop-only">
-        <table className="planes-table">
-          <thead>
-            <tr>
-              <th>N° PLAN</th>
-              <th>CÓDIGO</th>
-              <th>PLAN</th>
-              <th>PRECIO</th>
-              <th>FECHA</th>
-              <th>HORA</th>
-              <th>ACCIONES</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Cargando...</td></tr>
-            ) : paginated.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>Sin resultados</td></tr>
-            ) : paginated.map((plan) => (
-              <tr key={plan.id_plan}>
-                <td>{plan.numero_plan ?? <span className="rv-null">—</span>}</td>
-                <td>
-                  {plan.codigo_plan ? (
-                    <span className="badge badge-blue">{plan.codigo_plan}</span>
-                  ) : (
-                    <span className="rv-null">Sin código</span>
-                  )}
-                </td>
-                <td>
-                  <div className="plan-name-cell">
-                    <PlanImage src={plan.imagen_url} alt={plan.nombre_plan} className="plan-thumb" />
-                    <div>
-                      <div className="plan-name">{plan.nombre_plan}</div>
-                      <div className="plan-desc-short">{plan.descripcion_basica ?? ""}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="precio-cell">
-                  {fmtPrecio(plan.precio_plan) ?? <span className="rv-null">—</span>}
-                </td>
-                <td>
-                  <div className="disp-badge-cell">
-                    {plan.tipo_fecha === "cualquier_dia" ? (
-                      <span className="badge badge-gray">Cualquier día</span>
-                    ) : (
-                      <span className="badge badge-yellow">Fechas esp. ({plan.plan_fechas?.length || 0})</span>
-                    )}
-                  </div>
-                </td>
-                <td>
-                  <div className="disp-badge-cell">
-                    {plan.tipo_hora === "sin_hora" ? (
-                      <span className="badge badge-gray">Sin hora</span>
-                    ) : plan.tipo_hora === "hora_fija" ? (
-                      <span className="badge badge-blue">Hora fija</span>
-                    ) : (
-                      <span className="badge badge-teal">Varias ({plan.plan_horas?.length || 0})</span>
-                    )}
-                  </div>
-                </td>
-                <td><ActionButtons plan={plan} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="planes-pagination">
-          <span className="planes-pag-info">
-            Mostrando {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}
-          </span>
-          <div className="planes-pag-controls">
-            <button className="planes-pag-btn" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft size={15} /> Anterior
-            </button>
-            <span className="planes-pag-current">Página {page} / {totalPages}</span>
-            <button className="planes-pag-btn" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Siguiente <ChevronRight size={15} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="planes-cards planes-mobile-only">
-        {loading ? (
-          <div className="plan-card-empty">Cargando...</div>
-        ) : paginated.length === 0 ? (
-          <div className="plan-card-empty">Sin resultados</div>
-        ) : paginated.map((plan) => (
-          <div className="plan-card" key={plan.id_plan}>
-            <div className="plan-card-top">
-              {plan.imagen_url ? (
-                <img
-                  src={plan.imagen_url}
-                  alt={plan.nombre_plan}
-                  className="plan-card-thumb"
-                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                />
-              ) : (
-                <div className="plan-card-thumb-ph"><Package size={20} /></div>
-              )}
-              <div className="plan-card-headtext">
-                <span className="plan-card-id">#{plan.id_plan}</span>
-                <span className="plan-card-name">{plan.nombre_plan}</span>
-                <span className="plan-card-num">Código: {plan.codigo_plan ?? "Sin asignar"}</span>
-                {plan.numero_plan != null && <span className="plan-card-num">N° {plan.numero_plan}</span>}
-              </div>
-              <ActionMenu plan={plan} />
-            </div>
-
-            {plan.descripcion_basica && <p className="plan-card-desc">{plan.descripcion_basica}</p>}
-
-            <div className="plan-card-meta">
-              <div className="plan-card-meta-item">
-                <span className="plan-card-meta-label">Precio</span>
-                <span className="plan-card-meta-value precio-cell">{fmtPrecio(plan.precio_plan) ?? "—"}</span>
-              </div>
-              <div className="plan-card-meta-item">
-                <span className="plan-card-meta-label">Disponibilidad</span>
-                <div className="plan-card-meta-value">
-                  <div className="disp-badge-cell">
-                    {plan.tipo_fecha === "cualquier_dia" ? (
-                      <span className="badge badge-gray">Cualquier día</span>
-                    ) : (
-                      <span className="badge badge-yellow">Fechas esp. ({plan.plan_fechas?.length || 0})</span>
-                    )}
-                    {plan.tipo_hora === "sin_hora" ? (
-                      <span className="badge badge-gray">Sin hora</span>
-                    ) : plan.tipo_hora === "hora_fija" ? (
-                      <span className="badge badge-blue">Hora fija</span>
-                    ) : (
-                      <span className="badge badge-teal">Varias ({plan.plan_horas?.length || 0})</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        <div className="planes-pagination planes-pagination-mobile">
-          <span className="planes-pag-info">
-            {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} de {filtered.length}
-          </span>
-          <div className="planes-pag-controls">
-            <button className="planes-pag-btn" disabled={page === 1} onClick={() => setPage((p) => p - 1)}><ChevronLeft size={15} /></button>
-            <span className="planes-pag-current">{page} / {totalPages}</span>
-            <button className="planes-pag-btn" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}><ChevronRight size={15} /></button>
-          </div>
-        </div>
-      </div>
-
-      {viewing && (
-        <div className="modal-overlay" onClick={() => setViewing(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Detalle del plan</h2>
-              <button className="modal-close" onClick={() => setViewing(null)}><X size={20} /></button>
-            </div>
-            <div className="modal-body">
-              <PlanImage src={viewing.imagen_url} alt={viewing.nombre_plan} className="modal-img" />
-              <div className="modal-field"><label>Código del plan</label><span>{viewing.codigo_plan ?? "Sin asignar"}</span></div>
-              <div className="modal-field"><label>Nombre</label><span>{viewing.nombre_plan}</span></div>
-              <div className="modal-field"><label>N° de plan</label><span>{viewing.numero_plan ?? "—"}</span></div>
-              <div className="modal-field"><label>Precio</label><span>{fmtPrecio(viewing.precio_plan) ?? "—"}</span></div>
-              <div className="modal-field"><label>Descripción básica</label><span>{viewing.descripcion_basica || "—"}</span></div>
-              <div className="modal-field"><label>Descripción detallada</label><span>{viewing.descripcion_detallada || "—"}</span></div>
-
-              <div className="modal-field">
-                <label>Disponibilidad de fecha</label>
-                <span>{viewing.tipo_fecha === "cualquier_dia" ? "Cualquier día" : "Fechas específicas"}</span>
-                {viewing.tipo_fecha === "fechas_especificas" && viewing.plan_fechas && (
-                  <div className="modal-sublist">
-                    {viewing.plan_fechas.map((f, i) => <div key={i} className="modal-subitem"><Calendar size={12} /> {f.fecha}</div>)}
-                  </div>
-                )}
-              </div>
-
-              <div className="modal-field">
-                <label>Disponibilidad de hora</label>
-                <span>{viewing.tipo_hora === "sin_hora" ? "Sin hora" : viewing.tipo_hora === "hora_fija" ? "Hora fija" : "Varias horas"}</span>
-                {viewing.tipo_hora !== "sin_hora" && viewing.plan_horas && (
-                  <div className="modal-sublist">
-                    {viewing.plan_horas.map((h, i) => <div key={i} className="modal-subitem"><Clock size={12} /> {h.hora}</div>)}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>{editing ? "Editar plan" : "Nuevo plan"}</h2>
-              <button className="modal-close" onClick={() => setShowForm(false)}><X size={20} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Descripción básica</label>
-                <textarea
-                  value={formData.descripcion_basica ?? ""}
-                  onChange={(e) => setFormData({ ...formData, descripcion_basica: e.target.value || null })}
-                  rows={3}
-                  placeholder="Descripción corta..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Descripción detallada</label>
-                <textarea
-                  value={formData.descripcion_detallada ?? ""}
-                  onChange={(e) => setFormData({ ...formData, descripcion_detallada: e.target.value || null })}
-                  rows={4}
-                  placeholder="Descripción larga..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Nombre *</label>
-                <input
-                  value={formData.nombre_plan}
-                  onChange={(e) => setFormData({ ...formData, nombre_plan: e.target.value })}
-                  placeholder="Nombre del plan"
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Código del plan *</label>
-                  <input
-                    value={formData.codigo_plan ?? ""}
-                    onChange={(e) => setFormData({ ...formData, codigo_plan: normalizarCodigoPlan(e.target.value) || null })}
-                    placeholder="CH034"
-                    maxLength={5}
-                    autoComplete="off"
-                  />
-                  <small style={{ color: "#64748b", marginTop: 6, display: "block" }}>
-                    Formato requerido: CH + 3 dígitos. Este código se usará para generar el código de reserva.
-                  </small>
-                </div>
-                <div className="form-group">
-                  <label>N° de plan</label>
-                  <input
-                    type="number"
-                    value={formData.numero_plan ?? ""}
-                    onChange={(e) => setFormData({ ...formData, numero_plan: e.target.value ? Number(e.target.value) : null })}
-                    placeholder="Ej. 1"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Precio (COP)</label>
-                <input
-                  type="number"
-                  value={formData.precio_plan ?? ""}
-                  onChange={(e) => setFormData({ ...formData, precio_plan: e.target.value ? Number(e.target.value) : null })}
-                  placeholder="0"
-                />
-              </div>
-
-              <div className="form-section">
-                <h3 className="section-title">Disponibilidad de fecha</h3>
-                <div className="radio-group">
-                  <label className="radio-label">
-                    <input type="radio" name="tipo_fecha" value="cualquier_dia" checked={formData.tipo_fecha === "cualquier_dia"} onChange={() => setFormData({ ...formData, tipo_fecha: "cualquier_dia", plan_fechas: [] })} />
-                    <span>Cualquier día</span>
-                  </label>
-                  <label className="radio-label">
-                    <input type="radio" name="tipo_fecha" value="fechas_especificas" checked={formData.tipo_fecha === "fechas_especificas"} onChange={() => setFormData({ ...formData, tipo_fecha: "fechas_especificas" })} />
-                    <span>Fechas específicas</span>
-                  </label>
-                </div>
-
-                {formData.tipo_fecha === "fechas_especificas" && (
-                  <div className="dynamic-list">
-                    {formData.plan_fechas?.map((f, idx) => (
-                      <div key={idx} className="dynamic-item">
-                        <Calendar size={16} className="item-icon" />
-                        <input
-                          type="date"
-                          value={f.fecha}
-                          onChange={(e) => {
-                            const newFechas = [...(formData.plan_fechas || [])];
-                            newFechas[idx].fecha = e.target.value;
-                            setFormData({ ...formData, plan_fechas: newFechas });
-                          }}
-                        />
-                        <button type="button" className="btn-remove-item" onClick={() => setFormData({ ...formData, plan_fechas: formData.plan_fechas?.filter((_, i) => i !== idx) })}>
-                          <Trash size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    <button type="button" className="btn-add-item" onClick={() => setFormData({ ...formData, plan_fechas: [...(formData.plan_fechas || []), { fecha: "" }] })}>
-                      <Plus size={14} /> Agregar fecha
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="form-section">
-                <h3 className="section-title">Disponibilidad de hora</h3>
-                <div className="radio-group">
-                  <label className="radio-label">
-                    <input type="radio" name="tipo_hora" value="sin_hora" checked={formData.tipo_hora === "sin_hora"} onChange={() => setFormData({ ...formData, tipo_hora: "sin_hora", plan_horas: [] })} />
-                    <span>Sin hora</span>
-                  </label>
-                  <label className="radio-label">
-                    <input
-                      type="radio"
-                      name="tipo_hora"
-                      value="hora_fija"
-                      checked={formData.tipo_hora === "hora_fija"}
-                      onChange={() => {
-                        const newHoras = formData.plan_horas?.length ? [formData.plan_horas[0]] : [{ hora: "" }];
-                        setFormData({ ...formData, tipo_hora: "hora_fija", plan_horas: newHoras });
-                      }}
-                    />
-                    <span>Hora fija</span>
-                  </label>
-                  <label className="radio-label">
-                    <input type="radio" name="tipo_hora" value="varias_horas" checked={formData.tipo_hora === "varias_horas"} onChange={() => setFormData({ ...formData, tipo_hora: "varias_horas" })} />
-                    <span>Varias horas</span>
-                  </label>
-                </div>
-
-                {formData.tipo_hora !== "sin_hora" && (
-                  <div className="dynamic-list">
-                    {formData.plan_horas?.map((h, idx) => (
-                      <div key={idx} className="dynamic-item">
-                        <Clock size={16} className="item-icon" />
-                        <input
-                          type="time"
-                          value={h.hora}
-                          onChange={(e) => {
-                            const newHoras = [...(formData.plan_horas || [])];
-                            newHoras[idx].hora = e.target.value;
-                            setFormData({ ...formData, plan_horas: newHoras });
-                          }}
-                        />
-                        {formData.tipo_hora === "varias_horas" && (
-                          <button type="button" className="btn-remove-item" onClick={() => setFormData({ ...formData, plan_horas: formData.plan_horas?.filter((_, i) => i !== idx) })}>
-                            <Trash size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {formData.tipo_hora === "varias_horas" && (
-                      <button type="button" className="btn-add-item" onClick={() => setFormData({ ...formData, plan_horas: [...(formData.plan_horas || []), { hora: "" }] })}>
-                        <Plus size={14} /> Agregar hora
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label>Imagen del plan</label>
-                <div className="image-upload-container">
-                  {formData.imagen_url ? (
-                    <div className="image-preview-wrap">
-                      <PlanImage src={formData.imagen_url} alt="Preview" className="image-preview" />
-                      <button type="button" className="btn-remove-image" onClick={() => setFormData({ ...formData, imagen_url: null })}>
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button type="button" className="btn-upload-placeholder" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                      {uploading ? <RefreshCw size={24} className="spin" /> : <><Upload size={24} /><span>Subir imagen</span></>}
-                    </button>
-                  )}
-                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" style={{ display: "none" }} />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>O ingresar URL de imagen manualmente</label>
-                <input
-                  value={formData.imagen_url ?? ""}
-                  onChange={(e) => setFormData({ ...formData, imagen_url: e.target.value || null })}
-                  placeholder="https://..."
-                />
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn-cancelar" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="btn-guardar" onClick={handleSave} disabled={saving}>
-                {saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear plan"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    {showForm&&<div className="modal-overlay"><div className="modal-card"><div className="modal-header"><h2>{editing?"Editar plan":"Nuevo plan"}</h2><button className="modal-close" onClick={()=>!saving&&setShowForm(false)} disabled={saving}><X size={20}/></button></div><div className="modal-body"><div style={{padding:"10px 12px",background:"#fff8eb",border:"1px solid #ead6ae",borderRadius:8,marginBottom:14,fontSize:12,color:"#70552a"}}>Los códigos CH ya no se editan desde Planes. Vincúlalos en <strong>Códigos operativos</strong>; un mismo plan puede tener varios CH según almuerzo y restaurante.</div><div className="form-group"><label>Descripción básica</label><textarea value={formData.descripcion_basica??""} onChange={e=>setFormData({...formData,descripcion_basica:e.target.value||null})} rows={3}/></div><div className="form-group"><label>Descripción detallada</label><textarea value={formData.descripcion_detallada??""} onChange={e=>setFormData({...formData,descripcion_detallada:e.target.value||null})} rows={4}/></div><div className="form-group"><label>Nombre *</label><input value={formData.nombre_plan} onChange={e=>setFormData({...formData,nombre_plan:e.target.value})}/></div><div className="form-row"><div className="form-group"><label>N° de plan</label><input type="number" value={formData.numero_plan??""} onChange={e=>setFormData({...formData,numero_plan:e.target.value?Number(e.target.value):null})}/></div><div className="form-group"><label>Precio (COP)</label><input type="number" value={formData.precio_plan??""} onChange={e=>setFormData({...formData,precio_plan:e.target.value?Number(e.target.value):null})}/></div></div><div className="form-section"><h3 className="section-title">Disponibilidad de fecha</h3><div className="radio-group"><label className="radio-label"><input type="radio" name="tipo_fecha" checked={formData.tipo_fecha==="cualquier_dia"} onChange={()=>setFormData({...formData,tipo_fecha:"cualquier_dia",plan_fechas:[]})}/><span>Cualquier día</span></label><label className="radio-label"><input type="radio" name="tipo_fecha" checked={formData.tipo_fecha==="fechas_especificas"} onChange={()=>setFormData({...formData,tipo_fecha:"fechas_especificas"})}/><span>Fechas específicas</span></label></div>{formData.tipo_fecha==="fechas_especificas"&&<div className="dynamic-list">{formData.plan_fechas?.map((f,idx)=><div key={idx} className="dynamic-item"><Calendar size={16} className="item-icon"/><input type="date" value={f.fecha} onChange={e=>{const n=[...(formData.plan_fechas||[])];n[idx].fecha=e.target.value;setFormData({...formData,plan_fechas:n});}}/><button type="button" className="btn-remove-item" onClick={()=>setFormData({...formData,plan_fechas:formData.plan_fechas?.filter((_,i)=>i!==idx)})}><Trash size={14}/></button></div>)}<button type="button" className="btn-add-item" onClick={()=>setFormData({...formData,plan_fechas:[...(formData.plan_fechas||[]),{fecha:""}]})}><Plus size={14}/> Agregar fecha</button></div>}</div><div className="form-section"><h3 className="section-title">Disponibilidad de hora</h3><div className="radio-group"><label className="radio-label"><input type="radio" name="tipo_hora" checked={formData.tipo_hora==="sin_hora"} onChange={()=>setFormData({...formData,tipo_hora:"sin_hora",plan_horas:[]})}/><span>Sin hora</span></label><label className="radio-label"><input type="radio" name="tipo_hora" checked={formData.tipo_hora==="hora_fija"} onChange={()=>setFormData({...formData,tipo_hora:"hora_fija",plan_horas:formData.plan_horas?.length?[formData.plan_horas[0]]:[{hora:""}]})}/><span>Hora fija</span></label><label className="radio-label"><input type="radio" name="tipo_hora" checked={formData.tipo_hora==="varias_horas"} onChange={()=>setFormData({...formData,tipo_hora:"varias_horas"})}/><span>Varias horas</span></label></div>{formData.tipo_hora!=="sin_hora"&&<div className="dynamic-list">{formData.plan_horas?.map((h,idx)=><div key={idx} className="dynamic-item"><Clock size={16} className="item-icon"/><input type="time" value={h.hora} onChange={e=>{const n=[...(formData.plan_horas||[])];n[idx].hora=e.target.value;setFormData({...formData,plan_horas:n});}}/>{formData.tipo_hora==="varias_horas"&&<button type="button" className="btn-remove-item" onClick={()=>setFormData({...formData,plan_horas:formData.plan_horas?.filter((_,i)=>i!==idx)})}><Trash size={14}/></button>}</div>)}{formData.tipo_hora==="varias_horas"&&<button type="button" className="btn-add-item" onClick={()=>setFormData({...formData,plan_horas:[...(formData.plan_horas||[]),{hora:""}]})}><Plus size={14}/> Agregar hora</button>}</div>}</div><div className="form-group"><label>Imagen del plan</label><div className="image-upload-container">{formData.imagen_url?<div className="image-preview-wrap"><PlanImage src={formData.imagen_url} alt="Preview" className="image-preview"/><button type="button" className="btn-remove-image" onClick={()=>setFormData({...formData,imagen_url:null})}><X size={14}/></button></div>:<button type="button" className="btn-upload-placeholder" onClick={()=>fileInputRef.current?.click()} disabled={uploading}>{uploading?<RefreshCw size={24} className="spin"/>:<><Upload size={24}/><span>Subir imagen</span></>}</button>}<input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" style={{display:"none"}}/></div></div><div className="form-group"><label>O ingresar URL de imagen manualmente</label><input value={formData.imagen_url??""} onChange={e=>setFormData({...formData,imagen_url:e.target.value||null})}/></div></div><div className="modal-footer"><button className="btn-cancelar" onClick={()=>setShowForm(false)} disabled={saving}>Cancelar</button><button className="btn-guardar" onClick={handleSave} disabled={saving}>{saving?"Guardando...":editing?"Guardar cambios":"Crear plan"}</button></div></div></div>}
+  </div>;
 }
