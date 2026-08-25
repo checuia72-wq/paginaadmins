@@ -203,20 +203,53 @@ export async function deleteCliente(telefono:string){const{error}=await getClien
 
 /* ─── RESERVAS ───────────────────────────────────────────── */
 export async function getReservas() {
-  const { data, error } = await getClient().from("reserva").select(`
+  const db = getClient();
+
+  // La reserva se consulta primero sin joins embebidos. Así una relación, RLS
+  // secundaria o cambio de esquema en Planes nunca hace desaparecer la tabla.
+  const { data: reservas, error } = await db.from("reserva").select(`
     id_reserva, codigo_reserva, fecha_solicitud, fecha_aprobacion, telefono_cliente,
     id_plan, id_fecha, id_hora, cantidad_personas, aprobado,
     precio_unitario, valor_total, valor_abonado, valor_saldo_pagado,
     mina, refrigerio, restaurante, observacion, metodo_pago_abono, metodo_pago_saldo,
-    id_codigo_operativo, incluye_almuerzo, estado_operativo, motivo_estado_operativo, estado_operativo_at,
-    plan:plan!reserva_id_plan_fkey(nombre_plan, plan_fechas(id_fecha,fecha), plan_horas(id_hora,hora))
+    id_codigo_operativo, incluye_almuerzo, estado_operativo, motivo_estado_operativo, estado_operativo_at
   `).order("id_reserva", { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((r: any) => ({
+
+  const rows = reservas ?? [];
+  if (!rows.length) return [];
+
+  const planIds = [...new Set(rows.map((r: any) => Number(r.id_plan)).filter(Number.isFinite))];
+  const fechaIds = [...new Set(rows.map((r: any) => Number(r.id_fecha)).filter(Number.isFinite))];
+  const horaIds = [...new Set(rows.map((r: any) => Number(r.id_hora)).filter(Number.isFinite))];
+
+  const [planesResult, fechasResult, horasResult] = await Promise.allSettled([
+    planIds.length ? db.from("plan").select("id_plan,nombre_plan").in("id_plan", planIds) : Promise.resolve({ data: [], error: null }),
+    fechaIds.length ? db.from("plan_fechas").select("id_fecha,fecha").in("id_fecha", fechaIds) : Promise.resolve({ data: [], error: null }),
+    horaIds.length ? db.from("plan_horas").select("id_hora,hora").in("id_hora", horaIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const safeData = (result: PromiseSettledResult<any>) => {
+    if (result.status !== "fulfilled") return [];
+    if (result.value?.error) {
+      console.warn("Consulta complementaria de reservas falló:", result.value.error);
+      return [];
+    }
+    return result.value?.data ?? [];
+  };
+
+  const planes = safeData(planesResult);
+  const fechas = safeData(fechasResult);
+  const horas = safeData(horasResult);
+  const planMap = new Map(planes.map((p: any) => [Number(p.id_plan), p.nombre_plan]));
+  const fechaMap = new Map(fechas.map((f: any) => [Number(f.id_fecha), f.fecha]));
+  const horaMap = new Map(horas.map((h: any) => [Number(h.id_hora), h.hora]));
+
+  return rows.map((r: any) => ({
     ...r,
-    nombre_plan: r.plan?.nombre_plan ?? null,
-    fecha_reserva: r.plan?.plan_fechas?.find((f:any)=>Number(f.id_fecha)===Number(r.id_fecha))?.fecha ?? null,
-    hora_reserva: r.plan?.plan_horas?.find((h:any)=>Number(h.id_hora)===Number(r.id_hora))?.hora ?? null,
+    nombre_plan: planMap.get(Number(r.id_plan)) ?? null,
+    fecha_reserva: fechaMap.get(Number(r.id_fecha)) ?? null,
+    hora_reserva: horaMap.get(Number(r.id_hora)) ?? null,
   }));
 }
 
