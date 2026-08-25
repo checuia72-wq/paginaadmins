@@ -14,12 +14,14 @@ import CrearPage from "./pages/CrearPage";
 import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
+import GlobalAlertModal from "./components/common/GlobalAlertModal";
 
 import "./styles/dashboard.css";
 
 export default function App() {
   return (
     <BrowserRouter>
+      <GlobalAlertModal />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
