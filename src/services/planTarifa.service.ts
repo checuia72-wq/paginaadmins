@@ -18,15 +18,25 @@ function db() {
 }
 
 export async function getPlanTarifas(): Promise<PlanTarifa[]> {
-  const { data, error } = await db()
-    .from("plan_tarifa")
-    .select("id_tarifa,id_plan,personas_min,personas_max,precio_persona,tipo_dia,activo")
-    .eq("activo", true)
-    .order("id_plan", { ascending: true })
-    .order("tipo_dia", { ascending: true })
-    .order("personas_min", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as PlanTarifa[];
+  try {
+    const { data, error } = await db()
+      .from("plan_tarifa")
+      .select("id_tarifa,id_plan,personas_min,personas_max,precio_persona,tipo_dia,activo")
+      .eq("activo", true)
+      .order("id_plan", { ascending: true })
+      .order("tipo_dia", { ascending: true })
+      .order("personas_min", { ascending: true });
+
+    if (error) {
+      console.warn("No se pudieron cargar las tarifas de planes. Los planes seguirán visibles:", error);
+      return [];
+    }
+
+    return (data ?? []) as PlanTarifa[];
+  } catch (error) {
+    console.warn("Fallo inesperado cargando tarifas. Los planes seguirán visibles:", error);
+    return [];
+  }
 }
 
 export async function replacePlanTarifas(idPlan: number, tarifas: Omit<PlanTarifa, "id_plan" | "id_tarifa">[]) {
