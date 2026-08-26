@@ -1,9 +1,9 @@
-import ReservasApprovalGuard from "../components/admin/ReservasApprovalGuard";
+import ReservasPdfGuard from "../components/admin/ReservasPdfGuard";
 
 export default function ReservasPage() {
   return (
     <div className="p-4">
-      <ReservasApprovalGuard />
+      <ReservasPdfGuard />
     </div>
   );
 }
