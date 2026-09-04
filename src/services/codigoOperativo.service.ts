@@ -73,13 +73,31 @@ function normalizePlan(r: any): PlanLigero {
   };
 }
 
+async function ensurePlanCodigoLegacy(db: ReturnType<typeof client>, idPlan: number, codigoCh: string) {
+  const { data: planRow, error: planError } = await db
+    .from("plan")
+    .select("id_plan,codigo_plan")
+    .eq("id_plan", Number(idPlan))
+    .maybeSingle();
+
+  if (planError) throw planError;
+  if (!planRow) return;
+
+  const actual = String(planRow.codigo_plan ?? "").trim();
+  if (actual) return;
+
+  const { error: updateError } = await db
+    .from("plan")
+    .update({ codigo_plan: codigoCh.trim().toUpperCase() })
+    .eq("id_plan", Number(idPlan));
+
+  if (updateError) throw updateError;
+}
+
 export async function getCodigosOperativos(): Promise<CodigoOperativo[]> {
   try {
     const db = client();
 
-    // Primero cargamos SIEMPRE la tabla principal sin relaciones embebidas.
-    // Así un fallo en plan, fechas, horas o en la tabla puente jamás vuelve
-    // a ocultar todos los CH que sí existen en codigo_operativo.
     const { data, error } = await db
       .from("codigo_operativo")
       .select("id_codigo_operativo,codigo_ch,descripcion,id_plan,incluye_almuerzo,restaurante,prioridad,activo,created_at,updated_at")
@@ -114,8 +132,6 @@ export async function getCodigosOperativos(): Promise<CodigoOperativo[]> {
       linksByCode.set(link.id_codigo_operativo, current);
     }
 
-    // Para un CH con id_plan NULL pero vínculos en la tabla puente (CH030),
-    // mostramos los vínculos reales en lugar de una fila falsa "sin vincular".
     const expanded: CodigoOperativo[] = [];
     const seen = new Set<string>();
 
@@ -179,9 +195,6 @@ export async function createCodigoOperativo(payload: CodigoOperativoPayload) {
     activo: payload.activo !== false,
   };
 
-  // codigo_ch es único. Si el CH ya existe, no intentamos duplicarlo:
-  // si seleccionaron un plan, simplemente añadimos/reavivamos el vínculo
-  // en codigo_operativo_plan (caso CH030 compartido por Buggies).
   const { data: existing, error: existingError } = await db
     .from("codigo_operativo")
     .select("id_codigo_operativo,codigo_ch,descripcion,id_plan,incluye_almuerzo,restaurante,prioridad,activo,created_at,updated_at")
@@ -207,6 +220,7 @@ export async function createCodigoOperativo(payload: CodigoOperativoPayload) {
       );
 
     if (linkError) throw linkError;
+    await ensurePlanCodigoLegacy(db, Number(clean.id_plan), clean.codigo_ch);
     return existing;
   }
 
@@ -230,6 +244,7 @@ export async function createCodigoOperativo(payload: CodigoOperativoPayload) {
         { onConflict: "id_codigo_operativo,id_plan" },
       );
     if (linkError) throw linkError;
+    await ensurePlanCodigoLegacy(db, Number(clean.id_plan), clean.codigo_ch);
   }
 
   return created;
@@ -246,8 +261,6 @@ export async function updateCodigoOperativo(id: number, payload: Partial<CodigoO
 
   const requestedPlan = payload.id_plan;
 
-  // id_plan se mantiene por compatibilidad para los CH tradicionales,
-  // y adicionalmente sincronizamos la tabla puente cuando se selecciona plan.
   const { data, error } = await db
     .from("codigo_operativo")
     .update(clean)
@@ -264,6 +277,9 @@ export async function updateCodigoOperativo(id: number, payload: Partial<CodigoO
         { onConflict: "id_codigo_operativo,id_plan" },
       );
     if (linkError) throw linkError;
+
+    const codigoCh = String((data as any)?.codigo_ch ?? payload.codigo_ch ?? "").trim();
+    if (codigoCh) await ensurePlanCodigoLegacy(db, Number(requestedPlan), codigoCh);
   }
 
   return data;
