@@ -254,7 +254,45 @@ export async function getReservas() {
 }
 
 export async function createReserva(payload:any){const{data,error}=await getClient().from("reserva").insert(payload).select().single();if(error)throw error;return data}
-export async function updateReserva(id:number,payload:any){const{data,error}=await getClient().from("reserva").update(payload).eq("id_reserva",id).select().single();if(error)throw error;return data}
+export async function updateReserva(id:number,payload:any){
+  const db=getClient();
+  const shouldRecalculate=Object.prototype.hasOwnProperty.call(payload,"id_plan")||Object.prototype.hasOwnProperty.call(payload,"cantidad_personas");
+  const finalPayload={...payload};
+
+  if(shouldRecalculate){
+    const{data:current,error:currentError}=await db.from("reserva").select("id_plan,id_fecha,cantidad_personas").eq("id_reserva",id).single();
+    if(currentError)throw currentError;
+
+    const idPlan=Number(payload.id_plan??current.id_plan);
+    const cantidad=Math.max(1,Number(payload.cantidad_personas??current.cantidad_personas??1));
+    let fecha=new Date().toLocaleDateString("en-CA",{timeZone:"America/Bogota"});
+
+    if(current.id_fecha!=null){
+      const{data:fechaData,error:fechaError}=await db.from("plan_fechas").select("fecha").eq("id_fecha",current.id_fecha).maybeSingle();
+      if(fechaError)throw fechaError;
+      if(fechaData?.fecha)fecha=String(fechaData.fecha).slice(0,10);
+    }
+
+    const[{data:precio,error:precioError},{data:total,error:totalError}]=await Promise.all([
+      db.rpc("obtener_precio_plan",{p_id_plan:idPlan,p_cantidad_personas:cantidad,p_fecha:fecha}),
+      db.rpc("calcular_total_plan",{p_id_plan:idPlan,p_cantidad_personas:cantidad,p_fecha:fecha}),
+    ]);
+    if(precioError)throw precioError;
+    if(totalError)throw totalError;
+
+    const precioUnitario=Number(precio??0);
+    const valorTotal=Number(total??0);
+    if(!Number.isFinite(precioUnitario)||precioUnitario<=0)throw new Error("No se pudo calcular el precio del plan seleccionado para esta reserva.");
+    if(!Number.isFinite(valorTotal)||valorTotal<=0)throw new Error("No se pudo calcular el valor total del plan seleccionado para esta reserva.");
+
+    finalPayload.precio_unitario=precioUnitario;
+    finalPayload.valor_total=valorTotal;
+  }
+
+  const{data,error}=await db.from("reserva").update(finalPayload).eq("id_reserva",id).select().single();
+  if(error)throw error;
+  return data;
+}
 export async function deleteReserva(id:number){const{error}=await getClient().from("reserva").delete().eq("id_reserva",id);if(error)throw error}
 
 /* ─── PARTICIPANTES ──────────────────────────────────────── */
