@@ -89,17 +89,27 @@ export default function ReservasApprovalGuard() {
     return candidates.length === 1 ? candidates[0] : null;
   };
 
-  const handleClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleClickCapture = async (event: React.MouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest("button.rv-switch") as HTMLElement | null;
     if (!button || button.getAttribute("aria-checked") === "true") return;
 
     event.preventDefault();
     event.stopPropagation();
 
-    const reserva = identifyReservation(button);
-    if (!reserva) {
+    const reservaBase = identifyReservation(button);
+    if (!reservaBase) {
       alert("No se pudo identificar la reserva para aprobar. Actualiza la página e inténtalo nuevamente.");
       return;
+    }
+
+    let reserva = reservaBase;
+    try {
+      const latestData = await getReservas();
+      const latestReservas: ReservaLite[] = Array.isArray(latestData) ? latestData : [];
+      setReservas(latestReservas);
+      reserva = latestReservas.find((r) => Number(r.id_reserva) === Number(reservaBase.id_reserva)) ?? reservaBase;
+    } catch (refreshError) {
+      console.error("No se pudo refrescar la reserva antes de aprobar", refreshError);
     }
 
     setSelected(reserva);
