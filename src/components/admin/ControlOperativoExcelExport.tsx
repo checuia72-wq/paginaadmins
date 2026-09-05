@@ -20,6 +20,8 @@ const hora = (value?: string | null) => String(value ?? "").slice(0, 5);
 const texto = (value: unknown) => String(value ?? "").trim();
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
 
+type ExportMode = "policies" | "mines";
+
 const estadoLabel = (value: string) => ({
   programada: "Programada",
   asistio: "Asistió",
@@ -143,11 +145,12 @@ async function exportarControlOperativoExcel() {
   XLSX.writeFile(workbook, `Control_Operativo_Todas_Las_Reservas_${hoy()}.xlsx`, { compression: true });
 }
 
-function exportarPolizas(fechaSeleccionada: string, rows: ControlOperativoRow[]) {
+function participantesActivosPorFecha(fechaSeleccionada: string, rows: ControlOperativoRow[], soloMina = false) {
   const activos = rows.filter((row) =>
     String(row.fecha || "").slice(0, 10) === fechaSeleccionada &&
     row.estado_operativo !== "cancelada" &&
-    row.estado_operativo !== "no_asistio"
+    row.estado_operativo !== "no_asistio" &&
+    (!soloMina || !!row.mina)
   );
 
   const unicos = new Map<string, ControlOperativoRow>();
@@ -158,11 +161,19 @@ function exportarPolizas(fechaSeleccionada: string, rows: ControlOperativoRow[])
     if (!unicos.has(key)) unicos.set(key, row);
   });
 
-  const asistentes = [...unicos.values()]
+  return [...unicos.values()]
     .filter((row) => texto(row.nombre) || texto(row.documento))
     .sort((a, b) => texto(a.nombre).localeCompare(texto(b.nombre), "es"));
+}
 
-  if (!asistentes.length) throw new Error("No hay asistentes activos registrados para la fecha seleccionada.");
+function exportarListadoSimple(fechaSeleccionada: string, rows: ControlOperativoRow[], soloMina: boolean) {
+  const asistentes = participantesActivosPorFecha(fechaSeleccionada, rows, soloMina);
+
+  if (!asistentes.length) {
+    throw new Error(soloMina
+      ? "No hay asistentes con Mina registrados para la fecha seleccionada."
+      : "No hay asistentes activos registrados para la fecha seleccionada.");
+  }
 
   const data = asistentes.map((row) => ({
     NOMBRE: texto(row.nombre),
@@ -174,25 +185,27 @@ function exportarPolizas(fechaSeleccionada: string, rows: ControlOperativoRow[])
   worksheet["!cols"] = [{ wch: 38 }, { wch: 24 }];
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Asistentes");
-  XLSX.writeFile(workbook, `Polizas_Asistentes_${fechaSeleccionada}.xlsx`, { compression: true });
+  XLSX.utils.book_append_sheet(workbook, worksheet, soloMina ? "Asistentes Mina" : "Asistentes");
+  XLSX.writeFile(
+    workbook,
+    soloMina ? `Minas_Asistentes_${fechaSeleccionada}.xlsx` : `Polizas_Asistentes_${fechaSeleccionada}.xlsx`,
+    { compression: true }
+  );
 }
 
 export default function ControlOperativoExcelExport() {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<ExportMode>("policies");
   const [selectedDate, setSelectedDate] = useState(hoy());
   const [rows, setRows] = useState<ControlOperativoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
 
-  const asistentesCount = useMemo(() => {
-    const keys = new Set<string>();
-    rows
-      .filter((row) => String(row.fecha || "").slice(0, 10) === selectedDate && row.estado_operativo !== "cancelada" && row.estado_operativo !== "no_asistio")
-      .forEach((row) => keys.add(row.id_participante != null ? `p-${row.id_participante}` : `${row.id_reserva}-${texto(row.documento)}-${texto(row.nombre)}`));
-    return keys.size;
-  }, [rows, selectedDate]);
+  const asistentesCount = useMemo(
+    () => participantesActivosPorFecha(selectedDate, rows, mode === "mines").length,
+    [rows, selectedDate, mode]
+  );
 
   useEffect(() => {
     const ensureExportButtons = () => {
@@ -200,10 +213,11 @@ export default function ControlOperativoExcelExport() {
 
       const existingExcel = document.querySelector<HTMLButtonElement>('button[data-control-export="excel"]');
       const existingPolicies = document.querySelector<HTMLButtonElement>('button[data-control-export="policies"]');
-      if (existingExcel && existingPolicies) return;
+      const existingMines = document.querySelector<HTMLButtonElement>('button[data-control-export="mines"]');
+      if (existingExcel && existingPolicies && existingMines) return;
 
       const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("button"));
-      const base = buttons.find((button) => {
+      const base = existingExcel ?? buttons.find((button) => {
         const label = (button.textContent ?? "").trim();
         return /^exportar$/i.test(label) || /^exportar excel$/i.test(label) || /^exportar pólizas$/i.test(label);
       });
@@ -215,8 +229,9 @@ export default function ControlOperativoExcelExport() {
       else base.append(" Exportar Excel");
       base.title = "Exportar todas las reservas a Excel";
 
-      if (!existingPolicies) {
-        const policyButton = base.cloneNode(true) as HTMLButtonElement;
+      let policyButton = existingPolicies;
+      if (!policyButton) {
+        policyButton = base.cloneNode(true) as HTMLButtonElement;
         policyButton.dataset.controlExport = "policies";
         policyButton.removeAttribute("id");
         const policyText = Array.from(policyButton.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
@@ -225,6 +240,18 @@ export default function ControlOperativoExcelExport() {
         policyButton.title = "Exportar nombres y cédulas por fecha";
         policyButton.style.marginLeft = "8px";
         base.insertAdjacentElement("afterend", policyButton);
+      }
+
+      if (!existingMines) {
+        const mineButton = base.cloneNode(true) as HTMLButtonElement;
+        mineButton.dataset.controlExport = "mines";
+        mineButton.removeAttribute("id");
+        const mineText = Array.from(mineButton.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+        if (mineText) mineText.nodeValue = " Exportar minas";
+        else mineButton.append(" Exportar minas");
+        mineButton.title = "Exportar nombres y cédulas de asistentes con Mina por fecha";
+        mineButton.style.marginLeft = "8px";
+        policyButton.insertAdjacentElement("afterend", mineButton);
       }
     };
 
@@ -236,14 +263,14 @@ export default function ControlOperativoExcelExport() {
       if (!window.location.pathname.includes("/app/control-operativo")) return;
       const target = event.target as HTMLElement | null;
       const button = target?.closest("button") as HTMLButtonElement | null;
-      const mode = button?.dataset.controlExport;
-      if (!button || (mode !== "excel" && mode !== "policies")) return;
+      const buttonMode = button?.dataset.controlExport;
+      if (!button || (buttonMode !== "excel" && buttonMode !== "policies" && buttonMode !== "mines")) return;
 
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      if (mode === "excel") {
+      if (buttonMode === "excel") {
         const original = button.innerHTML;
         button.disabled = true;
         button.textContent = "Generando Excel…";
@@ -259,7 +286,9 @@ export default function ControlOperativoExcelExport() {
         return;
       }
 
+      const nextMode: ExportMode = buttonMode === "mines" ? "mines" : "policies";
       const pageDate = (document.querySelector('.op-filters input[type="date"]') as HTMLInputElement | null)?.value;
+      setMode(nextMode);
       setSelectedDate(pageDate || hoy());
       setOpen(true);
       setError("");
@@ -267,7 +296,9 @@ export default function ControlOperativoExcelExport() {
       try {
         setRows(await getControlOperativo());
       } catch (e: any) {
-        setError(e?.message || "No fue posible cargar las reservas para exportar pólizas.");
+        setError(e?.message || (nextMode === "mines"
+          ? "No fue posible cargar las reservas para exportar minas."
+          : "No fue posible cargar las reservas para exportar pólizas."));
       } finally {
         setLoading(false);
       }
@@ -278,19 +309,22 @@ export default function ControlOperativoExcelExport() {
       observer.disconnect();
       document.removeEventListener("click", onClick, true);
       document.querySelector('button[data-control-export="policies"]')?.remove();
+      document.querySelector('button[data-control-export="mines"]')?.remove();
     };
   }, []);
 
-  const exportPolicies = async () => {
+  const exportSelected = async () => {
     setError("");
     setExporting(true);
     try {
       const latest = await getControlOperativo();
       setRows(latest);
-      exportarPolizas(selectedDate, latest);
+      exportarListadoSimple(selectedDate, latest, mode === "mines");
       setOpen(false);
     } catch (e: any) {
-      setError(e?.message || "No fue posible generar el archivo de pólizas.");
+      setError(e?.message || (mode === "mines"
+        ? "No fue posible generar el archivo de minas."
+        : "No fue posible generar el archivo de pólizas."));
     } finally {
       setExporting(false);
     }
@@ -298,14 +332,20 @@ export default function ControlOperativoExcelExport() {
 
   if (!open) return null;
 
+  const isMines = mode === "mines";
+
   return (
     <div style={{ position:"fixed", inset:0, zIndex:99999, background:"rgba(16,13,10,.58)", backdropFilter:"blur(4px)", display:"grid", placeItems:"center", padding:20 }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="policy-export-title" style={{ width:"min(520px,100%)", background:"#fffdf9", border:"1px solid #e8d7bd", borderRadius:20, boxShadow:"0 28px 80px rgba(40,27,9,.28)", overflow:"hidden" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="daily-export-title" style={{ width:"min(520px,100%)", background:"#fffdf9", border:"1px solid #e8d7bd", borderRadius:20, boxShadow:"0 28px 80px rgba(40,27,9,.28)", overflow:"hidden" }}>
         <div style={{ padding:"24px 26px 18px", borderBottom:"1px solid #eee2d2", display:"flex", justifyContent:"space-between", gap:16 }}>
           <div>
             <div style={{ color:"#b67b24", fontSize:12, fontWeight:800, letterSpacing:1, textTransform:"uppercase" }}>Control operativo</div>
-            <h2 id="policy-export-title" style={{ margin:"5px 0 4px", fontSize:24, color:"#211a12" }}>Exportar pólizas</h2>
-            <p style={{ margin:0, color:"#786b5d", fontSize:14 }}>Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día.</p>
+            <h2 id="daily-export-title" style={{ margin:"5px 0 4px", fontSize:24, color:"#211a12" }}>{isMines ? "Exportar minas" : "Exportar pólizas"}</h2>
+            <p style={{ margin:0, color:"#786b5d", fontSize:14 }}>
+              {isMines
+                ? "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes de ese día que tienen Mina."
+                : "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día."}
+            </p>
           </div>
           <button type="button" onClick={() => !exporting && setOpen(false)} disabled={exporting} aria-label="Cerrar" style={{ width:36, height:36, borderRadius:10, border:"1px solid #e5d5be", background:"white", cursor:"pointer", fontSize:22, lineHeight:1 }}>×</button>
         </div>
@@ -317,7 +357,7 @@ export default function ControlOperativoExcelExport() {
           </label>
 
           <div style={{ marginTop:16, padding:"14px 16px", borderRadius:12, background:"#f8f2e8", border:"1px solid #ead9bf", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
-            <span style={{ color:"#6d5d49", fontSize:14 }}>{loading ? "Consultando reservas…" : "Asistentes encontrados"}</span>
+            <span style={{ color:"#6d5d49", fontSize:14 }}>{loading ? "Consultando reservas…" : isMines ? "Asistentes con Mina encontrados" : "Asistentes encontrados"}</span>
             <strong style={{ color:"#9b661b", fontSize:18 }}>{loading ? "…" : asistentesCount}</strong>
           </div>
 
@@ -326,7 +366,7 @@ export default function ControlOperativoExcelExport() {
 
         <div style={{ padding:"16px 26px 22px", borderTop:"1px solid #eee2d2", display:"flex", justifyContent:"flex-end", gap:10 }}>
           <button type="button" onClick={() => setOpen(false)} disabled={exporting} style={{ height:44, padding:"0 16px", borderRadius:11, border:"1px solid #ddd0bd", background:"#fff", color:"#5d5145", fontWeight:700, cursor:"pointer" }}>Cancelar</button>
-          <button type="button" onClick={exportPolicies} disabled={loading || exporting || !selectedDate || asistentesCount === 0} style={{ height:44, padding:"0 18px", borderRadius:11, border:0, background:"#c58b31", color:"#fff", fontWeight:800, cursor:"pointer", opacity:(loading || exporting || !selectedDate || asistentesCount === 0) ? .55 : 1 }}>{exporting ? "Generando…" : "Exportar pólizas"}</button>
+          <button type="button" onClick={exportSelected} disabled={loading || exporting || !selectedDate || asistentesCount === 0} style={{ height:44, padding:"0 18px", borderRadius:11, border:0, background:"#c58b31", color:"#fff", fontWeight:800, cursor:"pointer", opacity:(loading || exporting || !selectedDate || asistentesCount === 0) ? .55 : 1 }}>{exporting ? "Generando…" : isMines ? "Exportar minas" : "Exportar pólizas"}</button>
         </div>
       </div>
     </div>
