@@ -14,7 +14,7 @@ const emptyParticipant=():NuevoParticipante=>({nombre:"",edad:"",nacionalidad:""
 const emptyForm={telefono_cliente:"",id_plan:"" as number|"",id_hora:"" as number|"",cantidad_personas:1,aprobado:false};
 const PAGE_SIZE_OPTIONS=[10,25,50];
 
-function fmt(d?:string|null){if(!d)return null;return new Date(d).toLocaleString("es-CO",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}
+function fmt(d?:string|null){if(!d)return null;return new Date(d).toLocaleString("es-CO",{timeZone:"America/Bogota",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}
 function fmtReserva(d?:string|null){if(!d)return"—";const[y,m,day]=d.slice(0,10).split("-");return`${day}/${m}/${y}`}
 function fmtHora(h?:string|null){if(!h)return"";return h.slice(0,5)}
 
