@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "react-router-dom";
 import { ChevronDown, CircleDollarSign, ShieldCheck } from "lucide-react";
 import { ajustarValorTotalReserva, getControlOperativo } from "../../services/controlOperativo.service";
 import { getCurrentRole, type AppRole } from "../../services/role.service";
@@ -52,6 +53,7 @@ function lockBaseTotal(modal: HTMLElement, role: AppRole | null) {
 }
 
 export default function ControlOperativoAdvancedOptions() {
+  const location = useLocation();
   const [role, setRole] = useState<AppRole | null>(null);
   const [host, setHost] = useState<HTMLDivElement | null>(null);
   const [modal, setModal] = useState<HTMLElement | null>(null);
@@ -65,11 +67,20 @@ export default function ControlOperativoAdvancedOptions() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    getCurrentRole().then((data) => setRole(data?.role ?? null)).catch(() => setRole(null));
-  }, []);
+    let active = true;
+    getCurrentRole()
+      .then((data) => active && setRole(data?.role ?? null))
+      .catch(() => active && setRole(null));
+    return () => { active = false; };
+  }, [location.pathname]);
 
   useEffect(() => {
-    if (!window.location.pathname.includes("/app/control-operativo")) return;
+    if (!location.pathname.includes("/app/control-operativo")) {
+      setModal(null);
+      setHost(null);
+      setSelected("");
+      return;
+    }
 
     const detectModal = () => {
       const currentModal = document.querySelector<HTMLElement>(".op-modal.edit-modal");
@@ -103,7 +114,7 @@ export default function ControlOperativoAdvancedOptions() {
     const observer = new MutationObserver(detectModal);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [role]);
+  }, [location.pathname, role]);
 
   useEffect(() => {
     if (!modal) return;
