@@ -73,43 +73,64 @@ async function exportarControlOperativoExcel() {
 
   const headers = [
     "Código", "Estado operativo", "Motivo estado", "Plan", "Fecha reserva", "Hora",
-    "Cantidad personas", "Participantes", "Edades", "Nacionalidades", "Tipos documento",
-    "Documentos", "Contactos participantes", "Contacto cliente", "Mina", "Refrigerio",
-    "Restaurante", "Incluye almuerzo", "Tipos de almuerzo", "Valor total", "Abono",
+    "Cantidad personas", "Nombre", "Edad", "Nacionalidad", "Tipo documento",
+    "Documento", "Contacto participante", "Contacto cliente", "Mina", "Refrigerio",
+    "Restaurante", "Incluye almuerzo", "Tipo de almuerzo", "Valor total", "Abono",
     "Medio abono", "Pago saldo", "Medio saldo", "Total recaudado", "Devuelto",
     "Neto caja", "Saldo pendiente", "Observación",
   ];
 
-  const data = grupos.map((grupo) => {
+  const data = grupos.flatMap((grupo) => {
     const principal = grupo[0];
     const pagosReserva = pagosMap.get(principal.id_reserva) ?? [];
     const devolucionesReserva = devolucionesMap.get(principal.id_reserva) ?? [];
     const recaudado = pagosReserva.reduce((sum, pago) => sum + Number(pago.monto || 0), 0);
     const devuelto = devolucionesReserva.reduce((sum, item) => sum + Number(item.monto || 0), 0);
-    const join = (selector: (row: ControlOperativoRow) => unknown) =>
-      grupo.map(selector).map(texto).filter(Boolean).join(" | ");
     const mediosSaldo = pagosReserva
       .filter((pago) => pago.tipo_pago === "saldo")
       .map((pago) => pago.medio_pago)
       .filter(Boolean);
+    const medioSaldo = [...new Set(mediosSaldo)].join(" | ") || principal.medio_saldo || "";
 
-    return [
-      principal.reserva_codigo, estadoLabel(principal.estado_operativo), principal.motivo_estado_operativo,
-      principal.plan, fecha(principal.fecha), hora(principal.hora), Number(principal.cantidad || grupo.length || 0),
-      join((row) => row.nombre), join((row) => row.edad), join((row) => row.nacionalidad),
-      join((row) => row.tipo_documento), join((row) => row.documento), join((row) => row.contacto),
-      principal.contacto_cliente, principal.mina ? "Sí" : "No", principal.refrigerio ? "Sí" : "No",
-      principal.restaurante || "", principal.incluye_almuerzo ? "Sí" : "No", join((row) => row.almuerzo),
-      Number(principal.total || 0), Number(principal.abono || 0), principal.medio_abono || "",
-      Number(principal.pago_saldo || 0), [...new Set(mediosSaldo)].join(" | ") || principal.medio_saldo || "",
-      recaudado, devuelto, Math.max(0, recaudado - devuelto), Number(principal.saldo_pendiente || 0),
-      principal.observacion || "",
-    ];
+    return grupo.map((row, index) => {
+      const primeraFila = index === 0;
+      return [
+        principal.reserva_codigo,
+        primeraFila ? estadoLabel(principal.estado_operativo) : "",
+        primeraFila ? principal.motivo_estado_operativo : "",
+        principal.plan,
+        fecha(principal.fecha),
+        hora(principal.hora),
+        primeraFila ? Number(principal.cantidad || grupo.length || 0) : "",
+        texto(row.nombre),
+        texto(row.edad),
+        texto(row.nacionalidad),
+        texto(row.tipo_documento),
+        texto(row.documento),
+        texto(row.contacto),
+        principal.contacto_cliente,
+        principal.mina ? "Sí" : "No",
+        principal.refrigerio ? "Sí" : "No",
+        principal.restaurante || "",
+        principal.incluye_almuerzo ? "Sí" : "No",
+        texto(row.almuerzo),
+        primeraFila ? Number(principal.total || 0) : "",
+        primeraFila ? Number(principal.abono || 0) : "",
+        primeraFila ? principal.medio_abono || "" : "",
+        primeraFila ? Number(principal.pago_saldo || 0) : "",
+        primeraFila ? medioSaldo : "",
+        primeraFila ? recaudado : "",
+        primeraFila ? devuelto : "",
+        primeraFila ? Math.max(0, recaudado - devuelto) : "",
+        primeraFila ? Number(principal.saldo_pendiente || 0) : "",
+        primeraFila ? principal.observacion || "" : "",
+      ];
+    });
   });
 
   const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
   worksheet["!autofilter"] = { ref: `A1:AC${Math.max(1, data.length + 1)}` };
-  worksheet["!cols"] = [18,18,28,42,15,10,15,38,18,28,28,30,32,20,10,12,20,18,30,16,16,20,16,24,18,16,16,18,40].map((wch) => ({ wch }));
+  worksheet["!cols"] = [18,18,28,42,15,10,15,32,12,22,24,24,24,20,10,12,20,18,24,16,16,20,16,24,18,16,16,18,40].map((wch) => ({ wch }));
 
   const moneyColumns = new Set([19, 20, 22, 24, 25, 26, 27]);
   for (let row = 1; row <= data.length; row += 1) {
