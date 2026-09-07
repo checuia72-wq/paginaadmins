@@ -15,6 +15,7 @@ import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 import GlobalAlertModal from "./components/common/GlobalAlertModal";
+import ControlOperativoAdvancedOptions from "./components/admin/ControlOperativoAdvancedOptions";
 
 import "./styles/dashboard.css";
 
@@ -22,6 +23,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <GlobalAlertModal />
+      <ControlOperativoAdvancedOptions />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />

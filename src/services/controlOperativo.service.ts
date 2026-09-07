@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { getCurrentRole } from "./role.service";
 
 function client() { if (!supabase) throw new Error("Supabase no está configurado"); return supabase; }
 
@@ -61,7 +62,7 @@ export async function getControlOperativo():Promise<ControlOperativoRow[]>{
     const fechaRelacionada=fechaMap.get(Number(fechaId));const horaRelacionada=horaMap.get(Number(horaId));const personas=participantesPorReserva.get(Number(r.id_reserva))??[null];
     const fechaReserva=dateOnly(r.fecha_reserva??r.fecha??fechaRelacionada?.fecha_reserva??fechaRelacionada?.fecha);const horaReserva=hourOnly(r.hora_reserva??r.hora??horaRelacionada?.hora_reserva??horaRelacionada?.hora);
     const cantidadPersonas=r.cantidad_personas==null?personas.filter(Boolean).length:num(r.cantidad_personas);const precioPlan=num(plan?.precio_plan);
-    const totalCalculado=precioPlan>0?precioPlan*cantidadPersonas:0;const totalRespaldo=num(r.valor_total)>0?num(r.valor_total):num(r.precio_unitario)*cantidadPersonas;const total=totalCalculado>0?totalCalculado:totalRespaldo;
+    const totalGuardado=num(r.valor_total)>0?num(r.valor_total):num(r.precio_unitario)*cantidadPersonas;const totalCalculado=precioPlan>0?precioPlan*cantidadPersonas:0;const total=totalGuardado>0?totalGuardado:totalCalculado;
     const abono=num(r.valor_abonado);const pagoSaldo=num(r.valor_saldo_pagado);const saldo=Math.max(0,total-abono-pagoSaldo);
     for(const p of personas){const contactoCliente=text(p?.telefono_cliente||r.telefono_cliente);rows.push({
       id_reserva:Number(r.id_reserva),id_participante:p?Number(p.id_participante):null,reserva_codigo:text(r.codigo_reserva)||`#${r.id_reserva}`,
@@ -111,6 +112,23 @@ export async function registrarDevolucionReserva(args:{id_reserva:number;monto:n
   const {data,error}=await client().rpc("registrar_devolucion_reserva",{p_id_reserva:args.id_reserva,p_monto:args.monto,p_medio_pago:args.medio_pago,p_tipo_devolucion:args.tipo_devolucion,p_motivo:args.motivo?.trim()||null,p_observacion:args.observacion?.trim()||null});
   if(error)throw error;
   return data==null?null:Number(data);
+}
+
+export async function ajustarValorTotalReserva(args:{id_reserva:number;valor_total:number;observacion:string}){
+  const currentRole=await getCurrentRole();
+  if(currentRole?.role!=="administrador")throw new Error("Solo un administrador puede cambiar el valor total de una reserva.");
+  const nuevoTotal=num(args.valor_total);const motivo=args.observacion.trim();
+  if(nuevoTotal<=0)throw new Error("El nuevo valor total debe ser mayor a cero.");
+  if(!motivo)throw new Error("La observación es obligatoria para cambiar el valor total.");
+  const {data:actual,error:readError}=await client().from("reserva").select("id_reserva,cantidad_personas,valor_total,precio_unitario,observacion").eq("id_reserva",args.id_reserva).single();
+  if(readError)throw readError;
+  const cantidad=Math.max(1,num(actual?.cantidad_personas));const anterior=num(actual?.valor_total);const precioUnitario=Math.round((nuevoTotal/cantidad)*100)/100;
+  const marca=new Date().toLocaleString("es-CO",{timeZone:"America/Bogota"});
+  const detalle=`[Ajuste valor total ${marca}] $${anterior.toLocaleString("es-CO")} → $${nuevoTotal.toLocaleString("es-CO")}. ${motivo}`;
+  const observacionAnterior=text(actual?.observacion).trim();const observacionFinal=observacionAnterior?`${observacionAnterior}\n${detalle}`:detalle;
+  const {data,error}=await client().from("reserva").update({valor_total:nuevoTotal,precio_unitario:precioUnitario,observacion:observacionFinal}).eq("id_reserva",args.id_reserva).select().single();
+  if(error)throw error;
+  return data;
 }
 
 export async function replaceSaldoPagos(idReserva:number,pagos:Array<{monto:number;medio_pago:string}>){const validos=pagos.filter(p=>num(p.monto)>0&&text(p.medio_pago).trim());const total=validos.reduce((s,p)=>s+num(p.monto),0);const{error:deleteError}=await client().from("reserva_pago").delete().eq("id_reserva",idReserva).eq("tipo_pago","saldo");if(deleteError)throw deleteError;if(validos.length){const{error:insertError}=await client().from("reserva_pago").insert(validos.map(p=>({id_reserva:idReserva,tipo_pago:"saldo",monto:num(p.monto),medio_pago:p.medio_pago.trim()})));if(insertError)throw insertError;}const metodo=validos.length===1?validos[0].medio_pago:null;const{error:updateError}=await client().from("reserva").update({valor_saldo_pagado:total,metodo_pago_saldo:metodo}).eq("id_reserva",idReserva);if(updateError)throw updateError;return total;}
