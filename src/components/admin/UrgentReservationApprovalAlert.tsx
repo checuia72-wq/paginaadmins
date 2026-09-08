@@ -112,7 +112,7 @@ export default function UrgentReservationApprovalAlert() {
       const row = findReservationRow(code);
       const button = row?.querySelector<HTMLButtonElement>("button.rv-switch");
       if (button) {
-        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row?.scrollIntoView({ behavior: "smooth", block: "center" });
         button.click();
         return true;
       }
@@ -149,7 +149,6 @@ export default function UrgentReservationApprovalAlert() {
     const notification = new Notification(`Reserva urgente por aprobar · ${code}`, {
       body: `${reserva.nombre_plan || "Plan sin nombre"}\nFaltan ${formatRemaining(remaining)} · ${reserva.cantidad_personas || 0} persona${Number(reserva.cantidad_personas || 0) === 1 ? "" : "s"}`,
       tag: `reserva-urgente-${reserva.id_reserva}`,
-      renotify: true,
       requireInteraction: remaining <= 6 * HOUR_MS,
     });
 
