@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CreditCard, Pencil, Tag, X } from "lucide-react";
+import { CheckCircle2, CreditCard, Settings2, Tag, X } from "lucide-react";
 import ReservasAdmin from "./ReservasAdmin";
 import { getReservas, updateReserva } from "../../services/api.service";
 import { getMetodosPagoActivos } from "../../services/medioPago.service";
@@ -17,11 +17,16 @@ type ReservaLite = {
   fecha_solicitud?: string | null;
   telefono_cliente: string;
   id_plan: number;
+  cantidad_personas?: number | null;
   aprobado?: boolean | null;
+  precio_unitario?: number | null;
   valor_total?: number | null;
+  refrigerio?: boolean | null;
   observacion?: string | null;
   nombre_plan?: string | null;
 };
+
+type AdvancedOption = "" | "refrigerio" | "valor_total" | "valor_unitario";
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
 const parseMoney = (value: string) => Number(value.replace(/\./g, "").replace(/,/g, ".").replace(/[^\d.]/g, "") || 0);
@@ -39,8 +44,10 @@ export default function ReservasApprovalGuard() {
   const [incluyeAlmuerzo, setIncluyeAlmuerzo] = useState(false);
   const [restaurante, setRestaurante] = useState("");
   const [codigoId, setCodigoId] = useState<number | "">("");
-  const [editandoTotal, setEditandoTotal] = useState(false);
+  const [advancedOption, setAdvancedOption] = useState<AdvancedOption>("");
+  const [incluyeRefrigerio, setIncluyeRefrigerio] = useState(true);
   const [valorTotal, setValorTotal] = useState("");
+  const [valorUnitario, setValorUnitario] = useState("");
   const [observacion, setObservacion] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,14 +119,20 @@ export default function ReservasApprovalGuard() {
       console.error("No se pudo refrescar la reserva antes de aprobar", refreshError);
     }
 
+    const cantidad = Math.max(1, Number(reserva.cantidad_personas || 1));
+    const total = Number(reserva.valor_total || 0);
+    const unitario = Number(reserva.precio_unitario || (total > 0 ? total / cantidad : 0));
+
     setSelected(reserva);
     setValorAbonado("");
     setMetodoPago("");
     setIncluyeAlmuerzo(false);
     setRestaurante("");
     setCodigoId("");
-    setEditandoTotal(false);
-    setValorTotal(formatMoney(reserva.valor_total));
+    setAdvancedOption("");
+    setIncluyeRefrigerio(true);
+    setValorTotal(formatMoney(total));
+    setValorUnitario(formatMoney(unitario));
     setObservacion(String(reserva.observacion ?? ""));
     setError(null);
   };
@@ -132,9 +145,24 @@ export default function ReservasApprovalGuard() {
     if (!selected) return;
 
     const valor = parseMoney(valorAbonado);
+    const cantidad = Math.max(1, Number(selected.cantidad_personas || 1));
     const totalOriginal = Number(selected.valor_total || 0);
-    const totalNuevo = editandoTotal ? parseMoney(valorTotal) : totalOriginal;
-    const totalFueEditado = editandoTotal && totalNuevo !== totalOriginal;
+    const unitarioOriginal = Number(selected.precio_unitario || (totalOriginal > 0 ? totalOriginal / cantidad : 0));
+
+    let totalNuevo = totalOriginal;
+    let unitarioNuevo = unitarioOriginal;
+
+    if (advancedOption === "valor_total") {
+      totalNuevo = parseMoney(valorTotal);
+      unitarioNuevo = totalNuevo / cantidad;
+    } else if (advancedOption === "valor_unitario") {
+      unitarioNuevo = parseMoney(valorUnitario);
+      totalNuevo = unitarioNuevo * cantidad;
+    }
+
+    const totalFueEditado = Math.abs(totalNuevo - totalOriginal) > 0.01;
+    const unitarioFueEditado = Math.abs(unitarioNuevo - unitarioOriginal) > 0.01;
+    const ajusteMonetario = totalFueEditado || unitarioFueEditado;
 
     if (!Number.isFinite(valor) || valor <= 0) {
       setError("Ingresa un valor abonado mayor a $0.");
@@ -148,12 +176,16 @@ export default function ReservasApprovalGuard() {
       setError("El valor total de la reserva debe ser mayor a $0.");
       return;
     }
+    if (!Number.isFinite(unitarioNuevo) || unitarioNuevo <= 0) {
+      setError("El valor unitario debe ser mayor a $0.");
+      return;
+    }
     if (valor > totalNuevo) {
       setError("El valor abonado no puede superar el valor total de la reserva.");
       return;
     }
-    if (totalFueEditado && !observacion.trim()) {
-      setError("Debes registrar una observación explicando por qué cambiaste el valor total de la reserva.");
+    if (ajusteMonetario && !observacion.trim()) {
+      setError("Debes registrar una observación explicando el cambio de valor de la reserva.");
       return;
     }
     if (incluyeAlmuerzo && !restaurante) {
@@ -170,13 +202,18 @@ export default function ReservasApprovalGuard() {
 
     let reservaActualizada = false;
     try {
-      if (totalFueEditado) {
-        await updateReserva(selected.id_reserva, {
-          valor_total: totalNuevo,
-          observacion: observacion.trim(),
-        });
-        reservaActualizada = true;
+      const patch: Record<string, unknown> = {
+        refrigerio: incluyeRefrigerio,
+      };
+
+      if (ajusteMonetario) {
+        patch.valor_total = totalNuevo;
+        patch.precio_unitario = unitarioNuevo;
+        patch.observacion = observacion.trim();
       }
+
+      await updateReserva(selected.id_reserva, patch);
+      reservaActualizada = true;
 
       await aprobarReservaOperativa({
         id_reserva: selected.id_reserva,
@@ -196,10 +233,12 @@ export default function ReservasApprovalGuard() {
         try {
           await updateReserva(selected.id_reserva, {
             valor_total: totalOriginal,
+            precio_unitario: unitarioOriginal,
+            refrigerio: selected.refrigerio ?? false,
             observacion: selected.observacion ?? null,
           });
         } catch (rollbackError) {
-          console.error("No se pudo revertir el cambio temporal del valor total:", rollbackError);
+          console.error("No se pudo revertir la configuración temporal de la reserva:", rollbackError);
         }
       }
 
@@ -208,6 +247,18 @@ export default function ReservasApprovalGuard() {
       setSaving(false);
     }
   };
+
+  const cantidadSeleccionada = Math.max(1, Number(selected?.cantidad_personas || 1));
+  const totalVista = advancedOption === "valor_unitario"
+    ? parseMoney(valorUnitario) * cantidadSeleccionada
+    : advancedOption === "valor_total"
+      ? parseMoney(valorTotal)
+      : Number(selected?.valor_total || 0);
+  const unitarioVista = advancedOption === "valor_total"
+    ? totalVista / cantidadSeleccionada
+    : advancedOption === "valor_unitario"
+      ? parseMoney(valorUnitario)
+      : Number(selected?.precio_unitario || (totalVista > 0 ? totalVista / cantidadSeleccionada : 0));
 
   return <>
     <div onClickCapture={handleClickCapture}><ReservasAdmin /></div>
@@ -240,39 +291,82 @@ export default function ReservasApprovalGuard() {
                 <div>
                   <div style={{ fontSize: 12, color: "#8c7a64", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Valor total de la reserva</div>
                   <strong style={{ display: "block", marginTop: 4, fontSize: 24, color: "#2d241a" }}>
-                    ${formatMoney(editandoTotal ? parseMoney(valorTotal) : selected.valor_total)}
+                    ${formatMoney(totalVista)}
                   </strong>
+                  <span style={{ display: "block", marginTop: 3, color: "#756654", fontSize: 13 }}>
+                    ${formatMoney(unitarioVista)} por persona · {cantidadSeleccionada} {cantidadSeleccionada === 1 ? "persona" : "personas"}
+                  </span>
                   {selected.nombre_plan && <span style={{ display: "block", marginTop: 3, color: "#756654", fontSize: 13 }}>{selected.nombre_plan}</span>}
                 </div>
-
-                {!editandoTotal ? (
-                  <button
-                    type="button"
-                    onClick={() => { setEditandoTotal(true); setError(null); }}
-                    disabled={saving}
-                    className="rv-btn-cancel"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
-                  >
-                    <Pencil size={15}/> Editar valor
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditandoTotal(false);
-                      setValorTotal(formatMoney(selected.valor_total));
-                      setObservacion(String(selected.observacion ?? ""));
-                      setError(null);
-                    }}
-                    disabled={saving}
-                    className="rv-btn-cancel"
-                  >
-                    Restaurar valor
-                  </button>
-                )}
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 999,
+                  padding: "7px 10px",
+                  background: incluyeRefrigerio ? "#edf8ef" : "#f3f1ed",
+                  color: incluyeRefrigerio ? "#2f6f45" : "#766d63",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}>
+                  {incluyeRefrigerio ? "Refrigerio incluido" : "Sin refrigerio"}
+                </span>
               </div>
 
-              {editandoTotal && (
+              <div style={{ borderTop: "1px solid #eadfce", paddingTop: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7, color: "#6e604f", fontSize: 12, fontWeight: 700 }}>
+                  <Settings2 size={15}/> Opciones avanzadas
+                </label>
+                <select
+                  value={advancedOption}
+                  onChange={(e) => {
+                    const option = e.target.value as AdvancedOption;
+                    setAdvancedOption(option);
+                    setValorTotal(formatMoney(selected.valor_total));
+                    setValorUnitario(formatMoney(selected.precio_unitario || (Number(selected.valor_total || 0) / cantidadSeleccionada)));
+                    setObservacion(String(selected.observacion ?? ""));
+                    setError(null);
+                  }}
+                  disabled={saving}
+                  style={{ width: "100%" }}
+                >
+                  <option value="">Selecciona una opción</option>
+                  <option value="refrigerio">Refrigerio</option>
+                  <option value="valor_total">Cambiar valor total</option>
+                  <option value="valor_unitario">Cambiar valor unitario</option>
+                </select>
+              </div>
+
+              {advancedOption === "refrigerio" && (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  padding: 12,
+                  border: "1px solid #e7dac6",
+                  borderRadius: 12,
+                  background: "#fff",
+                }}>
+                  <div>
+                    <strong style={{ display: "block", color: "#3b3127", fontSize: 14 }}>Incluir refrigerio</strong>
+                    <small style={{ color: "#877967", lineHeight: 1.4 }}>
+                      Al aprobar una reserva se incluye refrigerio por defecto. Desmárcalo únicamente si esta reserva no lo tendrá.
+                    </small>
+                  </div>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={incluyeRefrigerio}
+                      onChange={(e) => { setIncluyeRefrigerio(e.target.checked); setError(null); }}
+                      disabled={saving}
+                    />
+                    {incluyeRefrigerio ? "Sí" : "No"}
+                  </label>
+                </div>
+              )}
+
+              {advancedOption === "valor_total" && (
                 <div style={{ display: "grid", gap: 12 }}>
                   <div className="rv-form-group">
                     <label>Nuevo valor total *</label>
@@ -291,6 +385,9 @@ export default function ReservasApprovalGuard() {
                         disabled={saving}
                       />
                     </div>
+                    <small style={{ color: "#877967", lineHeight: 1.4 }}>
+                      El valor unitario se recalculará automáticamente a ${formatMoney(totalVista / cantidadSeleccionada)}.
+                    </small>
                   </div>
 
                   <div className="rv-form-group">
@@ -298,14 +395,49 @@ export default function ReservasApprovalGuard() {
                     <textarea
                       value={observacion}
                       onChange={(e) => { setObservacion(e.target.value); setError(null); }}
-                      placeholder="Ej. Se ajustó el valor por tarifa especial, descuento autorizado o cambio operativo."
+                      placeholder="Ej. Tarifa especial, descuento autorizado o ajuste operativo."
                       rows={3}
                       disabled={saving}
                       style={{ resize: "vertical", minHeight: 82 }}
                     />
+                  </div>
+                </div>
+              )}
+
+              {advancedOption === "valor_unitario" && (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div className="rv-form-group">
+                    <label>Nuevo valor unitario *</label>
+                    <div className="rv-money-input-wrap">
+                      <span>$</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={valorUnitario}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          setValorUnitario(digits ? Number(digits).toLocaleString("es-CO") : "");
+                          setError(null);
+                        }}
+                        placeholder="0"
+                        disabled={saving}
+                      />
+                    </div>
                     <small style={{ color: "#877967", lineHeight: 1.4 }}>
-                      Esta observación se guarda en la misma columna <strong>observacion</strong> de la reserva y aparecerá también en Control Operativo.
+                      El total se recalculará automáticamente: {cantidadSeleccionada} × ${formatMoney(unitarioVista)} = ${formatMoney(totalVista)}.
                     </small>
+                  </div>
+
+                  <div className="rv-form-group">
+                    <label>Observación del cambio *</label>
+                    <textarea
+                      value={observacion}
+                      onChange={(e) => { setObservacion(e.target.value); setError(null); }}
+                      placeholder="Ej. Tarifa especial, descuento autorizado o ajuste operativo."
+                      rows={3}
+                      disabled={saving}
+                      style={{ resize: "vertical", minHeight: 82 }}
+                    />
                   </div>
                 </div>
               )}
