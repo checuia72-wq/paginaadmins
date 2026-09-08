@@ -306,6 +306,33 @@ function cRestaurant(c: CodigoOperativo) {
   return String(c.restaurante ?? "").trim().toLowerCase();
 }
 
+async function aplicarMinaAutomaticaPorNumeroPlan(idReserva: number) {
+  const db = client();
+
+  const { data: reserva, error: reservaError } = await db
+    .from("reserva")
+    .select("id_plan")
+    .eq("id_reserva", idReserva)
+    .single();
+  if (reservaError) throw reservaError;
+
+  const { data: plan, error: planError } = await db
+    .from("plan")
+    .select("numero_plan")
+    .eq("id_plan", Number(reserva.id_plan))
+    .single();
+  if (planError) throw planError;
+
+  const numeroPlan = Number(plan?.numero_plan);
+  const minaActiva = [2, 4, 5].includes(numeroPlan);
+
+  const { error: updateError } = await db
+    .from("reserva")
+    .update({ mina: minaActiva })
+    .eq("id_reserva", idReserva);
+  if (updateError) throw updateError;
+}
+
 export async function aprobarReservaOperativa(args: {
   id_reserva: number;
   valor_abonado: number;
@@ -323,6 +350,8 @@ export async function aprobarReservaOperativa(args: {
     p_id_codigo_operativo: args.id_codigo_operativo || null,
   });
   if (error) throw error;
+
+  await aplicarMinaAutomaticaPorNumeroPlan(args.id_reserva);
   return String(data ?? "");
 }
 
