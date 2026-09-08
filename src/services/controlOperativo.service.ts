@@ -35,7 +35,7 @@ export type ControlOperativoRow = {
   id_reserva:number; id_participante:number|null; reserva_codigo:string; id_codigo_operativo:number|null; incluye_almuerzo:boolean;
   id_plan:number|null; id_fecha:number|null; id_hora:number|null; plan:string; fecha:string; hora:string; aprobado:boolean|null; nombre:string; edad:number|null; nacionalidad:string;
   tipo_documento:string; documento:string; contacto:string; contacto_cliente:string; cantidad:number|null; mina:boolean|null; refrigerio:boolean|null;
-  restaurante:string; almuerzo:string; total:number; abono:number; medio_abono:string; pago_saldo:number; medio_saldo:string; saldo_pendiente:number; observacion:string;
+  restaurante:string; almuerzo:string; total:number; abono:number; medio_abono:string; referencia_pago_abono:string; pago_saldo:number; medio_saldo:string; saldo_pendiente:number; observacion:string;
   estado_operativo: EstadoOperativo; motivo_estado_operativo:string; estado_operativo_at:string;
 };
 
@@ -69,7 +69,7 @@ export async function getControlOperativo():Promise<ControlOperativoRow[]>{
       id_codigo_operativo:r.id_codigo_operativo==null?null:Number(r.id_codigo_operativo),incluye_almuerzo:!!r.incluye_almuerzo,
       id_plan:r.id_plan==null?null:Number(r.id_plan),id_fecha:fechaId==null?null:Number(fechaId),id_hora:horaId==null?null:Number(horaId),plan:text(plan?.nombre_plan),fecha:fechaReserva,hora:horaReserva,aprobado:r.aprobado??null,
       nombre:text(p?.nombre),edad:p?.edad==null?null:Number(p.edad),nacionalidad:text(p?.nacionalidad),tipo_documento:text(p?.tipo_documento),documento:text(p?.numero_documento),contacto:text(p?.telefono_participante||contactoCliente),contacto_cliente:contactoCliente,cantidad:cantidadPersonas,
-      mina:r.mina??null,refrigerio:r.refrigerio??null,restaurante:text(r.restaurante),almuerzo:text(p?.tipo_almuerzo),total,abono,medio_abono:text(r.metodo_pago_abono),pago_saldo:pagoSaldo,medio_saldo:text(r.metodo_pago_saldo),saldo_pendiente:saldo,observacion:text(r.observacion),
+      mina:r.mina??null,refrigerio:r.refrigerio??null,restaurante:text(r.restaurante),almuerzo:text(p?.tipo_almuerzo),total,abono,medio_abono:text(r.metodo_pago_abono),referencia_pago_abono:text(r.referencia_pago_abono),pago_saldo:pagoSaldo,medio_saldo:text(r.metodo_pago_saldo),saldo_pendiente:saldo,observacion:text(r.observacion),
       estado_operativo:(text(r.estado_operativo)||"programada") as EstadoOperativo,motivo_estado_operativo:text(r.motivo_estado_operativo),estado_operativo_at:text(r.estado_operativo_at)
     });}
   }
