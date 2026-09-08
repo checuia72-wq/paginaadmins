@@ -22,6 +22,7 @@ type ReservaLite = {
   precio_unitario?: number | null;
   valor_total?: number | null;
   refrigerio?: boolean | null;
+  referencia_pago_abono?: string | null;
   observacion?: string | null;
   nombre_plan?: string | null;
 };
@@ -41,6 +42,7 @@ export default function ReservasApprovalGuard() {
   const [selected, setSelected] = useState<ReservaLite | null>(null);
   const [valorAbonado, setValorAbonado] = useState("");
   const [metodoPago, setMetodoPago] = useState("");
+  const [referenciaPagoAbono, setReferenciaPagoAbono] = useState("");
   const [incluyeAlmuerzo, setIncluyeAlmuerzo] = useState(false);
   const [restaurante, setRestaurante] = useState("");
   const [codigoId, setCodigoId] = useState<number | "">("");
@@ -126,6 +128,7 @@ export default function ReservasApprovalGuard() {
     setSelected(reserva);
     setValorAbonado("");
     setMetodoPago("");
+    setReferenciaPagoAbono("");
     setIncluyeAlmuerzo(false);
     setRestaurante("");
     setCodigoId("");
@@ -145,6 +148,7 @@ export default function ReservasApprovalGuard() {
     if (!selected) return;
 
     const valor = parseMoney(valorAbonado);
+    const referencia = referenciaPagoAbono.trim().toUpperCase();
     const cantidad = Math.max(1, Number(selected.cantidad_personas || 1));
     const totalOriginal = Number(selected.valor_total || 0);
     const unitarioOriginal = Number(selected.precio_unitario || (totalOriginal > 0 ? totalOriginal / cantidad : 0));
@@ -170,6 +174,10 @@ export default function ReservasApprovalGuard() {
     }
     if (!metodoPago) {
       setError("Selecciona el método de pago del abono.");
+      return;
+    }
+    if (!/^[A-Z0-9]{4}$/.test(referencia)) {
+      setError("Ingresa los últimos 4 caracteres de la referencia del pago del abono.");
       return;
     }
     if (!Number.isFinite(totalNuevo) || totalNuevo <= 0) {
@@ -204,6 +212,7 @@ export default function ReservasApprovalGuard() {
     try {
       const patch: Record<string, unknown> = {
         refrigerio: incluyeRefrigerio,
+        referencia_pago_abono: referencia,
       };
 
       if (ajusteMonetario) {
@@ -235,6 +244,7 @@ export default function ReservasApprovalGuard() {
             valor_total: totalOriginal,
             precio_unitario: unitarioOriginal,
             refrigerio: selected.refrigerio ?? false,
+            referencia_pago_abono: selected.referencia_pago_abono ?? null,
             observacion: selected.observacion ?? null,
           });
         } catch (rollbackError) {
@@ -470,6 +480,27 @@ export default function ReservasApprovalGuard() {
                   <option value="">Seleccionar método de pago</option>
                   {metodosPago.map((m) => <option key={m} value={m}>{labelMetodo(m)}</option>)}
                 </select>
+              </div>
+
+              <div className="rv-form-group" style={{ gridColumn: "1 / -1" }}>
+                <label>Referencia pago abono *</label>
+                <input
+                  type="text"
+                  value={referenciaPagoAbono}
+                  maxLength={4}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
+                    setReferenciaPagoAbono(clean);
+                    setError(null);
+                  }}
+                  placeholder="Últimos 4 caracteres · Ej. A7F3"
+                  disabled={saving}
+                  style={{ textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}
+                />
+                <small style={{ color: "#877967", lineHeight: 1.4 }}>
+                  Ingresa únicamente los últimos 4 caracteres de la referencia o comprobante del abono.
+                </small>
               </div>
             </div>
 
