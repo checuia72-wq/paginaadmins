@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { ChevronDown, CircleDollarSign, ShieldCheck } from "lucide-react";
-import { ajustarValorTotalReserva, getControlOperativo } from "../../services/controlOperativo.service";
+import { getControlOperativo, updateAdminReservationTotal } from "../../services/controlOperativo.service";
 import { getCurrentRole, type AppRole } from "../../services/role.service";
 import "../../styles/control-operativo-advanced.css";
 
@@ -186,7 +186,7 @@ export default function ControlOperativoAdvancedOptions() {
     setError("");
     setSuccess("");
     try {
-      await ajustarValorTotalReserva({ id_reserva: reserva.id_reserva, valor_total: total, observacion });
+      await updateAdminReservationTotal({ id_reserva: reserva.id_reserva, valor_total: total, observacion });
       setSuccess(`Valor actualizado a ${money(total)}. El valor unitario quedó en ${money(total / reserva.cantidad)}.`);
       setReserva({ ...reserva, total });
       setNuevoTotal(String(total));

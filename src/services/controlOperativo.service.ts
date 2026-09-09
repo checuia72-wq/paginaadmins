@@ -43,6 +43,12 @@ const text=(value:unknown)=>(value==null?"":String(value));
 const num=(value:unknown)=>{const n=Number(value??0);return Number.isFinite(n)?n:0;};
 const dateOnly=(value:unknown)=>text(value).slice(0,10);
 const hourOnly=(value:unknown)=>text(value).slice(0,5);
+const hourFromDateTime=(value:unknown)=>{
+  const raw=text(value).trim();
+  if(!raw)return "";
+  const match=raw.match(/(?:T|\s)(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?/);
+  return match?.[1]??"";
+};
 
 export async function getControlOperativo():Promise<ControlOperativoRow[]>{
   const [reservasRes,participantesRes,planesRes,fechasRes,horasRes]=await Promise.all([
@@ -52,22 +58,39 @@ export async function getControlOperativo():Promise<ControlOperativoRow[]>{
   ]);
   const errors=[reservasRes.error,participantesRes.error,planesRes.error,fechasRes.error,horasRes.error].filter(Boolean);if(errors.length)throw errors[0];
   const reservas=reservasRes.data??[],participantes=participantesRes.data??[],planes=planesRes.data??[],fechas=fechasRes.data??[],horas=horasRes.data??[];
-  const planMap=new Map(planes.map((p:any)=>[Number(p.id_plan),p]));const fechaMap=new Map<number,any>();const horaMap=new Map<number,any>();
+  const planMap=new Map(planes.map((p:any)=>[Number(p.id_plan),p]));const fechaMap=new Map<number,any>();const horaMap=new Map<number,any>();const horasPorPlan=new Map<number,any[]>();
   for(const f of fechas as any[]){for(const id of [f.id_fecha,f.id_plan_fecha,f.id])if(id!=null)fechaMap.set(Number(id),f);}
-  for(const h of horas as any[]){for(const id of [h.id_hora,h.id_plan_hora,h.id])if(id!=null)horaMap.set(Number(id),h);}
+  for(const h of horas as any[]){
+    for(const id of [h.id_hora,h.id_plan_hora,h.id])if(id!=null)horaMap.set(Number(id),h);
+    const planId=Number(h.id_plan);
+    if(Number.isFinite(planId)){
+      if(!horasPorPlan.has(planId))horasPorPlan.set(planId,[]);
+      horasPorPlan.get(planId)!.push(h);
+    }
+  }
   const participantesPorReserva=new Map<number,any[]>();for(const p of participantes as any[]){const id=Number(p.id_reserva);if(!participantesPorReserva.has(id))participantesPorReserva.set(id,[]);participantesPorReserva.get(id)!.push(p);}
   const rows:ControlOperativoRow[]=[];
   for(const r of reservas as any[]){
-    const plan=planMap.get(Number(r.id_plan));const fechaId=r.id_fecha??r.id_plan_fecha??r.id_fecha_reserva;const horaId=r.id_hora??r.id_plan_hora??r.id_hora_reserva;
-    const fechaRelacionada=fechaMap.get(Number(fechaId));const horaRelacionada=horaMap.get(Number(horaId));const personas=participantesPorReserva.get(Number(r.id_reserva))??[null];
-    const fechaReserva=dateOnly(r.fecha_reserva??r.fecha??fechaRelacionada?.fecha_reserva??fechaRelacionada?.fecha);const horaReserva=hourOnly(r.hora_reserva??r.hora??horaRelacionada?.hora_reserva??horaRelacionada?.hora);
+    const planId=r.id_plan==null?null:Number(r.id_plan);const plan=planId==null?null:planMap.get(planId);const fechaId=r.id_fecha??r.id_plan_fecha??r.id_fecha_reserva;const horaIdOriginal=r.id_hora??r.id_plan_hora??r.id_hora_reserva;
+    const fechaRelacionada=fechaMap.get(Number(fechaId));let horaRelacionada=horaMap.get(Number(horaIdOriginal));let horaId=horaIdOriginal;
+    const horaDesdeFechaReserva=hourFromDateTime(r.fecha_reserva);
+    if(!horaRelacionada&&planId!=null){
+      const opciones=horasPorPlan.get(planId)??[];
+      const horaDirecta=hourOnly(r.hora_reserva??r.hora)||horaDesdeFechaReserva;
+      if(horaDirecta)horaRelacionada=opciones.find((h:any)=>hourOnly(h.hora_reserva??h.hora)===horaDirecta);
+      if(!horaRelacionada&&opciones.length===1)horaRelacionada=opciones[0];
+      if(horaRelacionada)horaId=horaRelacionada.id_hora??horaRelacionada.id_plan_hora??horaRelacionada.id??horaIdOriginal;
+    }
+    const personas=participantesPorReserva.get(Number(r.id_reserva))??[null];
+    const fechaReserva=dateOnly(r.fecha_reserva??r.fecha??fechaRelacionada?.fecha_reserva??fechaRelacionada?.fecha);
+    const horaReserva=hourOnly(r.hora_reserva??r.hora??horaRelacionada?.hora_reserva??horaRelacionada?.hora)||horaDesdeFechaReserva;
     const cantidadPersonas=r.cantidad_personas==null?personas.filter(Boolean).length:num(r.cantidad_personas);const precioPlan=num(plan?.precio_plan);
     const totalGuardado=num(r.valor_total)>0?num(r.valor_total):num(r.precio_unitario)*cantidadPersonas;const totalCalculado=precioPlan>0?precioPlan*cantidadPersonas:0;const total=totalGuardado>0?totalGuardado:totalCalculado;
     const abono=num(r.valor_abonado);const pagoSaldo=num(r.valor_saldo_pagado);const saldo=Math.max(0,total-abono-pagoSaldo);
     for(const p of personas){const contactoCliente=text(p?.telefono_cliente||r.telefono_cliente);rows.push({
       id_reserva:Number(r.id_reserva),id_participante:p?Number(p.id_participante):null,reserva_codigo:text(r.codigo_reserva)||`#${r.id_reserva}`,
       id_codigo_operativo:r.id_codigo_operativo==null?null:Number(r.id_codigo_operativo),incluye_almuerzo:!!r.incluye_almuerzo,
-      id_plan:r.id_plan==null?null:Number(r.id_plan),id_fecha:fechaId==null?null:Number(fechaId),id_hora:horaId==null?null:Number(horaId),plan:text(plan?.nombre_plan),fecha:fechaReserva,hora:horaReserva,aprobado:r.aprobado??null,
+      id_plan:planId,id_fecha:fechaId==null?null:Number(fechaId),id_hora:horaId==null?null:Number(horaId),plan:text(plan?.nombre_plan),fecha:fechaReserva,hora:horaReserva,aprobado:r.aprobado??null,
       nombre:text(p?.nombre),edad:p?.edad==null?null:Number(p.edad),nacionalidad:text(p?.nacionalidad),tipo_documento:text(p?.tipo_documento),documento:text(p?.numero_documento),contacto:text(p?.telefono_participante||contactoCliente),contacto_cliente:contactoCliente,cantidad:cantidadPersonas,
       mina:r.mina??null,refrigerio:r.refrigerio??null,restaurante:text(r.restaurante),almuerzo:text(p?.tipo_almuerzo),total,abono,medio_abono:text(r.metodo_pago_abono),referencia_pago_abono:text(r.referencia_pago_abono),pago_saldo:pagoSaldo,medio_saldo:text(r.metodo_pago_saldo),saldo_pendiente:saldo,observacion:text(r.observacion),
       estado_operativo:(text(r.estado_operativo)||"programada") as EstadoOperativo,motivo_estado_operativo:text(r.motivo_estado_operativo),estado_operativo_at:text(r.estado_operativo_at)
@@ -114,23 +137,33 @@ export async function registrarDevolucionReserva(args:{id_reserva:number;monto:n
   return data==null?null:Number(data);
 }
 
-export async function ajustarValorTotalReserva(args:{id_reserva:number;valor_total:number;observacion:string}){
-  const currentRole=await getCurrentRole();
-  if(currentRole?.role!=="administrador")throw new Error("Solo un administrador puede cambiar el valor total de una reserva.");
-  const nuevoTotal=num(args.valor_total);const motivo=args.observacion.trim();
-  if(nuevoTotal<=0)throw new Error("El nuevo valor total debe ser mayor a cero.");
-  if(!motivo)throw new Error("La observación es obligatoria para cambiar el valor total.");
-  const {data:actual,error:readError}=await client().from("reserva").select("id_reserva,cantidad_personas,valor_total,precio_unitario,observacion").eq("id_reserva",args.id_reserva).single();
-  if(readError)throw readError;
-  const cantidad=Math.max(1,num(actual?.cantidad_personas));const anterior=num(actual?.valor_total);const precioUnitario=Math.round((nuevoTotal/cantidad)*100)/100;
-  const marca=new Date().toLocaleString("es-CO",{timeZone:"America/Bogota"});
-  const detalle=`[Ajuste valor total ${marca}] $${anterior.toLocaleString("es-CO")} → $${nuevoTotal.toLocaleString("es-CO")}. ${motivo}`;
-  const observacionAnterior=text(actual?.observacion).trim();const observacionFinal=observacionAnterior?`${observacionAnterior}\n${detalle}`:detalle;
-  const {data,error}=await client().from("reserva").update({valor_total:nuevoTotal,precio_unitario:precioUnitario,observacion:observacionFinal}).eq("id_reserva",args.id_reserva).select().single();
+export async function replaceSaldoPagos(idReserva:number,pagos:Array<{monto:number;medio_pago:string}>){const validos=pagos.filter(p=>num(p.monto)>0&&text(p.medio_pago).trim());const total=validos.reduce((s,p)=>s+num(p.monto),0);const{error:deleteError}=await client().from("reserva_pago").delete().eq("id_reserva",idReserva).eq("tipo_pago","saldo");if(deleteError)throw deleteError;if(validos.length){const{error:insertError}=await client().from("reserva_pago").insert(validos.map(p=>({id_reserva:idReserva,tipo_pago:"saldo",monto:num(p.monto),medio_pago:p.medio_pago.trim()})));if(insertError)throw insertError;}const metodo=validos.length===1?validos[0].medio_pago:null;const{error:updateError}=await client().from("reserva").update({valor_saldo_pagado:total,metodo_pago_saldo:metodo}).eq("id_reserva",idReserva);if(updateError)throw updateError;return total;}
+export async function updateControlReserva(idReserva:number,payload:Record<string,unknown>){
+  const patch={...payload};
+  if(Object.prototype.hasOwnProperty.call(patch,"referencia_pago_abono")){
+    const ref=text(patch.referencia_pago_abono).trim().toUpperCase();
+    patch.referencia_pago_abono=ref||null;
+  }
+  const{data,error}=await client().from("reserva").update(patch).eq("id_reserva",idReserva).select().single();if(error)throw error;return data;
+}
+export async function updateControlParticipante(idParticipante:number,payload:Record<string,unknown>){const{data,error}=await client().from("participante").update(payload).eq("id_participante",idParticipante).select().single();if(error)throw error;return data;}
+
+export async function updateAdminReservationTotal(args:{id_reserva:number;valor_total:number;observacion:string}){
+  const role=await getCurrentRole();
+  if(role!=="administrador")throw new Error("Solo un administrador puede cambiar el valor total de una reserva.");
+  const total=num(args.valor_total);
+  const observation=text(args.observacion).trim();
+  if(total<=0)throw new Error("El valor total debe ser mayor a $0.");
+  if(!observation)throw new Error("La observación es obligatoria para cambiar el valor total.");
+
+  const db=client();
+  const{data:current,error:currentError}=await db.from("reserva").select("id_reserva,cantidad_personas,valor_total,precio_unitario,observacion").eq("id_reserva",args.id_reserva).single();
+  if(currentError)throw currentError;
+  const cantidad=Math.max(1,num(current.cantidad_personas));
+  const unitario=total/cantidad;
+  const prevObservation=text(current.observacion).trim();
+  const finalObservation=prevObservation&&prevObservation!==observation?`${prevObservation} | ${observation}`:observation;
+  const{data,error}=await db.from("reserva").update({valor_total:total,precio_unitario:unitario,observacion:finalObservation}).eq("id_reserva",args.id_reserva).select().single();
   if(error)throw error;
   return data;
 }
-
-export async function replaceSaldoPagos(idReserva:number,pagos:Array<{monto:number;medio_pago:string}>){const validos=pagos.filter(p=>num(p.monto)>0&&text(p.medio_pago).trim());const total=validos.reduce((s,p)=>s+num(p.monto),0);const{error:deleteError}=await client().from("reserva_pago").delete().eq("id_reserva",idReserva).eq("tipo_pago","saldo");if(deleteError)throw deleteError;if(validos.length){const{error:insertError}=await client().from("reserva_pago").insert(validos.map(p=>({id_reserva:idReserva,tipo_pago:"saldo",monto:num(p.monto),medio_pago:p.medio_pago.trim()})));if(insertError)throw insertError;}const metodo=validos.length===1?validos[0].medio_pago:null;const{error:updateError}=await client().from("reserva").update({valor_saldo_pagado:total,metodo_pago_saldo:metodo}).eq("id_reserva",idReserva);if(updateError)throw updateError;return total;}
-export async function updateControlReserva(idReserva:number,payload:Record<string,unknown>){const{data,error}=await client().from("reserva").update(payload).eq("id_reserva",idReserva).select().single();if(error)throw error;return data;}
-export async function updateControlParticipante(idParticipante:number,payload:Record<string,unknown>){const{data,error}=await client().from("participante").update(payload).eq("id_participante",idParticipante).select().single();if(error)throw error;return data;}
