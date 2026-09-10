@@ -100,7 +100,32 @@ export async function getControlOperativo():Promise<ControlOperativoRow[]>{
 }
 
 export async function getReservaPagos(idReserva:number):Promise<ReservaPago[]>{const{data,error}=await client().from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,observacion").eq("id_reserva",idReserva).order("fecha_pago",{ascending:true});if(error)throw error;return(data??[]).map((p:any)=>({...p,monto:num(p.monto)})) as ReservaPago[];}
-export async function getPagosControlOperativo():Promise<ReservaPago[]>{const{data,error}=await client().from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,observacion").order("fecha_pago",{ascending:false});if(error)throw error;return(data??[]).map((p:any)=>({...p,id_reserva:Number(p.id_reserva),monto:num(p.monto)})) as ReservaPago[];}
+
+export async function getPagosControlOperativo():Promise<ReservaPago[]>{
+  const db=client();
+  const [pagosRes,reservasRes]=await Promise.all([
+    db.from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,observacion").order("fecha_pago",{ascending:false}),
+    db.from("reserva").select("id_reserva,valor_abonado,metodo_pago_abono,fecha_aprobacion,fecha_solicitud").eq("aprobado",true)
+  ]);
+  if(pagosRes.error)throw pagosRes.error;
+  if(reservasRes.error)throw reservasRes.error;
+
+  const pagos=(pagosRes.data??[]).map((p:any)=>({...p,id_reserva:Number(p.id_reserva),monto:num(p.monto)})) as ReservaPago[];
+  const abonosRegistrados=new Set(pagos.filter(p=>p.tipo_pago==="abono").map(p=>p.id_reserva));
+  const abonosReserva:ReservaPago[]=(reservasRes.data??[])
+    .filter((r:any)=>num(r.valor_abonado)>0&&text(r.metodo_pago_abono).trim()&&!abonosRegistrados.has(Number(r.id_reserva)))
+    .map((r:any)=>({
+      id_reserva:Number(r.id_reserva),
+      tipo_pago:"abono" as const,
+      monto:num(r.valor_abonado),
+      medio_pago:text(r.metodo_pago_abono).trim(),
+      fecha_pago:text(r.fecha_aprobacion||r.fecha_solicitud)||undefined,
+      observacion:"Abono registrado en la reserva"
+    }));
+
+  return [...pagos,...abonosReserva].sort((a,b)=>text(b.fecha_pago).localeCompare(text(a.fecha_pago)));
+}
+
 export async function getRecaudoDiario():Promise<RecaudoDiario[]>{const{data,error}=await client().from("recaudo_diario").select("fecha,medio_pago,tipo_pago,total,cantidad_movimientos").order("fecha",{ascending:false});if(error)throw error;return(data??[]).map((r:any)=>({...r,total:num(r.total),cantidad_movimientos:num(r.cantidad_movimientos)})) as RecaudoDiario[];}
 
 export async function getDevolucionesControlOperativo():Promise<ReservaDevolucion[]>{
