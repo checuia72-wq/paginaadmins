@@ -196,14 +196,21 @@ function exportarListadoSimple(fechaSeleccionada: string, rows: ControlOperativo
       : "No hay asistentes activos registrados para la fecha seleccionada.");
   }
 
-  const data = asistentes.map((row) => ({
+  const data = asistentes.map((row) => soloMina ? ({
+    NOMBRE: texto(row.nombre),
+    "CÉDULA": texto(row.documento),
+    EDAD: texto(row.edad),
+    NACIONALIDAD: texto(row.nacionalidad),
+  }) : ({
     NOMBRE: texto(row.nombre),
     "CÉDULA": texto(row.documento),
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(data);
-  worksheet["!autofilter"] = { ref: `A1:B${data.length + 1}` };
-  worksheet["!cols"] = [{ wch: 38 }, { wch: 24 }];
+  worksheet["!autofilter"] = { ref: soloMina ? `A1:D${data.length + 1}` : `A1:B${data.length + 1}` };
+  worksheet["!cols"] = soloMina
+    ? [{ wch: 38 }, { wch: 24 }, { wch: 12 }, { wch: 24 }]
+    : [{ wch: 38 }, { wch: 24 }];
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, soloMina ? "Asistentes Mina" : "Asistentes");
@@ -270,7 +277,7 @@ export default function ControlOperativoExcelExport() {
         const mineText = Array.from(mineButton.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
         if (mineText) mineText.nodeValue = " Exportar minas";
         else mineButton.append(" Exportar minas");
-        mineButton.title = "Exportar nombres y cédulas de asistentes con Mina por fecha";
+        mineButton.title = "Exportar nombre, cédula, edad y nacionalidad de asistentes con Mina por fecha";
         mineButton.style.marginLeft = "8px";
         policyButton.insertAdjacentElement("afterend", mineButton);
       }
@@ -364,7 +371,7 @@ export default function ControlOperativoExcelExport() {
             <h2 id="daily-export-title" style={{ margin:"5px 0 4px", fontSize:24, color:"#211a12" }}>{isMines ? "Exportar minas" : "Exportar pólizas"}</h2>
             <p style={{ margin:0, color:"#786b5d", fontSize:14 }}>
               {isMines
-                ? "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes de ese día que tienen Mina."
+                ? "Selecciona la fecha de visita. El Excel incluirá nombre, cédula, edad y nacionalidad de los asistentes de ese día que tienen Mina."
                 : "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día."}
             </p>
           </div>
