@@ -2,7 +2,7 @@ import { supabase } from "../lib/supabase";
 
 export interface DashboardPlan { id_plan:number; nombre_plan:string; precio_plan?:number|null; }
 export interface DashboardReserva {
-  id_reserva:number; fecha_solicitud?:string|null; fecha_aprobacion?:string|null; fecha_reserva?:string|null; telefono_cliente?:string|null;
+  id_reserva:number; codigo_reserva?:string|null; fecha_solicitud?:string|null; fecha_aprobacion?:string|null; fecha_reserva?:string|null; telefono_cliente?:string|null;
   id_plan?:number|null; id_fecha?:number|null; cantidad_personas?:number|null; aprobado?:boolean|null; precio_unitario?:number|null;
   valor_total?:number|null; valor_abonado?:number|null; valor_saldo_pagado?:number|null;
   metodo_pago_abono?:string|null; metodo_pago_saldo?:string|null; estado_operativo?:string|null; plan?:DashboardPlan|null;
@@ -21,7 +21,7 @@ const cleanMethod=(value:unknown)=>String(value??"").trim().toLowerCase();
 export async function getDashboardAnalytics():Promise<DashboardAnalyticsData>{
   const db=client();
   const [reservasResult,planesResult,clientesResult,participantesResult,pagosResult,devolucionesResult]=await Promise.all([
-    db.from("reserva").select(`id_reserva,fecha_solicitud,fecha_aprobacion,telefono_cliente,id_plan,id_fecha,cantidad_personas,aprobado,precio_unitario,valor_total,valor_abonado,valor_saldo_pagado,metodo_pago_abono,metodo_pago_saldo,estado_operativo,plan (id_plan,nombre_plan,precio_plan),plan_fechas (id_fecha,fecha)`).order("id_reserva",{ascending:false}),
+    db.from("reserva").select(`id_reserva,codigo_reserva,fecha_solicitud,fecha_aprobacion,telefono_cliente,id_plan,id_fecha,cantidad_personas,aprobado,precio_unitario,valor_total,valor_abonado,valor_saldo_pagado,metodo_pago_abono,metodo_pago_saldo,estado_operativo,plan (id_plan,nombre_plan,precio_plan),plan_fechas (id_fecha,fecha)`).order("id_reserva",{ascending:false}),
     db.from("plan").select("id_plan, nombre_plan, precio_plan").order("id_plan",{ascending:true}),
     db.from("cliente").select("telefono, atencion_humana, etapaconversacion"),
     db.from("participante").select("id_participante, id_reserva"),
