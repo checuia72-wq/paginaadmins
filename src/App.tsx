@@ -17,6 +17,7 @@ import RoleRoute from "./components/RoleRoute";
 import GlobalAlertModal from "./components/common/GlobalAlertModal";
 import ControlOperativoAdvancedOptions from "./components/admin/ControlOperativoAdvancedOptions";
 import ControlOperativoMealSelector from "./components/admin/ControlOperativoMealSelector";
+import ControlOperativoMealExport from "./components/admin/ControlOperativoMealExport";
 
 import "./styles/dashboard.css";
 
@@ -26,6 +27,7 @@ export default function App() {
       <GlobalAlertModal />
       <ControlOperativoAdvancedOptions />
       <ControlOperativoMealSelector />
+      <ControlOperativoMealExport />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
