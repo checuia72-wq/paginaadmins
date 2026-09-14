@@ -35,14 +35,18 @@ function getReservaCode(modal: HTMLElement) {
   return text.match(/CH\d+/i)?.[0] ?? "";
 }
 
-function lockBaseTotal(modal: HTMLElement, role: AppRole | null) {
+function getBaseTotalInput(modal: HTMLElement) {
   const labels = Array.from(modal.querySelectorAll<HTMLLabelElement>(".op-edit-grid label"));
   const totalLabel = labels.find((label) => {
     const clone = label.cloneNode(true) as HTMLElement;
     clone.querySelectorAll("input,select,textarea").forEach((node) => node.remove());
     return clone.textContent?.trim().toLowerCase() === "total";
   });
-  const input = totalLabel?.querySelector<HTMLInputElement>("input");
+  return totalLabel?.querySelector<HTMLInputElement>("input") ?? null;
+}
+
+function lockBaseTotal(modal: HTMLElement, role: AppRole | null) {
+  const input = getBaseTotalInput(modal);
   if (!input) return;
   input.readOnly = true;
   input.setAttribute("aria-readonly", "true");
@@ -50,6 +54,32 @@ function lockBaseTotal(modal: HTMLElement, role: AppRole | null) {
   input.title = role === "administrador"
     ? "El valor total se modifica desde Opciones avanzadas."
     : "Solo un administrador puede modificar el valor total.";
+}
+
+function setReactInputValue(input: HTMLInputElement, value: number) {
+  const nextValue = String(value);
+  const currentValue = Number(String(input.value || "").replace(/[^0-9.-]/g, ""));
+  if (Number.isFinite(currentValue) && Math.abs(currentValue - value) < 0.01) return;
+
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (setter) setter.call(input, nextValue);
+  else input.value = nextValue;
+
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+async function syncBaseTotalFromDatabase(modal: HTMLElement) {
+  const codigo = getReservaCode(modal);
+  if (!codigo) return false;
+
+  const rows = await getControlOperativo();
+  const row = rows.find((item) => item.reserva_codigo === codigo);
+  const input = getBaseTotalInput(modal);
+  if (!row || !input) return false;
+
+  setReactInputValue(input, Number(row.total || 0));
+  return true;
 }
 
 export default function ControlOperativoAdvancedOptions() {
@@ -98,6 +128,26 @@ export default function ControlOperativoAdvancedOptions() {
 
       lockBaseTotal(currentModal, role);
       setModal(currentModal);
+
+      const codigo = getReservaCode(currentModal);
+      const loadingKey = codigo ? `loading:${codigo}` : "";
+      const doneKey = codigo ? `done:${codigo}` : "";
+      if (
+        codigo &&
+        currentModal.dataset.totalSyncState !== loadingKey &&
+        currentModal.dataset.totalSyncState !== doneKey
+      ) {
+        currentModal.dataset.totalSyncState = loadingKey;
+        void syncBaseTotalFromDatabase(currentModal)
+          .then((synced) => {
+            if (!currentModal.isConnected) return;
+            currentModal.dataset.totalSyncState = synced ? doneKey : "";
+          })
+          .catch((syncError) => {
+            console.error("No se pudo sincronizar el valor total de la reserva en el modal operativo", syncError);
+            if (currentModal.isConnected) currentModal.dataset.totalSyncState = "";
+          });
+      }
 
       let currentHost = currentModal.querySelector<HTMLDivElement>("#op-advanced-options-host");
       if (!currentHost) {
