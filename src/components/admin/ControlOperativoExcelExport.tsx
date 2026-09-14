@@ -20,7 +20,7 @@ const hora = (value?: string | null) => String(value ?? "").slice(0, 5);
 const texto = (value: unknown) => String(value ?? "").trim();
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
 
-type ExportMode = "policies" | "mines";
+type ExportMode = "excel" | "policies" | "mines";
 
 const estadoLabel = (value: string) => ({
   programada: "Programada",
@@ -29,6 +29,13 @@ const estadoLabel = (value: string) => ({
   reprogramada: "Reprogramada",
   cancelada: "Cancelada",
 }[value] ?? value);
+
+const fechaISO = (value?: string | null) => String(value ?? "").slice(0, 10);
+
+function fechaEnRango(value: string | null | undefined, desde: string, hasta: string) {
+  const actual = fechaISO(value);
+  return !!actual && actual >= desde && actual <= hasta;
+}
 
 function agruparPorReserva(rows: ControlOperativoRow[]) {
   const map = new Map<number, ControlOperativoRow[]>();
@@ -60,12 +67,22 @@ function devolucionesPorReserva(devoluciones: ReservaDevolucion[]) {
   return map;
 }
 
-async function exportarControlOperativoExcel() {
-  const [rows, pagos, devoluciones] = await Promise.all([
+async function exportarControlOperativoExcel(desde: string, hasta: string) {
+  if (!desde || !hasta) throw new Error("Selecciona la fecha inicial y la fecha final.");
+  if (desde > hasta) throw new Error("La fecha inicial no puede ser posterior a la fecha final.");
+
+  const [allRows, allPagos, allDevoluciones] = await Promise.all([
     getControlOperativo(),
     getPagosControlOperativo(),
     getDevolucionesControlOperativo(),
   ]);
+
+  const rows = allRows.filter((row) => fechaEnRango(row.fecha, desde, hasta));
+  if (!rows.length) throw new Error("No hay reservas registradas dentro del rango seleccionado.");
+
+  const reservationIds = new Set(rows.map((row) => row.id_reserva));
+  const pagos = allPagos.filter((pago) => reservationIds.has(pago.id_reserva));
+  const devoluciones = allDevoluciones.filter((item) => reservationIds.has(item.id_reserva));
 
   const grupos = agruparPorReserva(rows);
   const pagosMap = pagosPorReserva(pagos);
@@ -163,7 +180,7 @@ async function exportarControlOperativoExcel() {
   devolucionesSheet["!cols"] = [{ wch: 18 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 36 }, { wch: 24 }];
   XLSX.utils.book_append_sheet(workbook, devolucionesSheet, "Devoluciones");
 
-  XLSX.writeFile(workbook, `Control_Operativo_Todas_Las_Reservas_${hoy()}.xlsx`, { compression: true });
+  XLSX.writeFile(workbook, `Control_Operativo_${desde}_a_${hasta}.xlsx`, { compression: true });
 }
 
 function participantesActivosPorFecha(fechaSeleccionada: string, rows: ControlOperativoRow[], soloMina = false) {
@@ -225,15 +242,26 @@ export default function ControlOperativoExcelExport() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ExportMode>("policies");
   const [selectedDate, setSelectedDate] = useState(hoy());
+  const [rangeStart, setRangeStart] = useState(hoy());
+  const [rangeEnd, setRangeEnd] = useState(hoy());
   const [rows, setRows] = useState<ControlOperativoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
 
   const asistentesCount = useMemo(
-    () => participantesActivosPorFecha(selectedDate, rows, mode === "mines").length,
+    () => mode === "excel" ? 0 : participantesActivosPorFecha(selectedDate, rows, mode === "mines").length,
     [rows, selectedDate, mode]
   );
+
+  const reservasRangoCount = useMemo(() => {
+    if (mode !== "excel" || !rangeStart || !rangeEnd || rangeStart > rangeEnd) return 0;
+    return new Set(
+      rows
+        .filter((row) => fechaEnRango(row.fecha, rangeStart, rangeEnd))
+        .map((row) => row.id_reserva)
+    ).size;
+  }, [rows, rangeStart, rangeEnd, mode]);
 
   useEffect(() => {
     const ensureExportButtons = () => {
@@ -255,7 +283,7 @@ export default function ControlOperativoExcelExport() {
       const baseText = Array.from(base.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
       if (baseText) baseText.nodeValue = " Exportar Excel";
       else base.append(" Exportar Excel");
-      base.title = "Exportar todas las reservas a Excel";
+      base.title = "Exportar reservas a Excel por rango de fechas";
 
       let policyButton = existingPolicies;
       if (!policyButton) {
@@ -298,35 +326,29 @@ export default function ControlOperativoExcelExport() {
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      if (buttonMode === "excel") {
-        const original = button.innerHTML;
-        button.disabled = true;
-        button.textContent = "Generando Excel…";
-        try {
-          await exportarControlOperativoExcel();
-        } catch (e) {
-          console.error("No fue posible exportar el control operativo a Excel:", e);
-          window.alert("No fue posible generar el archivo Excel. Intenta nuevamente.");
-        } finally {
-          button.disabled = false;
-          button.innerHTML = original;
-        }
-        return;
+      const pageDate = (document.querySelector('.op-filters input[type="date"]') as HTMLInputElement | null)?.value;
+      const nextMode: ExportMode = buttonMode === "excel" ? "excel" : buttonMode === "mines" ? "mines" : "policies";
+      setMode(nextMode);
+      setError("");
+
+      if (nextMode === "excel") {
+        const initialDate = pageDate || hoy();
+        setRangeStart(initialDate);
+        setRangeEnd(initialDate);
+      } else {
+        setSelectedDate(pageDate || hoy());
       }
 
-      const nextMode: ExportMode = buttonMode === "mines" ? "mines" : "policies";
-      const pageDate = (document.querySelector('.op-filters input[type="date"]') as HTMLInputElement | null)?.value;
-      setMode(nextMode);
-      setSelectedDate(pageDate || hoy());
       setOpen(true);
-      setError("");
       setLoading(true);
       try {
         setRows(await getControlOperativo());
       } catch (e: any) {
-        setError(e?.message || (nextMode === "mines"
-          ? "No fue posible cargar las reservas para exportar minas."
-          : "No fue posible cargar las reservas para exportar pólizas."));
+        setError(e?.message || (nextMode === "excel"
+          ? "No fue posible cargar las reservas para exportar Excel."
+          : nextMode === "mines"
+            ? "No fue posible cargar las reservas para exportar minas."
+            : "No fue posible cargar las reservas para exportar pólizas."));
       } finally {
         setLoading(false);
       }
@@ -345,14 +367,20 @@ export default function ControlOperativoExcelExport() {
     setError("");
     setExporting(true);
     try {
-      const latest = await getControlOperativo();
-      setRows(latest);
-      exportarListadoSimple(selectedDate, latest, mode === "mines");
+      if (mode === "excel") {
+        await exportarControlOperativoExcel(rangeStart, rangeEnd);
+      } else {
+        const latest = await getControlOperativo();
+        setRows(latest);
+        exportarListadoSimple(selectedDate, latest, mode === "mines");
+      }
       setOpen(false);
     } catch (e: any) {
-      setError(e?.message || (mode === "mines"
-        ? "No fue posible generar el archivo de minas."
-        : "No fue posible generar el archivo de pólizas."));
+      setError(e?.message || (mode === "excel"
+        ? "No fue posible generar el archivo Excel para el rango seleccionado."
+        : mode === "mines"
+          ? "No fue posible generar el archivo de minas."
+          : "No fue posible generar el archivo de pólizas."));
     } finally {
       setExporting(false);
     }
@@ -360,33 +388,62 @@ export default function ControlOperativoExcelExport() {
 
   if (!open) return null;
 
+  const isExcel = mode === "excel";
   const isMines = mode === "mines";
+  const invalidRange = isExcel && (!rangeStart || !rangeEnd || rangeStart > rangeEnd);
+  const resultCount = isExcel ? reservasRangoCount : asistentesCount;
+  const title = isExcel ? "Exportar Excel" : isMines ? "Exportar minas" : "Exportar pólizas";
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:99999, background:"rgba(16,13,10,.58)", backdropFilter:"blur(4px)", display:"grid", placeItems:"center", padding:20 }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="daily-export-title" style={{ width:"min(520px,100%)", background:"#fffdf9", border:"1px solid #e8d7bd", borderRadius:20, boxShadow:"0 28px 80px rgba(40,27,9,.28)", overflow:"hidden" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="daily-export-title" style={{ width:"min(560px,100%)", background:"#fffdf9", border:"1px solid #e8d7bd", borderRadius:20, boxShadow:"0 28px 80px rgba(40,27,9,.28)", overflow:"hidden" }}>
         <div style={{ padding:"24px 26px 18px", borderBottom:"1px solid #eee2d2", display:"flex", justifyContent:"space-between", gap:16 }}>
           <div>
             <div style={{ color:"#b67b24", fontSize:12, fontWeight:800, letterSpacing:1, textTransform:"uppercase" }}>Control operativo</div>
-            <h2 id="daily-export-title" style={{ margin:"5px 0 4px", fontSize:24, color:"#211a12" }}>{isMines ? "Exportar minas" : "Exportar pólizas"}</h2>
+            <h2 id="daily-export-title" style={{ margin:"5px 0 4px", fontSize:24, color:"#211a12" }}>{title}</h2>
             <p style={{ margin:0, color:"#786b5d", fontSize:14 }}>
-              {isMines
-                ? "Selecciona la fecha de visita. El Excel incluirá nombre, cédula, edad y nacionalidad de los asistentes de ese día que tienen Mina."
-                : "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día."}
+              {isExcel
+                ? "Selecciona el rango de fechas de visita que quieres incluir. Se exportarán las reservas, pagos y devoluciones correspondientes a esas reservas."
+                : isMines
+                  ? "Selecciona la fecha de visita. El Excel incluirá nombre, cédula, edad y nacionalidad de los asistentes de ese día que tienen Mina."
+                  : "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día."}
             </p>
           </div>
           <button type="button" onClick={() => !exporting && setOpen(false)} disabled={exporting} aria-label="Cerrar" style={{ width:36, height:36, borderRadius:10, border:"1px solid #e5d5be", background:"white", cursor:"pointer", fontSize:22, lineHeight:1 }}>×</button>
         </div>
 
         <div style={{ padding:"24px 26px" }}>
-          <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
-            Fecha de visita
-            <input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
-          </label>
+          {isExcel ? (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:14 }}>
+              <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
+                Desde
+                <input type="date" value={rangeStart} onChange={(e) => { setRangeStart(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
+              </label>
+              <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
+                Hasta
+                <input type="date" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => { setRangeEnd(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
+              </label>
+            </div>
+          ) : (
+            <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
+              Fecha de visita
+              <input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
+            </label>
+          )}
+
+          {invalidRange && <div style={{ marginTop:14, padding:"12px 14px", borderRadius:10, background:"#fff1f0", border:"1px solid #f0c7c3", color:"#a33a31", fontSize:13 }}>La fecha inicial debe ser igual o anterior a la fecha final.</div>}
 
           <div style={{ marginTop:16, padding:"14px 16px", borderRadius:12, background:"#f8f2e8", border:"1px solid #ead9bf", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
-            <span style={{ color:"#6d5d49", fontSize:14 }}>{loading ? "Consultando reservas…" : isMines ? "Asistentes con Mina encontrados" : "Asistentes encontrados"}</span>
-            <strong style={{ color:"#9b661b", fontSize:18 }}>{loading ? "…" : asistentesCount}</strong>
+            <span style={{ color:"#6d5d49", fontSize:14 }}>
+              {loading
+                ? "Consultando reservas…"
+                : isExcel
+                  ? "Reservas encontradas en el rango"
+                  : isMines
+                    ? "Asistentes con Mina encontrados"
+                    : "Asistentes encontrados"}
+            </span>
+            <strong style={{ color:"#9b661b", fontSize:18 }}>{loading ? "…" : resultCount}</strong>
           </div>
 
           {error && <div style={{ marginTop:14, padding:"12px 14px", borderRadius:10, background:"#fff1f0", border:"1px solid #f0c7c3", color:"#a33a31", fontSize:13 }}>{error}</div>}
@@ -394,7 +451,7 @@ export default function ControlOperativoExcelExport() {
 
         <div style={{ padding:"16px 26px 22px", borderTop:"1px solid #eee2d2", display:"flex", justifyContent:"flex-end", gap:10 }}>
           <button type="button" onClick={() => setOpen(false)} disabled={exporting} style={{ height:44, padding:"0 16px", borderRadius:11, border:"1px solid #ddd0bd", background:"#fff", color:"#5d5145", fontWeight:700, cursor:"pointer" }}>Cancelar</button>
-          <button type="button" onClick={exportSelected} disabled={loading || exporting || !selectedDate || asistentesCount === 0} style={{ height:44, padding:"0 18px", borderRadius:11, border:0, background:"#c58b31", color:"#fff", fontWeight:800, cursor:"pointer", opacity:(loading || exporting || !selectedDate || asistentesCount === 0) ? .55 : 1 }}>{exporting ? "Generando…" : isMines ? "Exportar minas" : "Exportar pólizas"}</button>
+          <button type="button" onClick={exportSelected} disabled={loading || exporting || invalidRange || resultCount === 0} style={{ height:44, padding:"0 18px", borderRadius:11, border:0, background:"#c58b31", color:"#fff", fontWeight:800, cursor:"pointer", opacity:(loading || exporting || invalidRange || resultCount === 0) ? .55 : 1 }}>{exporting ? "Generando…" : isExcel ? "Exportar rango" : isMines ? "Exportar minas" : "Exportar pólizas"}</button>
         </div>
       </div>
     </div>
