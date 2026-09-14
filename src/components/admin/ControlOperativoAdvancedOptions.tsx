@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
-import { ChevronDown, CircleDollarSign, ShieldCheck } from "lucide-react";
-import { getControlOperativo, updateAdminReservationTotal } from "../../services/controlOperativo.service";
+import { ChevronDown, CircleDollarSign, ShieldCheck, UsersRound } from "lucide-react";
+import {
+  cambiarEstadoOperativo,
+  getControlOperativo,
+  updateAdminReservationTotal,
+  updateControlReserva,
+} from "../../services/controlOperativo.service";
 import { getCurrentRole, type AppRole } from "../../services/role.service";
 import "../../styles/control-operativo-advanced.css";
 
 type AdvancedOption = "" | "estado" | "reprogramar" | "devoluciones" | "valor";
+type AttendanceMode = "todos" | "faltaron";
 
 type ReservaResumen = {
   id_reserva: number;
@@ -14,6 +20,8 @@ type ReservaResumen = {
   total: number;
   cantidad: number;
   observacion: string;
+  abono: number;
+  pagoSaldo: number;
 };
 
 const money = (value: number) => `$${Number(value || 0).toLocaleString("es-CO")}`;
@@ -24,6 +32,11 @@ function sectionKey(section: HTMLElement): AdvancedOption {
   if (title.includes("reprogramar reserva")) return "reprogramar";
   if (title.includes("devoluciones")) return "devoluciones";
   return "";
+}
+
+function getStateSection(modal: HTMLElement) {
+  return Array.from(modal.querySelectorAll<HTMLElement>(".op-management-section"))
+    .find((section) => sectionKey(section) === "estado") ?? null;
 }
 
 function getReservaCode(modal: HTMLElement) {
@@ -86,11 +99,16 @@ export default function ControlOperativoAdvancedOptions() {
   const location = useLocation();
   const [role, setRole] = useState<AppRole | null>(null);
   const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const [stateHost, setStateHost] = useState<HTMLDivElement | null>(null);
   const [modal, setModal] = useState<HTMLElement | null>(null);
   const [selected, setSelected] = useState<AdvancedOption>("");
   const [reserva, setReserva] = useState<ReservaResumen | null>(null);
   const [nuevoTotal, setNuevoTotal] = useState("");
   const [observacion, setObservacion] = useState("");
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState("");
+  const [asistencia, setAsistencia] = useState<AttendanceMode>("todos");
+  const [asistentes, setAsistentes] = useState("");
+  const [penalidad, setPenalidad] = useState("");
   const [loadingReserva, setLoadingReserva] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -108,6 +126,7 @@ export default function ControlOperativoAdvancedOptions() {
     if (!location.pathname.includes("/app/control-operativo")) {
       setModal(null);
       setHost(null);
+      setStateHost(null);
       setSelected("");
       return;
     }
@@ -117,10 +136,15 @@ export default function ControlOperativoAdvancedOptions() {
       if (!currentModal) {
         setModal(null);
         setHost(null);
+        setStateHost(null);
         setSelected("");
         setReserva(null);
         setNuevoTotal("");
         setObservacion("");
+        setEstadoSeleccionado("");
+        setAsistencia("todos");
+        setAsistentes("");
+        setPenalidad("");
         setError("");
         setSuccess("");
         return;
@@ -158,6 +182,19 @@ export default function ControlOperativoAdvancedOptions() {
         else currentModal.querySelector(".op-modal-head")?.insertAdjacentElement("afterend", currentHost);
       }
       setHost(currentHost);
+
+      const stateSection = getStateSection(currentModal);
+      if (stateSection) {
+        let attendanceHost = stateSection.querySelector<HTMLDivElement>("#op-attendance-host");
+        if (!attendanceHost) {
+          attendanceHost = document.createElement("div");
+          attendanceHost.id = "op-attendance-host";
+          stateSection.appendChild(attendanceHost);
+        }
+        setStateHost(attendanceHost);
+      } else {
+        setStateHost(null);
+      }
     };
 
     detectModal();
@@ -179,7 +216,28 @@ export default function ControlOperativoAdvancedOptions() {
   }, [modal, role, selected]);
 
   useEffect(() => {
-    if (!modal || selected !== "valor" || role !== "administrador") return;
+    if (!modal) return;
+    const stateSection = getStateSection(modal);
+    const stateSelect = stateSection?.querySelector<HTMLSelectElement>("select");
+    const stateButton = stateSection?.querySelector<HTMLButtonElement>("button.op-action-btn");
+    if (!stateSelect) return;
+
+    const syncState = () => {
+      const value = stateSelect.value;
+      setEstadoSeleccionado(value);
+      if (stateButton) stateButton.style.display = value === "asistio" ? "none" : "";
+    };
+
+    syncState();
+    stateSelect.addEventListener("change", syncState);
+    return () => {
+      stateSelect.removeEventListener("change", syncState);
+      if (stateButton) stateButton.style.removeProperty("display");
+    };
+  }, [modal]);
+
+  useEffect(() => {
+    if (!modal || (selected !== "valor" && selected !== "estado")) return;
     const codigo = getReservaCode(modal);
     if (!codigo) {
       setError("No fue posible identificar la reserva abierta.");
@@ -193,28 +251,53 @@ export default function ControlOperativoAdvancedOptions() {
       .then((rows) => {
         if (!active) return;
         const row = rows.find((item) => item.reserva_codigo === codigo);
-        if (!row) throw new Error("No fue posible cargar la reserva para ajustar su valor.");
+        if (!row) throw new Error("No fue posible cargar la reserva.");
         const resumen = {
           id_reserva: row.id_reserva,
           codigo: row.reserva_codigo,
           total: Number(row.total || 0),
           cantidad: Math.max(1, Number(row.cantidad || 1)),
           observacion: row.observacion || "",
+          abono: Number(row.abono || 0),
+          pagoSaldo: Number(row.pago_saldo || 0),
         };
         setReserva(resumen);
         setNuevoTotal(String(resumen.total));
         setObservacion("");
+        if (selected === "estado") {
+          setAsistencia("todos");
+          setAsistentes(String(resumen.cantidad));
+          setPenalidad("");
+        }
       })
       .catch((e: any) => active && setError(e?.message || "No fue posible cargar la reserva."))
       .finally(() => active && setLoadingReserva(false));
     return () => { active = false; };
-  }, [modal, role, selected]);
+  }, [modal, selected]);
 
   const unitario = useMemo(() => {
     if (!reserva) return 0;
     const total = Number(nuevoTotal || 0);
     return total > 0 ? total / Math.max(1, reserva.cantidad) : 0;
   }, [nuevoTotal, reserva]);
+
+  const unitarioAsistencia = useMemo(() => {
+    if (!reserva) return 0;
+    return reserva.total / Math.max(1, reserva.cantidad);
+  }, [reserva]);
+
+  const totalAsistencia = useMemo(() => {
+    if (!reserva) return 0;
+    if (asistencia === "todos") return reserva.total;
+    const cantidadAsistentes = Number(asistentes || 0);
+    const valorPenalidad = Number(penalidad || 0);
+    if (!Number.isFinite(cantidadAsistentes) || !Number.isFinite(valorPenalidad)) return 0;
+    return Math.max(0, Math.round(unitarioAsistencia * cantidadAsistentes + valorPenalidad));
+  }, [asistencia, asistentes, penalidad, reserva, unitarioAsistencia]);
+
+  const pagado = reserva ? reserva.abono + reserva.pagoSaldo : 0;
+  const pendienteAsistencia = Math.max(0, totalAsistencia - pagado);
+  const excesoAsistencia = Math.max(0, pagado - totalAsistencia);
 
   const saveTotal = async () => {
     if (role !== "administrador" || !reserva) return;
@@ -258,9 +341,98 @@ export default function ControlOperativoAdvancedOptions() {
     }
   };
 
+  const saveAttendance = async () => {
+    if (!modal || !reserva || estadoSeleccionado !== "asistio") return;
+
+    const cantidadReservada = Math.max(1, reserva.cantidad);
+    const cantidadAsistentes = asistencia === "todos" ? cantidadReservada : Number(asistentes || 0);
+    const valorPenalidad = asistencia === "faltaron" ? Number(penalidad || 0) : 0;
+
+    if (asistencia === "faltaron") {
+      if (!Number.isInteger(cantidadAsistentes) || cantidadAsistentes <= 0 || cantidadAsistentes >= cantidadReservada) {
+        setError(`Indica cuántas personas asistieron. Debe ser entre 1 y ${Math.max(1, cantidadReservada - 1)}. Si no asistió nadie, usa el estado “No asistió”.`);
+        return;
+      }
+      if (!Number.isFinite(valorPenalidad) || valorPenalidad < 0) {
+        setError("La penalidad debe ser un valor válido igual o mayor a $0.");
+        return;
+      }
+    }
+
+    const nuevoValorTotal = asistencia === "todos"
+      ? reserva.total
+      : Math.max(0, Math.round(unitarioAsistencia * cantidadAsistentes + valorPenalidad));
+    const faltantes = cantidadReservada - cantidadAsistentes;
+    const stateSection = getStateSection(modal);
+    const motivoInput = stateSection?.querySelector<HTMLInputElement>(".wide-field input");
+    const motivoManual = motivoInput?.value.trim() || "";
+    const detalleBase = asistencia === "todos"
+      ? `Asistencia completa: ${cantidadReservada} de ${cantidadReservada} personas asistieron.`
+      : `Asistencia parcial: ${cantidadAsistentes} de ${cantidadReservada} personas asistieron; faltaron ${faltantes}. Penalidad: ${money(valorPenalidad)}. Valor total ajustado: ${money(nuevoValorTotal)}.`;
+    const detalle = motivoManual ? `${detalleBase} ${motivoManual}` : detalleBase;
+    const observacionAnterior = reserva.observacion.trim();
+    const observacionNueva = observacionAnterior ? `${observacionAnterior} | ${detalleBase}` : detalleBase;
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      if (asistencia === "faltaron") {
+        await updateControlReserva(reserva.id_reserva, {
+          valor_total: nuevoValorTotal,
+          precio_unitario: unitarioAsistencia,
+          observacion: observacionNueva,
+        });
+      }
+
+      try {
+        await cambiarEstadoOperativo(reserva.id_reserva, "asistio", detalle);
+      } catch (statusError) {
+        if (asistencia === "faltaron") {
+          try {
+            await updateControlReserva(reserva.id_reserva, {
+              valor_total: reserva.total,
+              precio_unitario: unitarioAsistencia,
+              observacion: observacionAnterior || null,
+            });
+          } catch {
+            // Si el rollback falla, el error original sigue siendo el más útil para el usuario.
+          }
+        }
+        throw statusError;
+      }
+
+      if (asistencia === "faltaron") {
+        const totalInput = getBaseTotalInput(modal);
+        if (totalInput) setReactInputValue(totalInput, nuevoValorTotal);
+        setReserva({ ...reserva, total: nuevoValorTotal, observacion: observacionNueva });
+      }
+
+      setSuccess(
+        asistencia === "todos"
+          ? `Asistencia confirmada: ${cantidadReservada} de ${cantidadReservada} personas.`
+          : `Asistencia parcial registrada. Nuevo total: ${money(nuevoValorTotal)}${excesoAsistencia > 0 ? ` · Hay ${money(excesoAsistencia)} a favor del cliente para gestionar como devolución.` : ` · Saldo pendiente: ${money(pendienteAsistencia)}.`}`,
+      );
+
+      window.setTimeout(() => {
+        const close = modal.querySelector<HTMLButtonElement>(".op-modal-head > button");
+        close?.click();
+        window.setTimeout(() => {
+          const refresh = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
+            .find((button) => /actualizar/i.test(button.textContent ?? ""));
+          refresh?.click();
+        }, 80);
+      }, 800);
+    } catch (e: any) {
+      setError(e?.message || "No fue posible registrar la asistencia.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!host || !modal) return null;
 
-  return createPortal(
+  const advancedPortal = createPortal(
     <div className="op-advanced-panel">
       <div className="op-advanced-heading">
         <div className="op-advanced-icon"><ShieldCheck size={18} /></div>
@@ -331,4 +503,69 @@ export default function ControlOperativoAdvancedOptions() {
     </div>,
     host,
   );
+
+  const attendancePortal = stateHost && selected === "estado" && estadoSeleccionado === "asistio"
+    ? createPortal(
+      <div className="op-attendance-panel">
+        <div className="op-attendance-title">
+          <div className="op-attendance-icon"><UsersRound size={18} /></div>
+          <div>
+            <strong>Confirmar asistencia</strong>
+            <small>Indica si llegó todo el grupo o si faltaron personas. Si faltaron, el sistema recalcula automáticamente el total.</small>
+          </div>
+        </div>
+
+        {loadingReserva ? (
+          <div className="op-advanced-loading">Cargando información de la reserva…</div>
+        ) : reserva ? (
+          <>
+            <div className="op-attendance-choice">
+              <button type="button" className={asistencia === "todos" ? "active" : ""} onClick={() => { setAsistencia("todos"); setAsistentes(String(reserva.cantidad)); setPenalidad(""); setError(""); }}>
+                Asistieron todos
+              </button>
+              <button type="button" className={asistencia === "faltaron" ? "active" : ""} onClick={() => { setAsistencia("faltaron"); setAsistentes(String(Math.max(1, reserva.cantidad - 1))); setError(""); }}>
+                Faltaron personas
+              </button>
+            </div>
+
+            <div className="op-attendance-summary">
+              <div><span>Reservadas</span><b>{reserva.cantidad}</b></div>
+              <div><span>Valor por persona</span><b>{money(unitarioAsistencia)}</b></div>
+              <div><span>Pagado</span><b>{money(pagado)}</b></div>
+            </div>
+
+            {asistencia === "faltaron" && (
+              <>
+                <div className="op-attendance-fields">
+                  <label>
+                    Personas que sí asistieron *
+                    <input type="number" min={1} max={Math.max(1, reserva.cantidad - 1)} value={asistentes} onChange={(e) => setAsistentes(e.target.value.replace(/[^0-9]/g, ""))} />
+                  </label>
+                  <label>
+                    Penalidad total
+                    <div className="op-money-input"><span>$</span><input inputMode="numeric" value={penalidad} onChange={(e) => setPenalidad(e.target.value.replace(/[^0-9]/g, ""))} placeholder="0" /></div>
+                  </label>
+                </div>
+
+                <div className="op-attendance-result">
+                  <div><span>Nuevo valor total</span><b>{money(totalAsistencia)}</b></div>
+                  <div className={excesoAsistencia > 0 ? "warning" : ""}><span>{excesoAsistencia > 0 ? "A favor del cliente" : "Nuevo saldo pendiente"}</span><b>{money(excesoAsistencia > 0 ? excesoAsistencia : pendienteAsistencia)}</b></div>
+                </div>
+                <div className="op-attendance-note">Cálculo: <b>{Number(asistentes || 0)} asistentes × {money(unitarioAsistencia)}</b> + <b>{money(Number(penalidad || 0))}</b> de penalidad.</div>
+              </>
+            )}
+
+            {error && <div className="op-advanced-error">{error}</div>}
+            {success && <div className="op-advanced-success">{success}</div>}
+            <div className="op-attendance-actions">
+              <button type="button" className="op-btn primary" disabled={saving} onClick={saveAttendance}>{saving ? "Registrando…" : asistencia === "todos" ? "Confirmar asistencia completa" : "Registrar asistencia parcial"}</button>
+            </div>
+          </>
+        ) : error ? <div className="op-advanced-error">{error}</div> : null}
+      </div>,
+      stateHost,
+    )
+    : null;
+
+  return <>{advancedPortal}{attendancePortal}</>;
 }
