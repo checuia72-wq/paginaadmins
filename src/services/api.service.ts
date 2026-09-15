@@ -208,7 +208,7 @@ export async function getReservas() {
   // La reserva se consulta primero sin joins embebidos. Así una relación, RLS
   // secundaria o cambio de esquema en Planes nunca hace desaparecer la tabla.
   const { data: reservas, error } = await db.from("reserva").select(`
-    id_reserva, codigo_reserva, fecha_solicitud, fecha_aprobacion, telefono_cliente,
+    id_reserva, codigo_reserva, fecha_solicitud, fecha_aprobacion, fecha_reserva, telefono_cliente,
     id_plan, id_fecha, id_hora, cantidad_personas, aprobado,
     precio_unitario, valor_total, valor_abonado, valor_saldo_pagado,
     mina, refrigerio, restaurante, observacion, metodo_pago_abono, metodo_pago_saldo,
@@ -245,18 +245,50 @@ export async function getReservas() {
   const fechaMap = new Map(fechas.map((f: any) => [Number(f.id_fecha), f.fecha]));
   const horaMap = new Map(horas.map((h: any) => [Number(h.id_hora), h.hora]));
 
-  return rows.map((r: any) => ({
-    ...r,
-    nombre_plan: planMap.get(Number(r.id_plan)) ?? null,
-    fecha_reserva: fechaMap.get(Number(r.id_fecha)) ?? null,
-    hora_reserva: horaMap.get(Number(r.id_hora)) ?? null,
-  }));
+  return rows.map((r: any) => {
+    const direct = r.fecha_reserva ? String(r.fecha_reserva).replace(" ", "T") : "";
+    return {
+      ...r,
+      nombre_plan: planMap.get(Number(r.id_plan)) ?? null,
+      fecha_reserva: direct ? direct.slice(0, 10) : (fechaMap.get(Number(r.id_fecha)) ?? null),
+      hora_reserva: direct && direct.length >= 16 ? direct.slice(11, 16) : (horaMap.get(Number(r.id_hora)) ?? null),
+    };
+  });
+}
+
+export async function getOrCreatePlanFecha(idPlan:number,fecha:string){
+  const value=String(fecha??"").slice(0,10);
+  if(!idPlan||!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new Error("Selecciona una fecha de visita válida.");
+  const db=getClient();
+  const{data:existing,error:lookupError}=await db.from("plan_fechas").select("id_fecha").eq("id_plan",idPlan).eq("fecha",value).maybeSingle();
+  if(lookupError)throw lookupError;
+  if(existing?.id_fecha)return Number(existing.id_fecha);
+  const{data:created,error}=await db.from("plan_fechas").insert({id_plan:idPlan,fecha:value}).select("id_fecha").single();
+  if(error)throw error;
+  const id=Number(created?.id_fecha);
+  if(!Number.isFinite(id)||id<=0)throw new Error("No fue posible preparar la fecha de visita seleccionada.");
+  return id;
+}
+
+export async function getOrCreatePlanHora(idPlan:number,hora:string){
+  const value=String(hora??"").slice(0,5);
+  if(!idPlan||!/^\d{2}:\d{2}$/.test(value))throw new Error("Selecciona una hora de visita válida.");
+  const db=getClient();
+  const{data:existing,error:lookupError}=await db.from("plan_horas").select("id_hora,hora").eq("id_plan",idPlan);
+  if(lookupError)throw lookupError;
+  const match=(existing??[]).find((row:any)=>String(row.hora??"").slice(0,5)===value);
+  if(match?.id_hora)return Number(match.id_hora);
+  const{data:created,error}=await db.from("plan_horas").insert({id_plan:idPlan,hora:value}).select("id_hora").single();
+  if(error)throw error;
+  const id=Number(created?.id_hora);
+  if(!Number.isFinite(id)||id<=0)throw new Error("No fue posible preparar la hora de visita seleccionada.");
+  return id;
 }
 
 export async function createReserva(payload:any){const{data,error}=await getClient().from("reserva").insert(payload).select().single();if(error)throw error;return data}
 export async function updateReserva(id:number,payload:any){
   const db=getClient();
-  const shouldRecalculate=Object.prototype.hasOwnProperty.call(payload,"id_plan")||Object.prototype.hasOwnProperty.call(payload,"cantidad_personas");
+  const shouldRecalculate=Object.prototype.hasOwnProperty.call(payload,"id_plan")||Object.prototype.hasOwnProperty.call(payload,"id_fecha")||Object.prototype.hasOwnProperty.call(payload,"cantidad_personas");
   const finalPayload={...payload};
 
   if(shouldRecalculate){
@@ -265,10 +297,11 @@ export async function updateReserva(id:number,payload:any){
 
     const idPlan=Number(payload.id_plan??current.id_plan);
     const cantidad=Math.max(1,Number(payload.cantidad_personas??current.cantidad_personas??1));
+    const idFecha=payload.id_fecha??current.id_fecha;
     let fecha=new Date().toLocaleDateString("en-CA",{timeZone:"America/Bogota"});
 
-    if(current.id_fecha!=null){
-      const{data:fechaData,error:fechaError}=await db.from("plan_fechas").select("fecha").eq("id_fecha",current.id_fecha).maybeSingle();
+    if(idFecha!=null){
+      const{data:fechaData,error:fechaError}=await db.from("plan_fechas").select("fecha").eq("id_fecha",idFecha).maybeSingle();
       if(fechaError)throw fechaError;
       if(fechaData?.fecha)fecha=String(fechaData.fecha).slice(0,10);
     }
