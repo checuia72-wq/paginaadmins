@@ -77,24 +77,24 @@ export default function ReservasApprovalGuard() {
     }
   }, [opcionesCH, selected, codigoId]);
 
-  const identifyReservation = (button: HTMLElement): ReservaLite | null => {
+  const identifyReservation = (button: HTMLElement, source: ReservaLite[] = reservas): ReservaLite | null => {
     const row = button.closest("tr");
     if (!row) return null;
 
     const codigo = row.querySelector("td:first-child")?.textContent?.trim() ?? "";
     if (codigo) {
-      const byCode = reservas.find((r) => String(r.codigo_reserva ?? "").trim().toLowerCase() === codigo.toLowerCase());
+      const byCode = source.find((r) => String(r.codigo_reserva ?? "").trim().toLowerCase() === codigo.toLowerCase());
       if (byCode) return byCode;
 
       const legacyId = Number(codigo.replace(/\D/g, ""));
       if (codigo.startsWith("#") && legacyId) {
-        const byId = reservas.find((r) => Number(r.id_reserva) === legacyId);
+        const byId = source.find((r) => Number(r.id_reserva) === legacyId);
         if (byId) return byId;
       }
     }
 
     const phone = onlyDigits(row.querySelector(".rv-phone")?.textContent ?? "");
-    const candidates = reservas.filter((r) => onlyDigits(r.telefono_cliente) === phone && !r.aprobado);
+    const candidates = source.filter((r) => onlyDigits(r.telefono_cliente) === phone && !r.aprobado);
     return candidates.length === 1 ? candidates[0] : null;
   };
 
@@ -105,20 +105,19 @@ export default function ReservasApprovalGuard() {
     event.preventDefault();
     event.stopPropagation();
 
-    const reservaBase = identifyReservation(button);
-    if (!reservaBase) {
-      alert("No se pudo identificar la reserva para aprobar. Actualiza la página e inténtalo nuevamente.");
-      return;
-    }
-
-    let reserva = reservaBase;
+    let latestReservas = reservas;
     try {
       const latestData = await getReservas();
-      const latestReservas: ReservaLite[] = Array.isArray(latestData) ? latestData : [];
+      latestReservas = Array.isArray(latestData) ? latestData : [];
       setReservas(latestReservas);
-      reserva = latestReservas.find((r) => Number(r.id_reserva) === Number(reservaBase.id_reserva)) ?? reservaBase;
     } catch (refreshError) {
-      console.error("No se pudo refrescar la reserva antes de aprobar", refreshError);
+      console.error("No se pudieron refrescar las reservas antes de aprobar", refreshError);
+    }
+
+    const reserva = identifyReservation(button, latestReservas);
+    if (!reserva) {
+      alert("No se pudo identificar la reserva para aprobar. Actualiza la página e inténtalo nuevamente.");
+      return;
     }
 
     const cantidad = Math.max(1, Number(reserva.cantidad_personas || 1));

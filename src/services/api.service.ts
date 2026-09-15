@@ -202,6 +202,8 @@ export async function updateCliente(telefono:string,payload:any){const{data,erro
 export async function deleteCliente(telefono:string){const{error}=await getClient().from("cliente").delete().eq("telefono",telefono);if(error)throw error}
 
 /* ─── RESERVAS ───────────────────────────────────────────── */
+const pendingLargeGroupCounts = new Map<number, number>();
+
 export async function getReservas() {
   const db = getClient();
 
@@ -285,7 +287,13 @@ export async function getOrCreatePlanHora(idPlan:number,hora:string){
   return id;
 }
 
-export async function createReserva(payload:any){const{data,error}=await getClient().from("reserva").insert(payload).select().single();if(error)throw error;return data}
+export async function createReserva(payload:any){
+  const{data,error}=await getClient().from("reserva").insert(payload).select().single();
+  if(error)throw error;
+  const cantidad=Math.max(1,Number(payload?.cantidad_personas??1));
+  if(data?.id_reserva&&cantidad>30)pendingLargeGroupCounts.set(Number(data.id_reserva),cantidad);
+  return data;
+}
 export async function updateReserva(id:number,payload:any){
   const db=getClient();
   const shouldRecalculate=Object.prototype.hasOwnProperty.call(payload,"id_plan")||Object.prototype.hasOwnProperty.call(payload,"id_fecha")||Object.prototype.hasOwnProperty.call(payload,"cantidad_personas");
@@ -331,6 +339,31 @@ export async function deleteReserva(id:number){const{error}=await getClient().fr
 /* ─── PARTICIPANTES ──────────────────────────────────────── */
 export async function getParticipantes(){const{data,error}=await getClient().from("participante").select("*").order("id_participante",{ascending:false});if(error)throw error;return data??[]}
 export async function getParticipantesPorReserva(id:number){const{data,error}=await getClient().from("participante").select("*").eq("id_reserva",id).order("id_participante",{ascending:true});if(error)throw error;return data??[]}
-export async function createParticipante(payload:any){const{data,error}=await getClient().from("participante").insert(payload).select().single();if(error)throw error;return data}
-export async function updateParticipante(id:number,payload:any){const{data,error}=await getClient().from("participante").update(payload).eq("id_participante",id).select().single();if(error)throw error;return data}
+export async function createParticipante(payload:any){
+  const db=getClient();
+  const{data,error}=await db.from("participante").insert(payload).select().single();
+  if(error)throw error;
+  const reservaId=Number(payload?.id_reserva);
+  const desiredCount=pendingLargeGroupCounts.get(reservaId);
+  if(Number.isFinite(reservaId)&&desiredCount&&desiredCount>30){
+    await updateReserva(reservaId,{cantidad_personas:desiredCount});
+    pendingLargeGroupCounts.delete(reservaId);
+  }
+  return data;
+}
+export async function updateParticipante(id:number,payload:any){
+  const db=getClient();
+  const reservaId=Number(payload?.id_reserva);
+  let desiredCount:number|null=null;
+  if(Number.isFinite(reservaId)&&reservaId>0){
+    const{data:reserva,error:reservaError}=await db.from("reserva").select("cantidad_personas").eq("id_reserva",reservaId).maybeSingle();
+    if(reservaError)throw reservaError;
+    const currentCount=Number(reserva?.cantidad_personas??0);
+    if(currentCount>30)desiredCount=currentCount;
+  }
+  const{data,error}=await db.from("participante").update(payload).eq("id_participante",id).select().single();
+  if(error)throw error;
+  if(desiredCount&&desiredCount>30)await updateReserva(reservaId,{cantidad_personas:desiredCount});
+  return data;
+}
 export async function deleteParticipante(id:number){const{error}=await getClient().from("participante").delete().eq("id_participante",id);if(error)throw error}
