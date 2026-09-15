@@ -10,6 +10,7 @@ import {
   getParticipantesPorReserva,
   createParticipante,
   updateParticipante,
+  deleteParticipante,
   getOrCreatePlanFecha,
   getOrCreatePlanHora,
 } from "../../services/api.service";
@@ -30,6 +31,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import ReservationApprovalModal from "../common/ReservationApprovalModal";
+import LargeGroupExcelImport, { type ImportedGroupParticipant } from "./LargeGroupExcelImport";
 import "../../styles/reservas.css";
 
 interface Reserva {
@@ -153,6 +155,9 @@ export default function ReservasAdmin() {
   const [formError, setFormError] = useState<string | null>(null);
   const [loadingEditParticipants, setLoadingEditParticipants] = useState(false);
   const [isLargeGroup, setIsLargeGroup] = useState(false);
+  const [hasFullGroupList, setHasFullGroupList] = useState(false);
+  const [groupImportFile, setGroupImportFile] = useState("");
+  const [groupImportDirty, setGroupImportDirty] = useState(false);
 
   const [viewing, setViewing] = useState<Reserva | null>(null);
   const [participantes, setParticipantes] = useState<Participante[]>([]);
@@ -200,7 +205,7 @@ export default function ReservasAdmin() {
     setFormData((p) => ({ ...p, cantidad_personas: safe }));
 
     if (isLargeGroup) {
-      setNewParticipants((p) => [p[0] ?? emptyParticipant()]);
+      if (!hasFullGroupList) setNewParticipants((p) => [p[0] ?? emptyParticipant()]);
       return;
     }
 
@@ -215,6 +220,9 @@ export default function ReservasAdmin() {
 
   const toggleLargeGroup = (checked: boolean) => {
     setIsLargeGroup(checked);
+    setHasFullGroupList(false);
+    setGroupImportFile("");
+    setGroupImportDirty(false);
 
     if (checked) {
       setFormData((p) => ({
@@ -238,9 +246,34 @@ export default function ReservasAdmin() {
     });
   };
 
+  const handleLargeGroupImport = (rows: ImportedGroupParticipant[], fileName: string) => {
+    const mapped: NuevoParticipante[] = rows.map((row) => ({ ...row }));
+    setNewParticipants(mapped);
+    setHasFullGroupList(true);
+    setGroupImportFile(fileName);
+    setGroupImportDirty(true);
+    setFormData((previous) => ({
+      ...previous,
+      cantidad_personas: mapped.length,
+      telefono_cliente: mapped[0]?.telefono || previous.telefono_cliente,
+    }));
+    setFormError(null);
+  };
+
+  const clearLargeGroupImport = () => {
+    setNewParticipants((current) => [current[0] ?? emptyParticipant()]);
+    setHasFullGroupList(false);
+    setGroupImportFile("");
+    setGroupImportDirty(true);
+    setFormError(null);
+  };
+
   const openCreate = () => {
     setEditing(null);
     setIsLargeGroup(false);
+    setHasFullGroupList(false);
+    setGroupImportFile("");
+    setGroupImportDirty(false);
     setFormData(emptyForm);
     setNewParticipants([emptyParticipant()]);
     setFormError(null);
@@ -251,6 +284,9 @@ export default function ReservasAdmin() {
     const large = Number(r.cantidad_personas ?? 0) > 30;
     setEditing(r);
     setIsLargeGroup(large);
+    setHasFullGroupList(false);
+    setGroupImportFile("");
+    setGroupImportDirty(false);
     setFormData({
       telefono_cliente: r.telefono_cliente,
       id_plan: r.id_plan,
@@ -280,17 +316,26 @@ export default function ReservasAdmin() {
       }));
       const total = Math.max(1, Number(r.cantidad_personas) || 1, mapped.length);
       const isLarge = total > 30;
+      const hasSavedList = isLarge && mapped.length > 1;
       setIsLargeGroup(isLarge);
+      setHasFullGroupList(hasSavedList);
+      setGroupImportFile(hasSavedList ? "Lista guardada en la reserva" : "");
+      setGroupImportDirty(false);
       setFormData((prev) => ({ ...prev, cantidad_personas: total }));
       setNewParticipants(
         isLarge
-          ? [mapped[0] ?? emptyParticipant()]
+          ? hasSavedList
+            ? mapped
+            : [mapped[0] ?? emptyParticipant()]
           : [...mapped, ...Array.from({ length: Math.max(0, total - mapped.length) }, emptyParticipant)],
       );
     } catch (e: any) {
       console.error(e);
       setFormError(e?.message || "No fue posible cargar los participantes de la reserva.");
       const total = Math.max(1, Number(r.cantidad_personas) || 1);
+      setHasFullGroupList(false);
+      setGroupImportFile("");
+      setGroupImportDirty(false);
       setNewParticipants(
         large ? [emptyParticipant()] : Array.from({ length: Math.min(30, total) }, emptyParticipant),
       );
@@ -326,11 +371,23 @@ export default function ReservasAdmin() {
     if (isLargeGroup && Number(formData.cantidad_personas) < 31) {
       return "Para usar Grupo grande registra al menos 31 personas.";
     }
+    if (isLargeGroup && hasFullGroupList && newParticipants.length !== Number(formData.cantidad_personas)) {
+      return "La cantidad de personas debe coincidir con la lista importada desde Excel.";
+    }
 
-    const participantsToValidate = isLargeGroup ? newParticipants.slice(0, 1) : newParticipants;
+    const participantsToValidate = isLargeGroup
+      ? hasFullGroupList
+        ? newParticipants
+        : newParticipants.slice(0, 1)
+      : newParticipants;
+
     for (let i = 0; i < participantsToValidate.length; i++) {
       const p = participantsToValidate[i];
-      const who = isLargeGroup ? "encargado del grupo" : `participante ${i + 1}`;
+      const who = isLargeGroup
+        ? i === 0
+          ? "encargado del grupo"
+          : `participante ${i + 1}`
+        : `participante ${i + 1}`;
       if (!p.nombre.trim()) return `Falta el nombre del ${who}.`;
       if (!p.telefono.trim()) return `Falta el teléfono del ${who}.`;
       if (!p.numero_documento.trim()) return `Falta el documento del ${who}.`;
@@ -338,6 +395,18 @@ export default function ReservasAdmin() {
     }
     return null;
   };
+
+  const participantPayload = (p: NuevoParticipante, idReserva: number, clientPhone: string, index: number) => ({
+    id_reserva: idReserva,
+    telefono_cliente: clientPhone,
+    telefono_participante: index === 0 ? null : p.telefono.trim(),
+    nombre: p.nombre.trim(),
+    edad: p.edad ? Number(p.edad) : null,
+    nacionalidad: p.nacionalidad.trim() || null,
+    tipo_documento: p.tipo_documento || null,
+    numero_documento: p.numero_documento.trim() || null,
+    correo: p.correo.trim() || null,
+  });
 
   const handleSave = async () => {
     setFormError(null);
@@ -352,7 +421,11 @@ export default function ReservasAdmin() {
       const fecha_aprobacion = formData.aprobado
         ? editing?.fecha_aprobacion ?? new Date().toISOString()
         : null;
-      const participantsToSave = isLargeGroup ? newParticipants.slice(0, 1) : newParticipants;
+      const participantsToSave = isLargeGroup
+        ? hasFullGroupList
+          ? newParticipants
+          : newParticipants.slice(0, 1)
+        : newParticipants;
       const clientPhone = (participantsToSave[0]?.telefono || formData.telefono_cliente).trim();
       if (!clientPhone) {
         setFormError("El teléfono del cliente es obligatorio.");
@@ -375,21 +448,19 @@ export default function ReservasAdmin() {
           fecha_aprobacion,
         });
 
-        for (let i = 0; i < participantsToSave.length; i++) {
-          const p = participantsToSave[i];
-          const payload = {
-            id_reserva: editing.id_reserva,
-            telefono_cliente: clientPhone,
-            telefono_participante: i === 0 ? null : p.telefono.trim(),
-            nombre: p.nombre.trim(),
-            edad: p.edad ? Number(p.edad) : null,
-            nacionalidad: p.nacionalidad.trim() || null,
-            tipo_documento: p.tipo_documento || null,
-            numero_documento: p.numero_documento.trim() || null,
-            correo: p.correo.trim() || null,
-          };
-          if (p.id_participante) await updateParticipante(p.id_participante, payload);
-          else await createParticipante(payload);
+        if (isLargeGroup && groupImportDirty) {
+          const currentParticipants: Participante[] = await getParticipantesPorReserva(editing.id_reserva);
+          for (const current of currentParticipants) await deleteParticipante(current.id_participante);
+          for (let i = 0; i < participantsToSave.length; i++) {
+            await createParticipante(participantPayload(participantsToSave[i], editing.id_reserva, clientPhone, i));
+          }
+        } else {
+          for (let i = 0; i < participantsToSave.length; i++) {
+            const p = participantsToSave[i];
+            const payload = participantPayload(p, editing.id_reserva, clientPhone, i);
+            if (p.id_participante) await updateParticipante(p.id_participante, payload);
+            else await createParticipante(payload);
+          }
         }
       } else {
         if (!clientes.some((c) => c.telefono === clientPhone)) {
@@ -413,22 +484,14 @@ export default function ReservasAdmin() {
         });
 
         for (let i = 0; i < participantsToSave.length; i++) {
-          const p = participantsToSave[i];
-          await createParticipante({
-            id_reserva: created.id_reserva,
-            telefono_cliente: clientPhone,
-            telefono_participante: i === 0 ? null : p.telefono.trim(),
-            nombre: p.nombre.trim(),
-            edad: p.edad ? Number(p.edad) : null,
-            nacionalidad: p.nacionalidad.trim() || null,
-            tipo_documento: p.tipo_documento || null,
-            numero_documento: p.numero_documento.trim() || null,
-            correo: p.correo.trim() || null,
-          });
+          await createParticipante(participantPayload(participantsToSave[i], created.id_reserva, clientPhone, i));
         }
       }
 
       setShowForm(false);
+      setHasFullGroupList(false);
+      setGroupImportFile("");
+      setGroupImportDirty(false);
       await fetchAll();
     } catch (e: any) {
       console.error(e);
@@ -512,7 +575,9 @@ export default function ReservasAdmin() {
         </h3>
         <p style={{ marginTop: 0, color: "#64748b", fontSize: 13 }}>
           {isLargeGroup
-            ? "Para grupos grandes solo necesitas registrar los datos del encargado. La cantidad total de personas queda guardada en la reserva."
+            ? hasFullGroupList
+              ? "La primera persona de la lista importada es el encargado. Puedes corregir sus datos aquí; el resto se guardará desde el Excel."
+              : "Para grupos grandes puedes guardar solo al encargado o importar la lista completa desde Excel."
             : editing
               ? "Puedes corregir los participantes existentes o aumentar la cantidad de personas para registrar los que faltan."
               : "El participante 1 corresponde también a los datos principales del cliente."}
@@ -745,7 +810,7 @@ export default function ReservasAdmin() {
               </div>
               <div className="rv-parts">
                 <div className="rv-parts-head">
-                  <h3 className="rv-parts-title"><UserCheck size={15} /> {Number(viewing.cantidad_personas ?? 0) > 30 ? "Encargado del grupo" : "Participantes"}</h3>
+                  <h3 className="rv-parts-title"><UserCheck size={15} /> {Number(viewing.cantidad_personas ?? 0) > 30 ? participantes.length > 1 ? "Participantes del grupo" : "Encargado del grupo" : "Participantes"}</h3>
                 </div>
                 {loadingParticipantes ? <p>Cargando…</p> : (
                   <div className="rv-parts-table-wrap">
@@ -809,28 +874,50 @@ export default function ReservasAdmin() {
                   Grupo grande
                 </label>
                 <small style={{ display: "block", marginTop: 6, color: "#64748b" }}>
-                  Actívalo para grupos numerosos. No tendrás que crear decenas de participantes: se guarda la cantidad total y solo los datos del encargado.
+                  Actívalo para grupos numerosos. Puedes guardar solo al encargado o importar la lista completa de asistentes desde Excel.
                 </small>
               </div>
 
               <div className="rv-form-group">
                 <label>Cantidad de personas *</label>
-                <input type="number" min={1} max={isLargeGroup ? 1000 : 30} value={formData.cantidad_personas} onChange={(e) => syncParticipantCount(Number(e.target.value))} />
+                <input
+                  type="number"
+                  min={1}
+                  max={isLargeGroup ? 1000 : 30}
+                  value={formData.cantidad_personas}
+                  disabled={isLargeGroup && hasFullGroupList}
+                  onChange={(e) => syncParticipantCount(Number(e.target.value))}
+                />
                 <small style={{ color: "#64748b" }}>
-                  {isLargeGroup ? "En Grupo grande puedes registrar hasta 1.000 personas sin crear un formulario por cada asistente." : "Si aumentas esta cantidad, aparecerán formularios nuevos para registrar a las personas faltantes."}
+                  {isLargeGroup
+                    ? hasFullGroupList
+                      ? `Cantidad definida automáticamente por el Excel: ${newParticipants.length} participantes.`
+                      : "En Grupo grande puedes registrar hasta 1.000 personas sin crear un formulario por cada asistente."
+                    : "Si aumentas esta cantidad, aparecerán formularios nuevos para registrar a las personas faltantes."}
                 </small>
               </div>
 
               {isLargeGroup && (
-                <div style={{ border: "1px solid #bae6fd", borderRadius: 12, padding: 14, marginBottom: 16, background: "#f0f9ff" }}>
-                  <div style={{ fontWeight: 800, marginBottom: 8 }}>Resumen del grupo</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 13, color: "#334155" }}>
-                    <div><strong>Plan:</strong> {selectedPlan?.nombre_plan || "Sin seleccionar"}</div>
-                    <div><strong>Personas:</strong> {formData.cantidad_personas}</div>
-                    <div><strong>Fecha:</strong> {formData.fecha_visita ? fmtReserva(formData.fecha_visita) : "Sin seleccionar"}</div>
-                    <div><strong>Hora:</strong> {formData.hora_visita || "Sin seleccionar"}</div>
+                <>
+                  <div style={{ border: "1px solid #bae6fd", borderRadius: 12, padding: 14, marginBottom: 16, background: "#f0f9ff" }}>
+                    <div style={{ fontWeight: 800, marginBottom: 8 }}>Resumen del grupo</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, fontSize: 13, color: "#334155" }}>
+                      <div><strong>Plan:</strong> {selectedPlan?.nombre_plan || "Sin seleccionar"}</div>
+                      <div><strong>Personas:</strong> {formData.cantidad_personas}</div>
+                      <div><strong>Fecha:</strong> {formData.fecha_visita ? fmtReserva(formData.fecha_visita) : "Sin seleccionar"}</div>
+                      <div><strong>Hora:</strong> {formData.hora_visita || "Sin seleccionar"}</div>
+                      <div><strong>Lista:</strong> {hasFullGroupList ? `${newParticipants.length} participantes importados` : "Solo encargado"}</div>
+                    </div>
                   </div>
-                </div>
+
+                  <LargeGroupExcelImport
+                    participants={hasFullGroupList ? newParticipants : []}
+                    fileName={groupImportFile}
+                    onImport={handleLargeGroupImport}
+                    onClear={clearLargeGroupImport}
+                    disabled={saving || loadingEditParticipants}
+                  />
+                </>
               )}
 
               <div className="rv-form-check">
@@ -843,7 +930,15 @@ export default function ReservasAdmin() {
             <div className="rv-modal-footer">
               <button className="rv-btn-cancel" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</button>
               <button className="rv-btn-save" onClick={handleSave} disabled={saving || loadingEditParticipants}>
-                {saving ? "Guardando..." : editing ? "Guardar reserva y participantes" : isLargeGroup ? `Crear grupo de ${formData.cantidad_personas} personas` : `Crear reserva con ${formData.cantidad_personas} participante${formData.cantidad_personas === 1 ? "" : "s"}`}
+                {saving
+                  ? "Guardando..."
+                  : editing
+                    ? "Guardar reserva y participantes"
+                    : isLargeGroup
+                      ? hasFullGroupList
+                        ? `Crear grupo con ${newParticipants.length} participantes`
+                        : `Crear grupo de ${formData.cantidad_personas} personas`
+                      : `Crear reserva con ${formData.cantidad_personas} participante${formData.cantidad_personas === 1 ? "" : "s"}`}
               </button>
             </div>
           </div>
