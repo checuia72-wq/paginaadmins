@@ -16,6 +16,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 import GlobalAlertModal from "./components/common/GlobalAlertModal";
 import ControlOperativoAdvancedOptions from "./components/admin/ControlOperativoAdvancedOptions";
+import ControlOperativoReprogramPenalty from "./components/admin/ControlOperativoReprogramPenalty";
 import ControlOperativoMealSelector from "./components/admin/ControlOperativoMealSelector";
 import ControlOperativoMealExport from "./components/admin/ControlOperativoMealExport";
 
@@ -26,6 +27,7 @@ export default function App() {
     <BrowserRouter>
       <GlobalAlertModal />
       <ControlOperativoAdvancedOptions />
+      <ControlOperativoReprogramPenalty />
       <ControlOperativoMealSelector />
       <ControlOperativoMealExport />
       <Routes>
