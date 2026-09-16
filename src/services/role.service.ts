@@ -42,5 +42,5 @@ export async function getCurrentRole(): Promise<CurrentRole | null> {
 
 export function canAccess(role: AppRole, path: string) {
   if (role === "administrador") return true;
-  return path === "/app/reservas" || path === "/app/control-operativo";
+  return path === "/app/reservas" || path === "/app/control-operativo" || path === "/app/ventas-snacks";
 }

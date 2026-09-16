@@ -12,6 +12,8 @@ import ParticipantesPage from "./pages/ParticipantesPage";
 import ControlOperativoPage from "./pages/ControlOperativoPage";
 import CrearPage from "./pages/CrearPage";
 import CodigosOperativosPage from "./pages/CodigosOperativosPage";
+import InventarioSnacksPage from "./pages/InventarioSnacksPage";
+import VentasSnacksPage from "./pages/VentasSnacksPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 import GlobalAlertModal from "./components/common/GlobalAlertModal";
@@ -19,6 +21,7 @@ import ControlOperativoAdvancedOptions from "./components/admin/ControlOperativo
 import ControlOperativoReprogramPenalty from "./components/admin/ControlOperativoReprogramPenalty";
 import ControlOperativoMealSelector from "./components/admin/ControlOperativoMealSelector";
 import ControlOperativoMealExport from "./components/admin/ControlOperativoMealExport";
+import ControlOperativoSnackSales from "./components/admin/ControlOperativoSnackSales";
 
 import "./styles/dashboard.css";
 
@@ -30,6 +33,7 @@ export default function App() {
       <ControlOperativoReprogramPenalty />
       <ControlOperativoMealSelector />
       <ControlOperativoMealExport />
+      <ControlOperativoSnackSales />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -38,6 +42,8 @@ export default function App() {
           <Route index element={<RoleRoute allow={["administrador"]}><OverviewPage /></RoleRoute>} />
           <Route path="reservas" element={<RoleRoute allow={["administrador", "atencion"]}><ReservasPage /></RoleRoute>} />
           <Route path="control-operativo" element={<RoleRoute allow={["administrador", "atencion"]}><ControlOperativoPage /></RoleRoute>} />
+          <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion"]}><VentasSnacksPage /></RoleRoute>} />
+          <Route path="inventario-snacks" element={<RoleRoute allow={["administrador"]}><InventarioSnacksPage /></RoleRoute>} />
           <Route path="planes" element={<RoleRoute allow={["administrador"]}><PlanesPage /></RoleRoute>} />
           <Route path="clientes" element={<RoleRoute allow={["administrador"]}><ClientesPage /></RoleRoute>} />
           <Route path="participantes" element={<RoleRoute allow={["administrador"]}><ParticipantesPage /></RoleRoute>} />
