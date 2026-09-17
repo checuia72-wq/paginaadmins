@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArchiveRestore, PackagePlus, Pencil, RefreshCw, Save, Search, X } from "lucide-react";
+import { ArchiveRestore, PackageMinus, PackagePlus, Pencil, RefreshCw, Save, Search, X } from "lucide-react";
 import {
   createSnackProduct,
   getSnackProducts,
   setSnackProductActive,
   updateSnackProduct,
+  withdrawSnackStock,
   type SnackProduct,
 } from "../services/snack.service";
 import "../styles/snacks.css";
@@ -25,11 +26,15 @@ export default function InventarioSnacksPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [withdrawingSaving, setWithdrawingSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<SnackProduct | null>(null);
+  const [withdrawing, setWithdrawing] = useState<SnackProduct | null>(null);
+  const [withdrawQty, setWithdrawQty] = useState("1");
+  const [withdrawReason, setWithdrawReason] = useState("Vencimiento");
   const [form, setForm] = useState<FormState>(emptyForm);
 
   const load = useCallback(async (silent = false) => {
@@ -75,6 +80,16 @@ export default function InventarioSnacksPage() {
       cantidad: String(product.cantidad),
       precio: String(product.precio),
     });
+    setWithdrawing(null);
+    setError("");
+    setSuccess("");
+  };
+
+  const startWithdrawal = (product: SnackProduct) => {
+    setWithdrawing(product);
+    setEditing(null);
+    setWithdrawQty(product.cantidad > 0 ? "1" : "0");
+    setWithdrawReason("Vencimiento");
     setError("");
     setSuccess("");
   };
@@ -119,6 +134,40 @@ export default function InventarioSnacksPage() {
       setError(e?.message || "No fue posible guardar el producto.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const confirmWithdrawal = async () => {
+    if (!withdrawing) return;
+    const cantidad = Number(withdrawQty || 0);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      setError("La cantidad a retirar debe ser un número entero mayor a cero.");
+      return;
+    }
+    if (cantidad > withdrawing.cantidad) {
+      setError(`No puedes retirar ${cantidad} unidades. Actualmente hay ${withdrawing.cantidad} disponibles.`);
+      return;
+    }
+    if (!withdrawReason.trim()) {
+      setError("Indica el motivo del retiro.");
+      return;
+    }
+
+    setWithdrawingSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      await withdrawSnackStock(withdrawing.id_producto, cantidad, withdrawReason);
+      const remaining = withdrawing.cantidad - cantidad;
+      setSuccess(`${cantidad} unidad${cantidad === 1 ? "" : "es"} de ${withdrawing.nombre_producto} retirada${cantidad === 1 ? "" : "s"} del inventario. Stock restante: ${remaining}.`);
+      setWithdrawing(null);
+      setWithdrawQty("1");
+      setWithdrawReason("Vencimiento");
+      await load(true);
+    } catch (e: any) {
+      setError(e?.message || "No fue posible retirar unidades del inventario.");
+    } finally {
+      setWithdrawingSaving(false);
     }
   };
 
@@ -170,6 +219,24 @@ export default function InventarioSnacksPage() {
         </div>
       </section>
 
+      {withdrawing && (
+        <section className="snack-card snack-form-card">
+          <div className="snack-card-title">
+            <div><PackageMinus size={18} /><strong>Retirar unidades · {withdrawing.nombre_producto}</strong></div>
+            <button className="snack-icon-btn" onClick={() => setWithdrawing(null)} title="Cancelar retiro"><X size={16} /></button>
+          </div>
+          <p style={{ margin: "0 0 12px", color: "#6f7785" }}>
+            Usa esta opción para sacar del inventario productos vencidos, dañados o que ya no deben venderse. Stock actual: <strong>{withdrawing.cantidad}</strong>.
+          </p>
+          <div className="snack-product-form">
+            <label>Cantidad a retirar *<input type="number" min={1} max={withdrawing.cantidad} step={1} value={withdrawQty} onChange={(e) => setWithdrawQty(e.target.value)} /></label>
+            <label style={{ gridColumn: "span 2" }}>Motivo *<input value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} placeholder="Ej. Vencimiento, producto dañado…" /></label>
+            <label>Stock después del retiro<input value={Math.max(0, withdrawing.cantidad - Number(withdrawQty || 0))} readOnly /></label>
+            <button className="snack-btn primary" disabled={withdrawingSaving || withdrawing.cantidad <= 0} onClick={confirmWithdrawal}><PackageMinus size={16} /> {withdrawingSaving ? "Retirando…" : "Confirmar retiro"}</button>
+          </div>
+        </section>
+      )}
+
       <section className="snack-card">
         <div className="snack-toolbar">
           <div className="snack-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" /></div>
@@ -187,7 +254,7 @@ export default function InventarioSnacksPage() {
                   <td><span className={`snack-stock ${product.cantidad <= 5 ? "low" : ""}`}>{product.cantidad}</span></td>
                   <td>{money(product.precio)}</td>
                   <td><span className={`snack-status ${product.activo ? "active" : "inactive"}`}>{product.activo ? "Activo" : "Inactivo"}</span></td>
-                  <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startEdit(product)} title="Editar"><Pencil size={15} /></button><button className="snack-icon-btn" onClick={() => toggleActive(product)} title={product.activo ? "Desactivar" : "Reactivar"}><ArchiveRestore size={15} /></button></div></td>
+                  <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startEdit(product)} title="Editar"><Pencil size={15} /></button><button className="snack-icon-btn" onClick={() => startWithdrawal(product)} disabled={product.cantidad <= 0} title="Retirar unidades del inventario"><PackageMinus size={15} /></button><button className="snack-icon-btn" onClick={() => toggleActive(product)} title={product.activo ? "Desactivar" : "Reactivar"}><ArchiveRestore size={15} /></button></div></td>
                 </tr>
               ))}
             </tbody>

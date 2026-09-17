@@ -113,6 +113,29 @@ export async function setSnackProductActive(idProducto: number, activo: boolean)
   return updateSnackProduct(idProducto, { activo });
 }
 
+export async function withdrawSnackStock(idProducto: number, cantidad: number, motivo: string) {
+  await requireAdmin();
+  const cleanQuantity = Math.floor(num(cantidad));
+  const cleanReason = motivo.trim();
+
+  if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0) {
+    throw new Error("La cantidad a retirar debe ser mayor a cero.");
+  }
+  if (!cleanReason) {
+    throw new Error("Indica el motivo del retiro del inventario.");
+  }
+
+  const { data, error } = await client().rpc("retirar_stock_snack", {
+    p_id_producto: Number(idProducto),
+    p_cantidad: cleanQuantity,
+    p_motivo: cleanReason,
+  });
+  if (error) throw error;
+
+  window.dispatchEvent(new CustomEvent("snack-stock-changed"));
+  return data;
+}
+
 function nextDate(fecha: string) {
   const [year, month, day] = fecha.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
