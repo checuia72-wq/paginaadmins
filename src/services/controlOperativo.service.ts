@@ -156,7 +156,49 @@ export async function reprogramarReservaOperativa(args:{id_reserva:number;id_pla
   return idFecha;
 }
 
+async function ensureLegacyDepositPayment(idReserva:number){
+  const db=client();
+
+  const {data:existing,error:existingError}=await db
+    .from("reserva_pago")
+    .select("id_pago")
+    .eq("id_reserva",idReserva)
+    .eq("tipo_pago","abono")
+    .limit(1)
+    .maybeSingle();
+
+  if(existingError)throw existingError;
+  if(existing?.id_pago)return;
+
+  const {data:reserva,error:reservaError}=await db
+    .from("reserva")
+    .select("id_reserva,valor_abonado,metodo_pago_abono,fecha_aprobacion,fecha_solicitud")
+    .eq("id_reserva",idReserva)
+    .single();
+
+  if(reservaError)throw reservaError;
+
+  const monto=num(reserva?.valor_abonado);
+  const medio=text(reserva?.metodo_pago_abono).trim();
+  if(monto<=0||!medio)return;
+
+  const {error:insertError}=await db
+    .from("reserva_pago")
+    .insert({
+      id_reserva:idReserva,
+      tipo_pago:"abono",
+      monto,
+      medio_pago:medio,
+      fecha_pago:text(reserva?.fecha_aprobacion||reserva?.fecha_solicitud)||undefined,
+      observacion:"Abono histórico sincronizado automáticamente para habilitar devoluciones"
+    });
+
+  if(insertError)throw insertError;
+}
+
 export async function registrarDevolucionReserva(args:{id_reserva:number;monto:number;medio_pago:string;tipo_devolucion:"parcial"|"total";motivo?:string|null;observacion?:string|null}){
+  await ensureLegacyDepositPayment(args.id_reserva);
+
   const {data,error}=await client().rpc("registrar_devolucion_reserva",{p_id_reserva:args.id_reserva,p_monto:args.monto,p_medio_pago:args.medio_pago,p_tipo_devolucion:args.tipo_devolucion,p_motivo:args.motivo?.trim()||null,p_observacion:args.observacion?.trim()||null});
   if(error)throw error;
   return data==null?null:Number(data);

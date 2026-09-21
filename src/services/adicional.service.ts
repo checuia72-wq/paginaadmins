@@ -42,6 +42,12 @@ export type ReservaAdicionalInput = {
   impacto_total: number;
 };
 
+export type ReservaAdicional = ReservaAdicionalInput & {
+  id_reserva_adicional: number;
+  id_reserva: number;
+  created_at?: string;
+};
+
 const normalizeAdicional = (row: any): Adicional => ({
   ...row,
   id_adicional: Number(row.id_adicional),
@@ -161,6 +167,26 @@ export async function replacePlanAdicionales(
   return data ?? [];
 }
 
+export async function getReservaAdicionales(idReserva: number): Promise<ReservaAdicional[]> {
+  const { data, error } = await client()
+    .from("reserva_adicional")
+    .select("id_reserva_adicional,id_reserva,id_adicional,codigo_adicional,nombre_adicional,tipo_cobro,tipo_movimiento,precio_unitario,cantidad_aplicada,impacto_total,created_at")
+    .eq("id_reserva", Number(idReserva))
+    .order("id_reserva_adicional", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    ...row,
+    id_reserva_adicional: Number(row.id_reserva_adicional),
+    id_reserva: Number(row.id_reserva),
+    id_adicional: Number(row.id_adicional),
+    precio_unitario: Number(row.precio_unitario ?? 0),
+    cantidad_aplicada: Number(row.cantidad_aplicada ?? 0),
+    impacto_total: Number(row.impacto_total ?? 0),
+  })) as ReservaAdicional[];
+}
+
 export async function replaceReservaAdicionales(idReserva: number, items: ReservaAdicionalInput[]) {
   const db = client();
   const { error: deleteError } = await db.from("reserva_adicional").delete().eq("id_reserva", Number(idReserva));
@@ -188,11 +214,30 @@ export function precioEfectivoPlanAdicional(item: PlanAdicional) {
   return Number(item.precio_override ?? item.adicional.precio ?? 0);
 }
 
-export function impactoPlanAdicional(item: PlanAdicional, seleccionado: boolean, personas: number) {
-  const precio = precioEfectivoPlanAdicional(item);
-  const cantidad = item.adicional.tipo_cobro === "por_persona" ? Math.max(1, personas) : 1;
+export function maxCantidadPlanAdicional(item: PlanAdicional, personas: number) {
+  return item.adicional.tipo_cobro === "por_persona" ? Math.max(1, personas) : 1;
+}
 
-  if (item.modalidad === "opcional") return seleccionado ? precio * cantidad : 0;
-  if (item.modalidad === "incluido" && item.permitir_quitar && !seleccionado) return -(precio * cantidad);
+export function normalizarCantidadPlanAdicional(item: PlanAdicional, cantidadSeleccionada: number, personas: number) {
+  const max = maxCantidadPlanAdicional(item, personas);
+  if (item.modalidad === "incluido" && !item.permitir_quitar) return max;
+  return Math.min(max, Math.max(0, Number(cantidadSeleccionada || 0)));
+}
+
+export function impactoPlanAdicionalCantidad(item: PlanAdicional, cantidadSeleccionada: number, personas: number) {
+  const precio = precioEfectivoPlanAdicional(item);
+  const max = maxCantidadPlanAdicional(item, personas);
+  const seleccionada = normalizarCantidadPlanAdicional(item, cantidadSeleccionada, personas);
+
+  if (item.modalidad === "opcional") return precio * seleccionada;
+  if (item.modalidad === "incluido" && item.permitir_quitar) return -(precio * (max - seleccionada));
   return 0;
+}
+
+export function impactoPlanAdicional(item: PlanAdicional, seleccionado: boolean, personas: number) {
+  return impactoPlanAdicionalCantidad(
+    item,
+    seleccionado ? maxCantidadPlanAdicional(item, personas) : 0,
+    personas,
+  );
 }
