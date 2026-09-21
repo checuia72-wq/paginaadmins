@@ -12,6 +12,7 @@ import ParticipantesPage from "./pages/ParticipantesPage";
 import ControlOperativoPage from "./pages/ControlOperativoPage";
 import CrearPage from "./pages/CrearPage";
 import CodigosOperativosPage from "./pages/CodigosOperativosPage";
+import AdicionalesPage from "./pages/AdicionalesPage";
 import InventarioSnacksPage from "./pages/InventarioSnacksPage";
 import VentasSnacksPage from "./pages/VentasSnacksPage";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="participantes" element={<RoleRoute allow={["administrador"]}><ParticipantesPage /></RoleRoute>} />
           <Route path="crear" element={<RoleRoute allow={["administrador"]}><CrearPage /></RoleRoute>} />
           <Route path="codigos-operativos" element={<RoleRoute allow={["administrador"]}><CodigosOperativosPage /></RoleRoute>} />
+          <Route path="adicionales" element={<RoleRoute allow={["administrador"]}><AdicionalesPage /></RoleRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

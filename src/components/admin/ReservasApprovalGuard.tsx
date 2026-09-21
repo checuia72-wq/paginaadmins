@@ -10,6 +10,14 @@ import {
   getCodigosOperativos,
   type CodigoOperativo,
 } from "../../services/codigoOperativo.service";
+import {
+  getPlanAdicionales,
+  impactoPlanAdicional,
+  precioEfectivoPlanAdicional,
+  replaceReservaAdicionales,
+  type PlanAdicional,
+  type ReservaAdicionalInput,
+} from "../../services/adicional.service";
 
 type ReservaLite = {
   id_reserva: number;
@@ -39,6 +47,8 @@ export default function ReservasApprovalGuard() {
   const [metodosPago, setMetodosPago] = useState<string[]>([]);
   const [restaurantes, setRestaurantes] = useState<string[]>([]);
   const [codigos, setCodigos] = useState<CodigoOperativo[]>([]);
+  const [planAdicionales, setPlanAdicionales] = useState<PlanAdicional[]>([]);
+  const [adicionalSeleccionado, setAdicionalSeleccionado] = useState<Record<number, boolean>>({});
   const [selected, setSelected] = useState<ReservaLite | null>(null);
   const [valorAbonado, setValorAbonado] = useState("");
   const [metodoPago, setMetodoPago] = useState("");
@@ -55,15 +65,25 @@ export default function ReservasApprovalGuard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getReservas(), getMetodosPagoActivos(), getRestaurantesActivos(), getCodigosOperativos()])
-      .then(([reservasData, metodosData, restaurantesData, codigosData]) => {
+    Promise.all([getReservas(), getMetodosPagoActivos(), getRestaurantesActivos(), getCodigosOperativos(), getPlanAdicionales().catch(() => [])])
+      .then(([reservasData, metodosData, restaurantesData, codigosData, adicionalesData]) => {
         setReservas(Array.isArray(reservasData) ? reservasData : []);
         setMetodosPago(Array.isArray(metodosData) ? metodosData : []);
         setRestaurantes(Array.isArray(restaurantesData) ? restaurantesData : []);
         setCodigos(codigosData);
+        setPlanAdicionales(adicionalesData);
       })
       .catch((e) => console.error("No se pudieron precargar los datos para aprobación", e));
   }, []);
+
+  const adicionalesDelPlan = useMemo(
+    () => selected ? planAdicionales.filter((item) => Number(item.id_plan) === Number(selected.id_plan) && item.activo && item.adicional.activo) : [],
+    [planAdicionales, selected],
+  );
+  const almuerzoConfigurado = useMemo(
+    () => adicionalesDelPlan.find((item) => item.adicional.codigo === "almuerzo") ?? null,
+    [adicionalesDelPlan],
+  );
 
   const opcionesCH = useMemo(
     () => selected ? codigosCompatibles(codigos, selected.id_plan, incluyeAlmuerzo, restaurante) : [],
@@ -124,11 +144,16 @@ export default function ReservasApprovalGuard() {
     const total = Number(reserva.valor_total || 0);
     const unitario = Number(reserva.precio_unitario || (total > 0 ? total / cantidad : 0));
 
+    const adicionalesPlan = planAdicionales.filter((item) => Number(item.id_plan) === Number(reserva.id_plan) && item.activo && item.adicional.activo);
+    const defaults = Object.fromEntries(adicionalesPlan.map((item) => [item.id_adicional, item.modalidad === "incluido"])) as Record<number, boolean>;
+    const lunch = adicionalesPlan.find((item) => item.adicional.codigo === "almuerzo");
+
     setSelected(reserva);
     setValorAbonado("");
     setMetodoPago("");
     setReferenciaPagoAbono("");
-    setIncluyeAlmuerzo(false);
+    setAdicionalSeleccionado(defaults);
+    setIncluyeAlmuerzo(lunch ? !!defaults[lunch.id_adicional] : false);
     setRestaurante("");
     setCodigoId("");
     setAdvancedOption("");
@@ -140,7 +165,20 @@ export default function ReservasApprovalGuard() {
   };
 
   const closeModal = () => {
-    if (!saving) setSelected(null);
+    if (!saving) {
+      setSelected(null);
+      setAdicionalSeleccionado({});
+    }
+  };
+
+  const toggleAdicional = (item: PlanAdicional, checked: boolean) => {
+    if (item.modalidad === "incluido" && !item.permitir_quitar) return;
+    setAdicionalSeleccionado((current) => ({ ...current, [item.id_adicional]: checked }));
+    if (item.adicional.codigo === "almuerzo") {
+      setIncluyeAlmuerzo(checked);
+      if (!checked) setRestaurante("");
+    }
+    setError(null);
   };
 
   const aprobarReserva = async () => {
@@ -152,19 +190,62 @@ export default function ReservasApprovalGuard() {
     const totalOriginal = Number(selected.valor_total || 0);
     const unitarioOriginal = Number(selected.precio_unitario || (totalOriginal > 0 ? totalOriginal / cantidad : 0));
 
-    let totalNuevo = totalOriginal;
-    let unitarioNuevo = unitarioOriginal;
+    let totalBaseNuevo = totalOriginal;
 
     if (advancedOption === "valor_total") {
-      totalNuevo = parseMoney(valorTotal);
-      unitarioNuevo = totalNuevo / cantidad;
+      totalBaseNuevo = parseMoney(valorTotal);
     } else if (advancedOption === "valor_unitario") {
-      unitarioNuevo = parseMoney(valorUnitario);
-      totalNuevo = unitarioNuevo * cantidad;
+      totalBaseNuevo = parseMoney(valorUnitario) * cantidad;
     }
 
-    const totalFueEditado = Math.abs(totalNuevo - totalOriginal) > 0.01;
-    const unitarioFueEditado = Math.abs(unitarioNuevo - unitarioOriginal) > 0.01;
+    const movimientosAdicionales: ReservaAdicionalInput[] = adicionalesDelPlan.flatMap<ReservaAdicionalInput>((item) => {
+      const seleccionado = !!adicionalSeleccionado[item.id_adicional];
+      const precio = precioEfectivoPlanAdicional(item);
+      const cantidadAplicada = item.adicional.tipo_cobro === "por_persona" ? cantidad : 1;
+      const impacto = impactoPlanAdicional(item, seleccionado, cantidad);
+
+      if (item.modalidad === "opcional" && !seleccionado) return [];
+      if (item.modalidad === "incluido" && seleccionado) {
+        return [{
+          id_adicional: item.id_adicional,
+          codigo_adicional: item.adicional.codigo,
+          nombre_adicional: item.adicional.nombre,
+          tipo_cobro: item.adicional.tipo_cobro,
+          tipo_movimiento: "incluido" as const,
+          precio_unitario: precio,
+          cantidad_aplicada: cantidadAplicada,
+          impacto_total: 0,
+        }];
+      }
+      if (item.modalidad === "incluido" && item.permitir_quitar && !seleccionado) {
+        return [{
+          id_adicional: item.id_adicional,
+          codigo_adicional: item.adicional.codigo,
+          nombre_adicional: item.adicional.nombre,
+          tipo_cobro: item.adicional.tipo_cobro,
+          tipo_movimiento: "retirado" as const,
+          precio_unitario: precio,
+          cantidad_aplicada: cantidadAplicada,
+          impacto_total: impacto,
+        }];
+      }
+      return [{
+        id_adicional: item.id_adicional,
+        codigo_adicional: item.adicional.codigo,
+        nombre_adicional: item.adicional.nombre,
+        tipo_cobro: item.adicional.tipo_cobro,
+        tipo_movimiento: "agregado" as const,
+        precio_unitario: precio,
+        cantidad_aplicada: cantidadAplicada,
+        impacto_total: impacto,
+      }];
+    });
+
+    const impactoAdicionales = movimientosAdicionales.reduce((total, item) => total + Number(item.impacto_total || 0), 0);
+    const totalNuevo = totalBaseNuevo + impactoAdicionales;
+    const unitarioNuevo = totalNuevo / cantidad;
+    const totalFueEditado = Math.abs(totalBaseNuevo - totalOriginal) > 0.01;
+    const unitarioFueEditado = advancedOption === "valor_unitario" && Math.abs(parseMoney(valorUnitario) - unitarioOriginal) > 0.01;
     const ajusteMonetario = totalFueEditado || unitarioFueEditado;
 
     if (!Number.isFinite(valor) || valor <= 0) {
@@ -214,14 +295,15 @@ export default function ReservasApprovalGuard() {
         referencia_pago_abono: referencia,
       };
 
-      if (ajusteMonetario) {
+      if (ajusteMonetario || Math.abs(impactoAdicionales) > 0.01) {
         patch.valor_total = totalNuevo;
         patch.precio_unitario = unitarioNuevo;
-        patch.observacion = observacion.trim();
+        if (ajusteMonetario) patch.observacion = observacion.trim();
       }
 
       await updateReserva(selected.id_reserva, patch);
       reservaActualizada = true;
+      await replaceReservaAdicionales(selected.id_reserva, movimientosAdicionales);
 
       await aprobarReservaOperativa({
         id_reserva: selected.id_reserva,
@@ -246,6 +328,7 @@ export default function ReservasApprovalGuard() {
             referencia_pago_abono: selected.referencia_pago_abono ?? null,
             observacion: selected.observacion ?? null,
           });
+          await replaceReservaAdicionales(selected.id_reserva, []);
         } catch (rollbackError) {
           console.error("No se pudo revertir la configuración temporal de la reserva:", rollbackError);
         }
@@ -258,16 +341,17 @@ export default function ReservasApprovalGuard() {
   };
 
   const cantidadSeleccionada = Math.max(1, Number(selected?.cantidad_personas || 1));
-  const totalVista = advancedOption === "valor_unitario"
+  const totalBaseVista = advancedOption === "valor_unitario"
     ? parseMoney(valorUnitario) * cantidadSeleccionada
     : advancedOption === "valor_total"
       ? parseMoney(valorTotal)
       : Number(selected?.valor_total || 0);
-  const unitarioVista = advancedOption === "valor_total"
-    ? totalVista / cantidadSeleccionada
-    : advancedOption === "valor_unitario"
-      ? parseMoney(valorUnitario)
-      : Number(selected?.precio_unitario || (totalVista > 0 ? totalVista / cantidadSeleccionada : 0));
+  const impactoAdicionalesVista = adicionalesDelPlan.reduce(
+    (total, item) => total + impactoPlanAdicional(item, !!adicionalSeleccionado[item.id_adicional], cantidadSeleccionada),
+    0,
+  );
+  const totalVista = totalBaseVista + impactoAdicionalesVista;
+  const unitarioVista = totalVista / cantidadSeleccionada;
 
   return <>
     <div onClickCapture={handleClickCapture}><ReservasAdmin /></div>
@@ -503,6 +587,37 @@ export default function ReservasApprovalGuard() {
               </div>
             </div>
 
+            {adicionalesDelPlan.length > 0 && (
+              <div style={{ marginTop: 14, border: "1px solid #e4ddd4", borderRadius: 14, padding: 14, background: "#fff" }}>
+                <div style={{ marginBottom: 10 }}>
+                  <strong style={{ display: "block", fontSize: 15 }}>Adicionales del plan</strong>
+                  <small style={{ color: "#81776c" }}>Los opcionales suman al precio. Los incluidos solo descuentan valor cuando el plan permite retirarlos.</small>
+                </div>
+                <div style={{ display: "grid", gap: 9 }}>
+                  {adicionalesDelPlan.map((item) => {
+                    const checked = !!adicionalSeleccionado[item.id_adicional];
+                    const precio = precioEfectivoPlanAdicional(item);
+                    const impacto = impactoPlanAdicional(item, checked, cantidadSeleccionada);
+                    const locked = item.modalidad === "incluido" && !item.permitir_quitar;
+                    return (
+                      <label key={item.id_adicional} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 11px", border: "1px solid #eee7de", borderRadius: 10, cursor: locked ? "default" : "pointer" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <input type="checkbox" checked={checked} disabled={locked || saving} onChange={(e) => toggleAdicional(item, e.target.checked)}/>
+                          <span>
+                            <strong style={{ display: "block" }}>{item.adicional.nombre}</strong>
+                            <small style={{ color: "#82786d" }}>{item.modalidad === "incluido" ? "Incluido en el plan" : "Opcional"} · ${formatMoney(precio)} {item.adicional.tipo_cobro === "por_persona" ? "por persona" : "por reserva"}</small>
+                          </span>
+                        </span>
+                        <strong style={{ color: impacto > 0 ? "#2f765b" : impacto < 0 ? "#a04b3d" : "#82786d", whiteSpace: "nowrap" }}>
+                          {impacto > 0 ? "+" : impacto < 0 ? "−" : ""}${formatMoney(Math.abs(impacto))}
+                        </strong>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="rv-approval-note" style={{ marginTop: 14 }}>
               <div className="rv-approval-note-icon"><Tag size={18}/></div>
               <span>El CH se calcula según el plan, si incluye almuerzo y el restaurante seleccionado. Puedes cambiar el CH entre las opciones válidas.</span>
@@ -513,6 +628,7 @@ export default function ReservasApprovalGuard() {
                 <label>¿Incluye almuerzo?</label>
                 <select
                   value={incluyeAlmuerzo ? "si" : "no"}
+                  disabled={!!almuerzoConfigurado}
                   onChange={(e) => {
                     const value = e.target.value === "si";
                     setIncluyeAlmuerzo(value);

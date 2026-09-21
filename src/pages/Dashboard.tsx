@@ -7,7 +7,7 @@ import "../styles/sidebar-admin.css";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../services/auth.service";
 import { getCurrentRole, type AppRole } from "../services/role.service";
-import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes } from "lucide-react";
+import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus } from "lucide-react";
 
 const SIDEBAR_KEY = "checua:sidebar_collapsed";
 const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
@@ -23,6 +23,7 @@ const ALL_NAV_LINKS = [
   { to: "/app/participantes", label: "Participantes", icon: <UserCheck size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/crear", label: "Crear", icon: <Settings2 size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/codigos-operativos", label: "Códigos operativos", icon: <Tags size={16} />, roles: ["administrador"] as AppRole[] },
+  { to: "/app/adicionales", label: "Adicionales", icon: <CirclePlus size={16} />, roles: ["administrador"] as AppRole[] },
 ];
 
 function Dashboard() {
