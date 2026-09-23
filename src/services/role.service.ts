@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabase";
 
-export type AppRole = "administrador" | "atencion";
+export type AppRole = "administrador" | "atencion" | "coordinador" | "guia";
 
 export type CurrentRole = {
   role: AppRole;
@@ -31,10 +31,10 @@ export async function getCurrentRole(): Promise<CurrentRole | null> {
   if (error) throw error;
 
   const roleName = (data as any)?.role?.nombre as AppRole | undefined;
-  if (roleName !== "administrador" && roleName !== "atencion") return null;
+  if (!["administrador", "atencion", "coordinador", "guia"].includes(String(roleName))) return null;
 
   return {
-    role: roleName,
+    role: roleName as AppRole,
     email,
     userId: user.id,
   };
@@ -42,5 +42,18 @@ export async function getCurrentRole(): Promise<CurrentRole | null> {
 
 export function canAccess(role: AppRole, path: string) {
   if (role === "administrador") return true;
-  return path === "/app/reservas" || path === "/app/control-operativo" || path === "/app/ventas-snacks";
+  if (role === "atencion") {
+    return ["/app/reservas", "/app/control-operativo", "/app/ventas-snacks", "/app/ventas-snacks-enclave"].includes(path);
+  }
+  if (role === "coordinador") {
+    return ["/app/control-operativo", "/app/inventario-snacks", "/app/accesos-guias", "/app/entrega-efectivo"].includes(path);
+  }
+  return path === "/app/ventas-snacks" || path === "/app/ventas-snacks-enclave" || path === "/app/entrega-efectivo";
+}
+
+export function appRoleLabel(role: AppRole) {
+  if (role === "administrador") return "Administrador";
+  if (role === "atencion") return "Atención";
+  if (role === "coordinador") return "Coordinador";
+  return "Guía";
 }

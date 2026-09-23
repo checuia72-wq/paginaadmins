@@ -130,8 +130,17 @@ const isMissingLocationSchema = (error: any) =>
 async function requireAdmin() {
   const current = await getCurrentRole();
   if (current?.role !== "administrador") {
-    throw new Error("Solo un administrador puede modificar el inventario de snacks.");
+    throw new Error("Solo un administrador puede realizar esta acción.");
   }
+  return current;
+}
+
+async function requireInventoryManager() {
+  const current = await getCurrentRole();
+  if (current?.role !== "administrador" && current?.role !== "coordinador") {
+    throw new Error("Solo Administración o Coordinación pueden modificar el inventario de snacks.");
+  }
+  return current;
 }
 
 export async function getSnackProducts(
@@ -169,7 +178,8 @@ export async function getSnackProducts(
 }
 
 export async function getSnackProductsAdmin(includeInactive = true): Promise<SnackAdminProduct[]> {
-  await requireAdmin();
+  const current = await requireInventoryManager();
+  const isAdmin = current.role === "administrador";
 
   let productQuery = client()
     .from("snack_producto")
@@ -178,15 +188,20 @@ export async function getSnackProductsAdmin(includeInactive = true): Promise<Sna
 
   if (!includeInactive) productQuery = productQuery.eq("activo", true);
 
+  const productPromise = productQuery;
+  const stockPromise = client()
+    .from("snack_inventario_ubicacion")
+    .select("id_producto,codigo_ubicacion,cantidad");
+
+  const costPromise = isAdmin
+    ? client().from("snack_producto_costo").select("id_producto,precio_compra")
+    : Promise.resolve({ data: [], error: null } as any);
+
   const [
     { data: products, error: productError },
-    { data: costs, error: costError },
     { data: stocks, error: stockError },
-  ] = await Promise.all([
-    productQuery,
-    client().from("snack_producto_costo").select("id_producto,precio_compra"),
-    client().from("snack_inventario_ubicacion").select("id_producto,codigo_ubicacion,cantidad"),
-  ]);
+    { data: costs, error: costError },
+  ] = await Promise.all([productPromise, stockPromise, costPromise]);
 
   if (productError) throw productError;
   if (costError) throw costError;
@@ -206,6 +221,7 @@ export async function getSnackProductsAdmin(includeInactive = true): Promise<Sna
     const id = Number(row.id_producto);
     const taquilla = stockError ? num(row.cantidad) : (stockMap.get(`${id}:taquilla_1`) ?? 0);
     const enclave = stockError ? 0 : (stockMap.get(`${id}:enclave`) ?? 0);
+
     return {
       ...row,
       id_producto: id,
@@ -215,7 +231,7 @@ export async function getSnackProductsAdmin(includeInactive = true): Promise<Sna
       cantidad_total: taquilla + enclave,
       precio: num(row.precio),
       activo: row.activo !== false,
-      precio_compra: costMap.has(id) ? costMap.get(id)! : null,
+      precio_compra: isAdmin && costMap.has(id) ? costMap.get(id)! : null,
     };
   }) as SnackAdminProduct[];
 }
@@ -243,7 +259,7 @@ export async function setSnackStockByLocation(
   cantidad: number,
   motivo = "Ajuste manual de inventario",
 ) {
-  await requireAdmin();
+  await requireInventoryManager();
   const cleanQuantity = Math.floor(num(cantidad));
   if (!Number.isInteger(cleanQuantity) || cleanQuantity < 0) {
     throw new Error("La cantidad debe ser un número entero igual o mayor a cero.");
@@ -323,7 +339,7 @@ export async function createSnackProduct(payload: {
   cantidad: number;
   precio: number;
 }) {
-  await requireAdmin();
+  await requireInventoryManager();
   const clean = {
     numero_producto: payload.numero_producto.trim().toUpperCase(),
     nombre_producto: payload.nombre_producto.trim(),
@@ -345,7 +361,7 @@ export async function updateSnackProduct(
   idProducto: number,
   payload: Partial<Pick<SnackProduct, "numero_producto" | "nombre_producto" | "cantidad" | "precio" | "activo">>,
 ) {
-  await requireAdmin();
+  await requireInventoryManager();
   const clean: Record<string, unknown> = { ...payload, updated_at: new Date().toISOString() };
   if (typeof payload.numero_producto === "string") clean.numero_producto = payload.numero_producto.trim().toUpperCase();
   if (typeof payload.nombre_producto === "string") clean.nombre_producto = payload.nombre_producto.trim();
@@ -372,7 +388,7 @@ export async function withdrawSnackStock(
   motivo: string,
   ubicacion: SnackLocationCode = "taquilla_1",
 ) {
-  await requireAdmin();
+  await requireInventoryManager();
   const cleanQuantity = Math.floor(num(cantidad));
   const cleanReason = motivo.trim();
 
@@ -400,7 +416,7 @@ export async function transferSnackStock(
   destino: SnackLocationCode,
   motivo = "Traslado de inventario",
 ) {
-  await requireAdmin();
+  await requireInventoryManager();
   const cleanQuantity = Math.floor(num(cantidad));
   if (origen === destino) throw new Error("El origen y el destino deben ser diferentes.");
   if (!Number.isInteger(cleanQuantity) || cleanQuantity <= 0) {

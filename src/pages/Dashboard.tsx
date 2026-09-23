@@ -6,8 +6,9 @@ import "../styles/desktop-admin-tuning.css";
 import "../styles/sidebar-admin.css";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../services/auth.service";
-import { getCurrentRole, type AppRole } from "../services/role.service";
-import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus, Store, ArrowRightLeft } from "lucide-react";
+import { appRoleLabel, getCurrentRole, type AppRole } from "../services/role.service";
+import { getMyGuideSalesPermissions, type GuideSalesPermissions } from "../services/guideSalesAccess.service";
+import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus, Store, ArrowRightLeft, ShieldCheck, HandCoins } from "lucide-react";
 
 const SIDEBAR_KEY = "checua:sidebar_collapsed";
 const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
@@ -15,11 +16,13 @@ const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
 const ALL_NAV_LINKS = [
   { to: "/app", label: "Resumen", icon: <LayoutDashboard size={16} />, end: true, roles: ["administrador"] as AppRole[] },
   { to: "/app/reservas", label: "Reservas", icon: <CalendarDays size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
-  { to: "/app/control-operativo", label: "Control Operativo", icon: <ClipboardList size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
-  { to: "/app/ventas-snacks", label: "Ventas Taquilla 1", icon: <ShoppingCart size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
-  { to: "/app/ventas-snacks-enclave", label: "Ventas Enclave", icon: <Store size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
-  { to: "/app/inventario-snacks", label: "Inventarios snacks", icon: <Boxes size={16} />, roles: ["administrador"] as AppRole[] },
+  { to: "/app/control-operativo", label: "Control Operativo", icon: <ClipboardList size={16} />, roles: ["administrador", "atencion", "coordinador"] as AppRole[] },
+  { to: "/app/ventas-snacks", label: "Ventas Taquilla 1", icon: <ShoppingCart size={16} />, roles: ["administrador", "atencion", "guia"] as AppRole[], salesLocation: "taquilla_1" as const },
+  { to: "/app/ventas-snacks-enclave", label: "Ventas Enclave", icon: <Store size={16} />, roles: ["administrador", "atencion", "guia"] as AppRole[], salesLocation: "enclave" as const },
+  { to: "/app/inventario-snacks", label: "Inventarios snacks", icon: <Boxes size={16} />, roles: ["administrador", "coordinador"] as AppRole[] },
   { to: "/app/transferencias-snacks", label: "Transferir snacks", icon: <ArrowRightLeft size={16} />, roles: ["administrador"] as AppRole[] },
+  { to: "/app/accesos-guias", label: "Accesos de guías", icon: <ShieldCheck size={16} />, roles: ["administrador", "coordinador"] as AppRole[] },
+  { to: "/app/entrega-efectivo", label: "Entrega de efectivo", icon: <HandCoins size={16} />, roles: ["administrador", "coordinador", "guia"] as AppRole[] },
   { to: "/app/planes", label: "Planes", icon: <Package size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/clientes", label: "Clientes", icon: <Users size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/participantes", label: "Participantes", icon: <UserCheck size={16} />, roles: ["administrador"] as AppRole[] },
@@ -32,6 +35,7 @@ function Dashboard() {
   const [userLabel, setUserLabel] = useState<string>("usuario");
   const [role, setRole] = useState<AppRole | null>(null);
   const [roleLoading, setRoleLoading] = useState(true);
+  const [guideSalesAccess, setGuideSalesAccess] = useState<GuideSalesPermissions>({ taquilla_1: false, enclave: false });
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === "true");
   const navigate = useNavigate();
@@ -39,9 +43,37 @@ function Dashboard() {
   const drawerRef = useRef<HTMLDivElement>(null);
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const navLinks = role ? ALL_NAV_LINKS.filter((link) => link.roles.includes(role)) : [];
+  const navLinks = role ? ALL_NAV_LINKS.filter((link) => {
+    if (!link.roles.includes(role)) return false;
+    if (role !== "guia" || !("salesLocation" in link) || !link.salesLocation) return true;
+    return link.salesLocation === "taquilla_1" ? guideSalesAccess.taquilla_1 : guideSalesAccess.enclave;
+  }) : [];
 
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    if (role !== "guia") return;
+
+    let active = true;
+    const syncAccess = async () => {
+      try {
+        const access = await getMyGuideSalesPermissions();
+        if (active) setGuideSalesAccess(access);
+      } catch {
+        if (active) setGuideSalesAccess({ taquilla_1: false, enclave: false });
+      }
+    };
+
+    void syncAccess();
+    const timer = window.setInterval(() => void syncAccess(), 30000);
+    window.addEventListener("focus", syncAccess);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", syncAccess);
+    };
+  }, [role]);
   useEffect(() => { localStorage.setItem(SIDEBAR_KEY, String(sidebarCollapsed)); }, [sidebarCollapsed]);
   useEffect(() => {
     if (!menuOpen) return;
@@ -67,17 +99,24 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    getCurrentRole().then((current) => {
+    getCurrentRole().then(async (current) => {
       if (!current) { setRole(null); navigate("/", { replace: true }); return; }
       setRole(current.role); setUserLabel(current.email || "usuario");
-      if (current.role === "atencion" && location.pathname === "/app") navigate("/app/reservas", { replace: true });
+      if (current.role === "guia") {
+        try {
+          const access = await getMyGuideSalesPermissions();
+          setGuideSalesAccess(access);
+        } catch {
+          setGuideSalesAccess({ taquilla_1: false, enclave: false });
+        }
+      }
     }).catch(() => { setRole(null); navigate("/", { replace: true }); }).finally(() => setRoleLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const linkClass = ({ isActive }: { isActive: boolean }) => ["dash-nav-link", isActive ? "active" : ""].join(" ");
   const sidebarLinkClass = ({ isActive }: { isActive: boolean }) => ["sidebar-link", isActive ? "active" : ""].join(" ");
-  const roleLabel = role === "atencion" ? "Atención" : "Administrador";
+  const roleLabel = role ? appRoleLabel(role) : "Usuario";
 
   if (roleLoading) return <div className="grid min-h-screen place-items-center"><p>Cargando permisos…</p></div>;
 

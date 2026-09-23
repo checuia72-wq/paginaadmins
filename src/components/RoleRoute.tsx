@@ -23,7 +23,7 @@ export default function RoleRoute({ allow, children }: Props) {
   }
 
   if (!role) return <Navigate to="/" replace />;
-  if (!allow.includes(role)) return <Navigate to="/app/reservas" replace />;
+  if (!allow.includes(role)) return <Navigate to="/app" replace />;
 
   return <>{children}</>;
 }

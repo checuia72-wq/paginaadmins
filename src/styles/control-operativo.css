@@ -8,3 +8,136 @@
 /* Mapa definitivo de columnas del Control Operativo. Mantiene cada dato dentro de su celda. */
 .op-table-operational{min-width:2820px!important;width:max-content!important;table-layout:fixed}.op-table-operational th,.op-table-operational td{box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.op-table-operational th:nth-child(1),.op-table-operational td:nth-child(1){width:112px!important;min-width:112px!important;max-width:112px!important}.op-table-operational th:nth-child(2),.op-table-operational td:nth-child(2){width:235px!important;min-width:235px!important;max-width:235px!important}.op-table-operational th:nth-child(3),.op-table-operational td:nth-child(3){width:108px!important}.op-table-operational th:nth-child(4),.op-table-operational td:nth-child(4){width:92px!important;text-align:center}.op-table-operational th:nth-child(5),.op-table-operational td:nth-child(5){width:72px!important;text-align:center}.op-table-operational th:nth-child(6),.op-table-operational td:nth-child(6){width:155px!important}.op-table-operational th:nth-child(7),.op-table-operational td:nth-child(7){width:58px!important;text-align:center}.op-table-operational th:nth-child(8),.op-table-operational td:nth-child(8){width:105px!important}.op-table-operational th:nth-child(9),.op-table-operational td:nth-child(9){width:125px!important}.op-table-operational th:nth-child(10),.op-table-operational td:nth-child(10){width:130px!important}.op-table-operational th:nth-child(11),.op-table-operational td:nth-child(11){width:62px!important;text-align:center}.op-table-operational th:nth-child(12),.op-table-operational td:nth-child(12),.op-table-operational th:nth-child(13),.op-table-operational td:nth-child(13){width:82px!important;text-align:center}.op-table-operational th:nth-child(14),.op-table-operational td:nth-child(14){width:110px!important}.op-table-operational th:nth-child(15),.op-table-operational td:nth-child(15){width:80px!important;text-align:center}.op-table-operational th:nth-child(16),.op-table-operational td:nth-child(16){width:125px!important}.op-table-operational th:nth-child(17),.op-table-operational td:nth-child(17),.op-table-operational th:nth-child(18),.op-table-operational td:nth-child(18),.op-table-operational th:nth-child(21),.op-table-operational td:nth-child(21),.op-table-operational th:nth-child(22),.op-table-operational td:nth-child(22),.op-table-operational th:nth-child(23),.op-table-operational td:nth-child(23),.op-table-operational th:nth-child(25),.op-table-operational td:nth-child(25){width:100px!important;text-align:right}.op-table-operational th:nth-child(19),.op-table-operational td:nth-child(19){width:125px!important}.op-table-operational th:nth-child(20),.op-table-operational td:nth-child(20){width:92px!important;text-align:center}.op-table-operational th:nth-child(24),.op-table-operational td:nth-child(24){width:125px!important}.op-table-operational th:nth-child(26),.op-table-operational td:nth-child(26){width:230px!important;max-width:230px!important}.op-table-operational th:nth-child(27),.op-table-operational td:nth-child(27){width:76px!important;text-align:center}.op-table-operational .op-reference-cell{font-weight:800;letter-spacing:.06em;text-align:center;color:#5d4a2f}.op-table-operational .op-observation-cell{max-width:230px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}.op-table-operational td[title]{cursor:help}
 @media(max-width:700px){.op-table-operational{min-width:2820px!important}.op-table-operational th:nth-child(2),.op-table-operational td:nth-child(2){width:235px!important;min-width:235px!important;max-width:235px!important}}
+
+
+/* Vista de solo lectura para Coordinación */
+.op-filters-coordinator{
+  grid-template-columns:minmax(300px,1.6fr) repeat(3,minmax(150px,.8fr)) auto;
+}
+.op-table-coordinator{
+  min-width:1180px!important;
+  width:100%!important;
+  table-layout:fixed!important;
+}
+.op-table-coordinator th,
+.op-table-coordinator td{
+  position:static!important;
+  box-shadow:none!important;
+}
+.op-table-coordinator th:nth-child(1),
+.op-table-coordinator td:nth-child(1){width:110px!important;min-width:110px!important;max-width:110px!important;}
+.op-table-coordinator th:nth-child(2),
+.op-table-coordinator td:nth-child(2){width:210px!important;min-width:210px!important;max-width:210px!important;}
+.op-table-coordinator th:nth-child(3),
+.op-table-coordinator td:nth-child(3){width:125px!important;}
+.op-table-coordinator th:nth-child(4),
+.op-table-coordinator td:nth-child(4){width:105px!important;text-align:left!important;}
+.op-table-coordinator th:nth-child(5),
+.op-table-coordinator td:nth-child(5){width:85px!important;text-align:center!important;}
+.op-table-coordinator th:nth-child(6),
+.op-table-coordinator td:nth-child(6){width:80px!important;text-align:center!important;}
+.op-table-coordinator th:nth-child(7),
+.op-table-coordinator td:nth-child(7){width:220px!important;}
+.op-table-coordinator th:nth-child(8),
+.op-table-coordinator td:nth-child(8){width:150px!important;}
+.op-table-coordinator th:nth-child(9),
+.op-table-coordinator td:nth-child(9){width:110px!important;text-align:right!important;}
+.op-table-coordinator th:first-child,
+.op-table-coordinator th:nth-child(2){
+  background:#2f6958!important;
+}
+.op-table-coordinator tbody tr:nth-child(even) td:first-child,
+.op-table-coordinator tbody tr:nth-child(even) td:nth-child(2){
+  background:#fdfbf8!important;
+}
+.op-table-coordinator tbody tr:hover td:first-child,
+.op-table-coordinator tbody tr:hover td:nth-child(2){
+  background:#fff7e9!important;
+}
+.op-coordinator-empty{
+  height:84px;
+  text-align:center!important;
+  color:#8a7c6d!important;
+  font-size:12px;
+  background:#fff!important;
+}
+@media(max-width:1100px){
+  .op-filters-coordinator{
+    grid-template-columns:1fr 1fr;
+  }
+  .op-filters-coordinator .op-search{
+    grid-column:1/-1;
+  }
+  .op-filters-coordinator .op-clear{
+    justify-self:start;
+  }
+}
+@media(max-width:700px){
+  .op-filters-coordinator{
+    grid-template-columns:1fr;
+  }
+  .op-filters-coordinator .op-search{
+    grid-column:auto;
+  }
+  .op-table-coordinator{
+    min-width:1050px!important;
+  }
+}
+
+
+/* Control Operativo del coordinador: misma información del operativo, sin acciones de edición */
+.op-table-coordinator-full{
+  min-width:2570px!important;
+  width:max-content!important;
+}
+.op-table-coordinator-full th:nth-child(1),
+.op-table-coordinator-full td:nth-child(1){width:112px!important;min-width:112px!important;max-width:112px!important}
+.op-table-coordinator-full th:nth-child(2),
+.op-table-coordinator-full td:nth-child(2){width:235px!important;min-width:235px!important;max-width:235px!important}
+.op-table-coordinator-full th:nth-child(3),
+.op-table-coordinator-full td:nth-child(3){width:108px!important}
+.op-table-coordinator-full th:nth-child(4),
+.op-table-coordinator-full td:nth-child(4){width:92px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(5),
+.op-table-coordinator-full td:nth-child(5){width:72px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(6),
+.op-table-coordinator-full td:nth-child(6){width:155px!important}
+.op-table-coordinator-full th:nth-child(7),
+.op-table-coordinator-full td:nth-child(7){width:58px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(8),
+.op-table-coordinator-full td:nth-child(8){width:105px!important}
+.op-table-coordinator-full th:nth-child(9),
+.op-table-coordinator-full td:nth-child(9){width:125px!important}
+.op-table-coordinator-full th:nth-child(10),
+.op-table-coordinator-full td:nth-child(10){width:130px!important}
+.op-table-coordinator-full th:nth-child(11),
+.op-table-coordinator-full td:nth-child(11){width:62px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(12),
+.op-table-coordinator-full td:nth-child(12),
+.op-table-coordinator-full th:nth-child(13),
+.op-table-coordinator-full td:nth-child(13){width:82px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(14),
+.op-table-coordinator-full td:nth-child(14){width:110px!important}
+.op-table-coordinator-full th:nth-child(15),
+.op-table-coordinator-full td:nth-child(15){width:80px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(16),
+.op-table-coordinator-full td:nth-child(16){width:125px!important}
+.op-table-coordinator-full th:nth-child(17),
+.op-table-coordinator-full td:nth-child(17),
+.op-table-coordinator-full th:nth-child(18),
+.op-table-coordinator-full td:nth-child(18),
+.op-table-coordinator-full th:nth-child(21),
+.op-table-coordinator-full td:nth-child(21),
+.op-table-coordinator-full th:nth-child(23),
+.op-table-coordinator-full td:nth-child(23){width:100px!important;text-align:right!important}
+.op-table-coordinator-full th:nth-child(19),
+.op-table-coordinator-full td:nth-child(19){width:125px!important}
+.op-table-coordinator-full th:nth-child(20),
+.op-table-coordinator-full td:nth-child(20){width:92px!important;text-align:center!important}
+.op-table-coordinator-full th:nth-child(22),
+.op-table-coordinator-full td:nth-child(22){width:125px!important}
+.op-table-coordinator-full th:nth-child(24),
+.op-table-coordinator-full td:nth-child(24){width:230px!important;max-width:230px!important}
+@media(max-width:700px){
+  .op-table-coordinator-full{min-width:2570px!important}
+}

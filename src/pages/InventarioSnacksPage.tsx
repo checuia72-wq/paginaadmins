@@ -10,6 +10,7 @@ import {
   withdrawSnackStock,
   type SnackAdminProduct,
 } from "../services/snack.service";
+import { getCurrentRole } from "../services/role.service";
 import "../styles/snacks.css";
 
 const money = (value: number) => `$${Number(value || 0).toLocaleString("es-CO")}`;
@@ -41,6 +42,7 @@ export default function InventarioSnacksPage() {
   const [withdrawLocation, setWithdrawLocation] = useState<"taquilla_1" | "enclave">("taquilla_1");
   const [withdrawReason, setWithdrawReason] = useState("Vencimiento");
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     silent ? setRefreshing(true) : setLoading(true);
@@ -56,6 +58,11 @@ export default function InventarioSnacksPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    getCurrentRole()
+      .then((current) => setIsAdmin(current?.role === "administrador"))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -125,7 +132,7 @@ export default function InventarioSnacksPage() {
       setError("El precio de venta debe ser mayor a cero.");
       return;
     }
-    if (!Number.isFinite(precioCompra) || precioCompra < 0) {
+    if (isAdmin && (!Number.isFinite(precioCompra) || precioCompra < 0)) {
       setError("El precio de compra debe ser igual o mayor a cero.");
       return;
     }
@@ -141,14 +148,14 @@ export default function InventarioSnacksPage() {
       };
       if (editing) {
         await updateSnackProduct(editing.id_producto, payload);
-        await saveSnackPurchasePrice(editing.id_producto, precioCompra);
+        if (isAdmin) await saveSnackPurchasePrice(editing.id_producto, precioCompra);
         await setSnackStockByLocation(editing.id_producto, "taquilla_1", cantidadTaquilla, "Ajuste manual desde inventario");
         await setSnackStockByLocation(editing.id_producto, "enclave", cantidadEnclave, "Ajuste manual desde inventario");
-        setSuccess("Producto, costos e inventarios por punto actualizados correctamente.");
+        setSuccess(isAdmin ? "Producto, costos e inventarios por punto actualizados correctamente." : "Producto e inventarios por punto actualizados correctamente.");
       } else {
         const created: any = await createSnackProduct({ ...payload, cantidad: 0 });
         const id = Number(created.id_producto);
-        await saveSnackPurchasePrice(id, precioCompra);
+        if (isAdmin) await saveSnackPurchasePrice(id, precioCompra);
         await setSnackStockByLocation(id, "taquilla_1", cantidadTaquilla, "Inventario inicial");
         await setSnackStockByLocation(id, "enclave", cantidadEnclave, "Inventario inicial");
         setSuccess("Producto agregado a los inventarios de Taquilla 1 y Enclave.");
@@ -217,7 +224,7 @@ export default function InventarioSnacksPage() {
       <div className="snack-page-head">
         <div>
           <h1>Inventario de snacks</h1>
-          <p>Administra por separado las existencias de Taquilla 1 y Enclave. El costo de compra solo es visible para administradores.</p>
+          <p>{isAdmin ? "Administra por separado las existencias de Taquilla 1 y Enclave, incluidos los costos de compra." : "Administra las existencias de Taquilla 1 y Enclave. Los costos de compra permanecen reservados para Administración."}</p>
         </div>
         <button className="snack-btn secondary" onClick={() => load(true)} disabled={refreshing}>
           <RefreshCw size={16} className={refreshing ? "spin-icon" : ""} /> Actualizar
@@ -232,8 +239,8 @@ export default function InventarioSnacksPage() {
         <div><span>Stock Taquilla 1</span><b>{stockTaquilla}</b></div>
         <div><span>Stock Enclave</span><b>{stockEnclave}</b></div>
         <div><span>Total unidades</span><b>{stockTotal}</b></div>
-        <div><span>Capital invertido</span><b>{money(inventoryCost)}</b></div>
-        <div><span>Ganancia potencial</span><b>{money(potentialProfit)}</b></div>
+        {isAdmin && <div><span>Capital invertido</span><b>{money(inventoryCost)}</b></div>}
+        {isAdmin && <div><span>Ganancia potencial</span><b>{money(potentialProfit)}</b></div>}
         <div className={lowStock ? "warning" : ""}><span>Stock bajo ≤ 5</span><b>{lowStock}</b></div>
       </div>
 
@@ -247,7 +254,7 @@ export default function InventarioSnacksPage() {
           <label>Nombre del producto *<input value={form.nombre_producto} onChange={(e) => setForm({ ...form, nombre_producto: e.target.value })} placeholder="Ej. Agua 600 ml" /></label>
           <label>Stock Taquilla 1 *<input type="number" min={0} step={1} value={form.cantidad_taquilla_1} onChange={(e) => setForm({ ...form, cantidad_taquilla_1: e.target.value })} /></label>
           <label>Stock Enclave *<input type="number" min={0} step={1} value={form.cantidad_enclave} onChange={(e) => setForm({ ...form, cantidad_enclave: e.target.value })} /></label>
-          <label>Precio de compra *<input type="number" min={0} step={100} value={form.precio_compra} onChange={(e) => setForm({ ...form, precio_compra: e.target.value })} placeholder="2000" /></label>
+          {isAdmin && <label>Precio de compra *<input type="number" min={0} step={100} value={form.precio_compra} onChange={(e) => setForm({ ...form, precio_compra: e.target.value })} placeholder="2000" /></label>}
           <label>Precio de venta *<input type="number" min={0} step={100} value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} placeholder="5000" /></label>
           <button className="snack-btn primary" disabled={saving} onClick={save}><Save size={16} /> {saving ? "Guardando…" : editing ? "Guardar cambios" : "Agregar producto"}</button>
         </div>
@@ -285,18 +292,18 @@ export default function InventarioSnacksPage() {
 
         <div className="snack-table-wrap">
           <table className="snack-table">
-            <thead><tr><th>N.º producto</th><th>Producto</th><th>Taquilla 1</th><th>Enclave</th><th>Total</th><th>Precio compra</th><th>Precio venta</th><th>Ganancia/u</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>N.º producto</th><th>Producto</th><th>Taquilla 1</th><th>Enclave</th><th>Total</th>{isAdmin && <th>Precio compra</th>}<th>Precio venta</th>{isAdmin && <th>Ganancia/u</th>}<th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>
-              {loading ? <tr><td colSpan={10} className="snack-empty">Cargando inventario…</td></tr> : filtered.length === 0 ? <tr><td colSpan={10} className="snack-empty">No hay productos para mostrar.</td></tr> : filtered.map((product) => (
+              {loading ? <tr><td colSpan={isAdmin ? 10 : 8} className="snack-empty">Cargando inventario…</td></tr> : filtered.length === 0 ? <tr><td colSpan={isAdmin ? 10 : 8} className="snack-empty">No hay productos para mostrar.</td></tr> : filtered.map((product) => (
                 <tr key={product.id_producto} className={!product.activo ? "inactive" : ""}>
                   <td><strong>{product.numero_producto}</strong></td>
                   <td>{product.nombre_producto}</td>
                   <td><span className={`snack-stock ${product.cantidad_taquilla_1 <= 5 ? "low" : ""}`}>{product.cantidad_taquilla_1}</span></td>
                   <td><span className={`snack-stock ${product.cantidad_enclave <= 5 ? "low" : ""}`}>{product.cantidad_enclave}</span></td>
                   <td><strong>{product.cantidad_total}</strong></td>
-                  <td>{product.precio_compra == null ? "Sin definir" : money(product.precio_compra)}</td>
+                  {isAdmin && <td>{product.precio_compra == null ? "Sin definir" : money(product.precio_compra)}</td>}
                   <td>{money(product.precio)}</td>
-                  <td><strong>{product.precio_compra == null ? "—" : money(product.precio - product.precio_compra)}</strong></td>
+                  {isAdmin && <td><strong>{product.precio_compra == null ? "—" : money(product.precio - product.precio_compra)}</strong></td>}
                   <td><span className={`snack-status ${product.activo ? "active" : "inactive"}`}>{product.activo ? "Activo" : "Inactivo"}</span></td>
                   <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startEdit(product)} title="Editar"><Pencil size={15} /></button><button className="snack-icon-btn" onClick={() => startWithdrawal(product)} disabled={product.cantidad_total <= 0} title="Retirar unidades del inventario"><PackageMinus size={15} /></button><button className="snack-icon-btn" onClick={() => toggleActive(product)} title={product.activo ? "Desactivar" : "Reactivar"}><ArchiveRestore size={15} /></button></div></td>
                 </tr>
