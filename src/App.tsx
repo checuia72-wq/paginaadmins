@@ -15,6 +15,7 @@ import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import AdicionalesPage from "./pages/AdicionalesPage";
 import InventarioSnacksPage from "./pages/InventarioSnacksPage";
 import VentasSnacksPage from "./pages/VentasSnacksPage";
+import TransferenciaSnacksPage from "./pages/TransferenciaSnacksPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 import GlobalAlertModal from "./components/common/GlobalAlertModal";
@@ -43,8 +44,10 @@ export default function App() {
           <Route index element={<RoleRoute allow={["administrador"]}><OverviewPage /></RoleRoute>} />
           <Route path="reservas" element={<RoleRoute allow={["administrador", "atencion"]}><ReservasPage /></RoleRoute>} />
           <Route path="control-operativo" element={<RoleRoute allow={["administrador", "atencion"]}><ControlOperativoPage /></RoleRoute>} />
-          <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion"]}><VentasSnacksPage /></RoleRoute>} />
+          <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion"]}><VentasSnacksPage ubicacion="taquilla_1" titulo="Ventas Taquilla 1" /></RoleRoute>} />
+          <Route path="ventas-snacks-enclave" element={<RoleRoute allow={["administrador", "atencion"]}><VentasSnacksPage ubicacion="enclave" titulo="Ventas Enclave" /></RoleRoute>} />
           <Route path="inventario-snacks" element={<RoleRoute allow={["administrador"]}><InventarioSnacksPage /></RoleRoute>} />
+          <Route path="transferencias-snacks" element={<RoleRoute allow={["administrador"]}><TransferenciaSnacksPage /></RoleRoute>} />
           <Route path="planes" element={<RoleRoute allow={["administrador"]}><PlanesPage /></RoleRoute>} />
           <Route path="clientes" element={<RoleRoute allow={["administrador"]}><ClientesPage /></RoleRoute>} />
           <Route path="participantes" element={<RoleRoute allow={["administrador"]}><ParticipantesPage /></RoleRoute>} />

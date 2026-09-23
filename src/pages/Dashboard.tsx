@@ -7,7 +7,7 @@ import "../styles/sidebar-admin.css";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../services/auth.service";
 import { getCurrentRole, type AppRole } from "../services/role.service";
-import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus } from "lucide-react";
+import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus, Store, ArrowRightLeft } from "lucide-react";
 
 const SIDEBAR_KEY = "checua:sidebar_collapsed";
 const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
@@ -16,8 +16,10 @@ const ALL_NAV_LINKS = [
   { to: "/app", label: "Resumen", icon: <LayoutDashboard size={16} />, end: true, roles: ["administrador"] as AppRole[] },
   { to: "/app/reservas", label: "Reservas", icon: <CalendarDays size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
   { to: "/app/control-operativo", label: "Control Operativo", icon: <ClipboardList size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
-  { to: "/app/ventas-snacks", label: "Ventas", icon: <ShoppingCart size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
-  { to: "/app/inventario-snacks", label: "Inventario snacks", icon: <Boxes size={16} />, roles: ["administrador"] as AppRole[] },
+  { to: "/app/ventas-snacks", label: "Ventas Taquilla 1", icon: <ShoppingCart size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
+  { to: "/app/ventas-snacks-enclave", label: "Ventas Enclave", icon: <Store size={16} />, roles: ["administrador", "atencion"] as AppRole[] },
+  { to: "/app/inventario-snacks", label: "Inventarios snacks", icon: <Boxes size={16} />, roles: ["administrador"] as AppRole[] },
+  { to: "/app/transferencias-snacks", label: "Transferir snacks", icon: <ArrowRightLeft size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/planes", label: "Planes", icon: <Package size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/clientes", label: "Clientes", icon: <Users size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/participantes", label: "Participantes", icon: <UserCheck size={16} />, roles: ["administrador"] as AppRole[] },

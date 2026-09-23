@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { ShoppingBasket } from "lucide-react";
-import { getSnackSalesByDate, type SnackSale } from "../../services/snack.service";
+import { getSnackSalesByDate, snackLocationLabel, type SnackSale } from "../../services/snack.service";
 import "../../styles/snacks.css";
 
 const money = (value: number) => `$${Number(value || 0).toLocaleString("es-CO")}`;
@@ -103,6 +103,15 @@ export default function ControlOperativoSnackSales() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [sales]);
 
+  const byLocation = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const sale of sales) {
+      const key = sale.ubicacion_codigo || "taquilla_1";
+      map.set(key, (map.get(key) ?? 0) + sale.total);
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [sales]);
+
   if (!host) return null;
 
   return createPortal(
@@ -114,11 +123,14 @@ export default function ControlOperativoSnackSales() {
 
       {error ? <div className="snack-alert error">{error}</div> : loading && !sales.length ? <div className="op-snack-empty">Cargando ventas de snacks…</div> : sales.length === 0 ? <div className="op-snack-empty">No hay ventas de snacks registradas para este día.</div> : (
         <>
-          <div className="op-snack-methods">{byMethod.map(([method, value]) => <span key={method}>{method}: <b>{money(value)}</b></span>)}</div>
+          <div className="op-snack-methods">
+            {byLocation.map(([locationCode, value]) => <span key={locationCode}>{snackLocationLabel(locationCode)}: <b>{money(value)}</b></span>)}
+            {byMethod.map(([method, value]) => <span key={method}>{method}: <b>{money(value)}</b></span>)}
+          </div>
           <div className="op-snack-table-wrap">
             <table className="op-snack-table">
-              <thead><tr><th>Hora</th><th>Productos vendidos</th><th>Método de pago</th><th>Vendedor</th><th>Total</th></tr></thead>
-              <tbody>{sales.map((sale) => <tr key={sale.id_venta}><td>{timeBogota(sale.fecha_venta)}</td><td>{sale.items.map((item) => `${item.cantidad}× ${item.nombre_producto}`).join(", ")}</td><td>{sale.medio_pago}</td><td>{sale.vendedor_email || "—"}</td><td><strong>{money(sale.total)}</strong></td></tr>)}</tbody>
+              <thead><tr><th>Hora</th><th>Punto</th><th>Productos vendidos</th><th>Método de pago</th><th>Vendedor</th><th>Total</th></tr></thead>
+              <tbody>{sales.map((sale) => <tr key={sale.id_venta}><td>{timeBogota(sale.fecha_venta)}</td><td><strong>{snackLocationLabel(sale.ubicacion_codigo)}</strong></td><td>{sale.items.map((item) => `${item.cantidad}× ${item.nombre_producto}`).join(", ")}</td><td>{sale.medio_pago}</td><td>{sale.vendedor_email || "—"}</td><td><strong>{money(sale.total)}</strong></td></tr>)}</tbody>
             </table>
           </div>
         </>
