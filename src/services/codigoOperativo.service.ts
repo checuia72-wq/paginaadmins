@@ -157,16 +157,65 @@ export async function getCodigosOperativos(): Promise<CodigoOperativo[]> {
     const planMap = new Map<number, PlanLigero>();
 
     if (planIds.length) {
-      const { data: planData, error: planError } = await db
-        .from("plan")
-        .select("id_plan,nombre_plan,precio_plan,tipo_fecha,tipo_hora")
-        .in("id_plan", planIds);
+      const [
+        { data: planData, error: planError },
+        { data: fechaData, error: fechaError },
+        { data: horaData, error: horaError },
+      ] = await Promise.all([
+        db
+          .from("plan")
+          .select("id_plan,nombre_plan,precio_plan,tipo_fecha,tipo_hora")
+          .in("id_plan", planIds),
+        db
+          .from("plan_fechas")
+          .select("id_fecha,id_plan,fecha")
+          .in("id_plan", planIds)
+          .order("fecha", { ascending: true }),
+        db
+          .from("plan_horas")
+          .select("id_hora,id_plan,hora")
+          .in("id_plan", planIds)
+          .order("hora", { ascending: true }),
+      ]);
 
       if (planError) {
         console.warn("Los CH se cargaron, pero no fue posible completar los nombres de los planes:", planError);
       } else {
+        const fechasPorPlan = new Map<number, Array<{ id_fecha: number; fecha: string }>>();
+        const horasPorPlan = new Map<number, Array<{ id_hora: number; hora: string }>>();
+
+        if (fechaError) {
+          console.warn("No fue posible cargar las fechas configuradas de los planes:", fechaError);
+        } else {
+          for (const row of fechaData ?? []) {
+            const idPlan = Number((row as any).id_plan);
+            const current = fechasPorPlan.get(idPlan) ?? [];
+            current.push({
+              id_fecha: Number((row as any).id_fecha),
+              fecha: String((row as any).fecha ?? "").slice(0, 10),
+            });
+            fechasPorPlan.set(idPlan, current);
+          }
+        }
+
+        if (horaError) {
+          console.warn("No fue posible cargar los horarios configurados de los planes:", horaError);
+        } else {
+          for (const row of horaData ?? []) {
+            const idPlan = Number((row as any).id_plan);
+            const current = horasPorPlan.get(idPlan) ?? [];
+            current.push({
+              id_hora: Number((row as any).id_hora),
+              hora: String((row as any).hora ?? ""),
+            });
+            horasPorPlan.set(idPlan, current);
+          }
+        }
+
         for (const row of planData ?? []) {
           const plan = normalizePlan(row);
+          plan.plan_fechas = fechasPorPlan.get(plan.id_plan) ?? [];
+          plan.plan_horas = horasPorPlan.get(plan.id_plan) ?? [];
           planMap.set(plan.id_plan, plan);
         }
       }
