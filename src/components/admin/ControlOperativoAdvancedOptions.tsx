@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
-import { ChevronDown, CircleDollarSign, ShieldCheck, UsersRound } from "lucide-react";
+import { ChevronDown, CircleDollarSign, PackagePlus, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import {
   cambiarEstadoOperativo,
   getControlOperativo,
@@ -9,14 +9,25 @@ import {
   updateControlReserva,
 } from "../../services/controlOperativo.service";
 import { getCurrentRole, type AppRole } from "../../services/role.service";
+import {
+  agregarPlanAdicionalReserva,
+  calcularImpactoPlanAdicional,
+  getOpcionesPlanesAdicionales,
+  getReservaPlanesAdicionales,
+  retirarPlanAdicionalReserva,
+  type OpcionPlanAdicional,
+  type ReservaPlanAdicional,
+} from "../../services/reservaPlanAdicional.service";
 import "../../styles/control-operativo-advanced.css";
 
-type AdvancedOption = "" | "estado" | "reprogramar" | "devoluciones" | "valor";
+type AdvancedOption = "" | "estado" | "reprogramar" | "devoluciones" | "planes_adicionales" | "valor";
 type AttendanceMode = "todos" | "faltaron";
 
 type ReservaResumen = {
   id_reserva: number;
   codigo: string;
+  id_plan: number | null;
+  fecha: string;
   total: number;
   cantidad: number;
   observacion: string;
@@ -24,7 +35,13 @@ type ReservaResumen = {
   pagoSaldo: number;
 };
 
-const money = (value: number) => `$${Number(value || 0).toLocaleString("es-CO")}`;
+const money = (value: number) => "$" + Number(value || 0).toLocaleString("es-CO");
+
+function opcionCoincideConAgregado(opcion: OpcionPlanAdicional, agregado: ReservaPlanAdicional) {
+  if (opcion.origen !== agregado.origen) return false;
+  if (opcion.origen === "plan") return Number(opcion.id_plan) === Number(agregado.id_plan_adicional);
+  return Number(opcion.id_adicional) === Number(agregado.id_adicional);
+}
 
 function sectionKey(section: HTMLElement): AdvancedOption {
   const title = section.querySelector(".op-section-title strong")?.textContent?.trim().toLowerCase() ?? "";
@@ -109,7 +126,13 @@ export default function ControlOperativoAdvancedOptions() {
   const [asistencia, setAsistencia] = useState<AttendanceMode>("todos");
   const [asistentes, setAsistentes] = useState("");
   const [penalidad, setPenalidad] = useState("");
+  const [opcionesPlanesAdicionales, setOpcionesPlanesAdicionales] = useState<OpcionPlanAdicional[]>([]);
+  const [planesAdicionalesReserva, setPlanesAdicionalesReserva] = useState<ReservaPlanAdicional[]>([]);
+  const [planAdicionalKey, setPlanAdicionalKey] = useState("");
+  const [alcancePlanAdicional, setAlcancePlanAdicional] = useState<"todos" | "algunos">("todos");
+  const [cantidadPlanAdicional, setCantidadPlanAdicional] = useState("");
   const [loadingReserva, setLoadingReserva] = useState(false);
+  const [loadingPlanesAdicionales, setLoadingPlanesAdicionales] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -145,6 +168,11 @@ export default function ControlOperativoAdvancedOptions() {
         setAsistencia("todos");
         setAsistentes("");
         setPenalidad("");
+        setOpcionesPlanesAdicionales([]);
+        setPlanesAdicionalesReserva([]);
+        setPlanAdicionalKey("");
+        setAlcancePlanAdicional("todos");
+        setCantidadPlanAdicional("");
         setError("");
         setSuccess("");
         return;
@@ -237,7 +265,7 @@ export default function ControlOperativoAdvancedOptions() {
   }, [modal]);
 
   useEffect(() => {
-    if (!modal || (selected !== "valor" && selected !== "estado")) return;
+    if (!modal || (selected !== "valor" && selected !== "estado" && selected !== "planes_adicionales")) return;
     const codigo = getReservaCode(modal);
     if (!codigo) {
       setError("No fue posible identificar la reserva abierta.");
@@ -255,6 +283,8 @@ export default function ControlOperativoAdvancedOptions() {
         const resumen = {
           id_reserva: row.id_reserva,
           codigo: row.reserva_codigo,
+          id_plan: row.id_plan,
+          fecha: row.fecha,
           total: Number(row.total || 0),
           cantidad: Math.max(1, Number(row.cantidad || 1)),
           observacion: row.observacion || "",
@@ -269,11 +299,62 @@ export default function ControlOperativoAdvancedOptions() {
           setAsistentes(String(resumen.cantidad));
           setPenalidad("");
         }
+        if (selected === "planes_adicionales") {
+          setAlcancePlanAdicional("todos");
+          setCantidadPlanAdicional(String(resumen.cantidad));
+        }
       })
       .catch((e: any) => active && setError(e?.message || "No fue posible cargar la reserva."))
       .finally(() => active && setLoadingReserva(false));
     return () => { active = false; };
   }, [modal, selected]);
+
+  useEffect(() => {
+    if (selected !== "planes_adicionales" || !reserva) return;
+    let active = true;
+    setLoadingPlanesAdicionales(true);
+    setError("");
+    Promise.all([
+      getOpcionesPlanesAdicionales(reserva.id_plan),
+      getReservaPlanesAdicionales(reserva.id_reserva),
+    ])
+      .then(([opciones, agregados]) => {
+        if (!active) return;
+        setOpcionesPlanesAdicionales(opciones);
+        setPlanesAdicionalesReserva(agregados);
+      })
+      .catch((e: any) => active && setError(e?.message || "No fue posible cargar los planes adicionales."))
+      .finally(() => active && setLoadingPlanesAdicionales(false));
+    return () => { active = false; };
+  }, [selected, reserva?.id_reserva, reserva?.id_plan]);
+
+  const opcionesDisponibles = useMemo(
+    () => opcionesPlanesAdicionales.filter((opcion) => !planesAdicionalesReserva.some((agregado) => opcionCoincideConAgregado(opcion, agregado))),
+    [opcionesPlanesAdicionales, planesAdicionalesReserva],
+  );
+
+  useEffect(() => {
+    if (selected !== "planes_adicionales") return;
+    if (!opcionesDisponibles.some((opcion) => opcion.key === planAdicionalKey)) {
+      setPlanAdicionalKey(opcionesDisponibles[0]?.key ?? "");
+    }
+  }, [selected, opcionesDisponibles, planAdicionalKey]);
+
+  const opcionPlanAdicional = useMemo(
+    () => opcionesDisponibles.find((opcion) => opcion.key === planAdicionalKey) ?? null,
+    [opcionesDisponibles, planAdicionalKey],
+  );
+
+  const cantidadAplicadaPlanAdicional = useMemo(() => {
+    if (!reserva) return 0;
+    if (alcancePlanAdicional === "todos") return reserva.cantidad;
+    return Number(cantidadPlanAdicional || 0);
+  }, [alcancePlanAdicional, cantidadPlanAdicional, reserva]);
+
+  const previewPlanAdicional = useMemo(() => {
+    if (!opcionPlanAdicional || !reserva || cantidadAplicadaPlanAdicional <= 0) return null;
+    return calcularImpactoPlanAdicional(opcionPlanAdicional, cantidadAplicadaPlanAdicional, reserva.fecha);
+  }, [opcionPlanAdicional, cantidadAplicadaPlanAdicional, reserva]);
 
   const unitario = useMemo(() => {
     if (!reserva) return 0;
@@ -298,6 +379,76 @@ export default function ControlOperativoAdvancedOptions() {
   const pagado = reserva ? reserva.abono + reserva.pagoSaldo : 0;
   const pendienteAsistencia = Math.max(0, totalAsistencia - pagado);
   const excesoAsistencia = Math.max(0, pagado - totalAsistencia);
+
+  const recargarPlanesAdicionales = async (idReserva: number) => {
+    const agregados = await getReservaPlanesAdicionales(idReserva);
+    setPlanesAdicionalesReserva(agregados);
+    return agregados;
+  };
+
+  const savePlanAdicional = async () => {
+    if (!modal || !reserva || !opcionPlanAdicional || !previewPlanAdicional) return;
+    const cantidad = cantidadAplicadaPlanAdicional;
+    if (!Number.isInteger(cantidad) || cantidad <= 0 || cantidad > reserva.cantidad) {
+      setError(`La cantidad debe estar entre 1 y ${reserva.cantidad} persona(s).`);
+      return;
+    }
+    if (alcancePlanAdicional === "algunos" && reserva.cantidad > 1 && cantidad >= reserva.cantidad) {
+      setError("Si el plan adicional aplica a toda la reserva, selecciona “Para todos”.");
+      return;
+    }
+    if (previewPlanAdicional.impacto_total <= 0) {
+      setError("El elemento seleccionado no tiene una tarifa válida para esta reserva.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await agregarPlanAdicionalReserva({
+        id_reserva: reserva.id_reserva,
+        opcion: opcionPlanAdicional,
+        cantidad_personas: cantidad,
+        aplica_todos: alcancePlanAdicional === "todos",
+        precio_unitario: previewPlanAdicional.precio_unitario,
+        impacto_total: previewPlanAdicional.impacto_total,
+      });
+      const nuevoTotal = result.nuevo_total;
+      setReserva({ ...reserva, total: nuevoTotal });
+      const totalInput = getBaseTotalInput(modal);
+      if (totalInput) setReactInputValue(totalInput, nuevoTotal);
+      await recargarPlanesAdicionales(reserva.id_reserva);
+      setAlcancePlanAdicional("todos");
+      setCantidadPlanAdicional(String(reserva.cantidad));
+      setSuccess(`${opcionPlanAdicional.nombre} agregado por ${money(previewPlanAdicional.impacto_total)}. Nuevo total: ${money(nuevoTotal)}.`);
+    } catch (e: any) {
+      setError(e?.message || "No fue posible agregar el plan adicional.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removePlanAdicional = async (item: ReservaPlanAdicional) => {
+    if (!modal || !reserva) return;
+    if (!window.confirm(`¿Retirar “${item.nombre}” de esta reserva? Se descontarán ${money(item.impacto_total)}.`)) return;
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await retirarPlanAdicionalReserva(item.id_reserva_plan_adicional);
+      const nuevoTotal = result.nuevo_total;
+      setReserva({ ...reserva, total: nuevoTotal });
+      const totalInput = getBaseTotalInput(modal);
+      if (totalInput) setReactInputValue(totalInput, nuevoTotal);
+      await recargarPlanesAdicionales(reserva.id_reserva);
+      setSuccess(`${item.nombre} retirado. Nuevo total: ${money(nuevoTotal)}.`);
+    } catch (e: any) {
+      setError(e?.message || "No fue posible retirar el plan adicional.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const saveTotal = async () => {
     if (role !== "administrador" || !reserva) return;
@@ -456,10 +607,105 @@ export default function ControlOperativoAdvancedOptions() {
           <option value="estado">Estado y asistencia</option>
           <option value="reprogramar">Reprogramar reserva</option>
           <option value="devoluciones">Devoluciones</option>
+          {(role === "administrador" || role === "atencion") && <option value="planes_adicionales">Planes adicionales</option>}
           {role === "administrador" && <option value="valor">Cambiar valor total</option>}
         </select>
         <ChevronDown size={17} aria-hidden="true" />
       </div>
+
+      {selected === "planes_adicionales" && (role === "administrador" || role === "atencion") && (
+        <section className="op-plan-additional-section">
+          <div className="op-plan-additional-title">
+            <div className="op-plan-additional-icon"><PackagePlus size={19} /></div>
+            <div>
+              <strong>Planes adicionales</strong>
+              <small>Agrega otro plan o un adicional existente a esta reserva. El valor se suma al total según la tarifa del elemento.</small>
+            </div>
+          </div>
+
+          {loadingReserva || loadingPlanesAdicionales ? (
+            <div className="op-advanced-loading">Cargando planes y adicionales…</div>
+          ) : reserva ? (
+            <>
+              <div className="op-plan-additional-summary">
+                <div><span>Total actual</span><b>{money(reserva.total)}</b></div>
+                <div><span>Personas en la reserva</span><b>{reserva.cantidad}</b></div>
+                <div><span>Agregados</span><b>{planesAdicionalesReserva.length}</b></div>
+              </div>
+
+              {opcionesDisponibles.length > 0 ? (
+                <>
+                  <div className="op-plan-additional-grid">
+                    <label className="wide">
+                      Plan o adicional *
+                      <select value={planAdicionalKey} onChange={(e) => { setPlanAdicionalKey(e.target.value); setError(""); setSuccess(""); }}>
+                        {opcionesDisponibles.map((opcion) => (
+                          <option key={opcion.key} value={opcion.key}>
+                            {opcion.origen === "plan" ? "Plan" : "Adicional"} · {opcion.nombre} · {opcion.tipo_cobro === "por_persona" ? "por persona" : "por reserva"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="op-plan-additional-choice">
+                    <button type="button" className={alcancePlanAdicional === "todos" ? "active" : ""} onClick={() => { setAlcancePlanAdicional("todos"); setCantidadPlanAdicional(String(reserva.cantidad)); setError(""); }}>
+                      Para todos ({reserva.cantidad})
+                    </button>
+                    <button type="button" disabled={reserva.cantidad <= 1} className={alcancePlanAdicional === "algunos" ? "active" : ""} onClick={() => { setAlcancePlanAdicional("algunos"); setCantidadPlanAdicional(String(Math.max(1, reserva.cantidad - 1))); setError(""); }}>
+                      Solo algunas personas
+                    </button>
+                  </div>
+
+                  {alcancePlanAdicional === "algunos" && reserva.cantidad > 1 && (
+                    <div className="op-plan-additional-grid">
+                      <label>
+                        ¿Cuántas personas lo quieren? *
+                        <input type="number" min={1} max={Math.max(1, reserva.cantidad - 1)} value={cantidadPlanAdicional} onChange={(e) => setCantidadPlanAdicional(e.target.value.replace(/[^0-9]/g, ""))} />
+                      </label>
+                    </div>
+                  )}
+
+                  {opcionPlanAdicional && previewPlanAdicional && (
+                    <div className="op-plan-additional-preview">
+                      <div><span>Elemento</span><b>{opcionPlanAdicional.nombre}</b><small>{opcionPlanAdicional.origen === "plan" ? "Plan" : "Adicional"} · {opcionPlanAdicional.tipo_cobro === "por_persona" ? "cobro por persona" : "cobro por reserva"}</small></div>
+                      <div><span>Valor a sumar</span><b>{money(previewPlanAdicional.impacto_total)}</b><small>{previewPlanAdicional.detalle}</small></div>
+                      <div><span>Nuevo total estimado</span><b>{money(reserva.total + previewPlanAdicional.impacto_total)}</b></div>
+                    </div>
+                  )}
+
+                  <div className="op-plan-additional-actions">
+                    <button type="button" className="op-btn primary" disabled={saving || !opcionPlanAdicional || !previewPlanAdicional} onClick={savePlanAdicional}>
+                      {saving ? "Guardando…" : "Agregar a la reserva"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="op-plan-additional-empty">Todos los planes y adicionales disponibles ya fueron agregados a esta reserva.</div>
+              )}
+
+              {planesAdicionalesReserva.length > 0 && (
+                <div className="op-plan-additional-current">
+                  <div className="op-plan-additional-current-head"><strong>Planes adicionales de la reserva</strong><small>Estos valores ya están incluidos en el total.</small></div>
+                  {planesAdicionalesReserva.map((item) => (
+                    <div className="op-plan-additional-row" key={item.id_reserva_plan_adicional}>
+                      <div>
+                        <strong>{item.nombre}</strong>
+                        <small>{item.origen === "plan" ? "Plan" : "Adicional"} · {item.aplica_todos ? "Para todos" : `${item.cantidad_personas} persona(s)`} · {item.tipo_cobro === "por_persona" ? "por persona" : "por reserva"}</small>
+                      </div>
+                      <b>+{money(item.impacto_total)}</b>
+                      <button type="button" title="Retirar de la reserva" disabled={saving} onClick={() => removePlanAdicional(item)}><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {error && <div className="op-advanced-error">{error}</div>}
+              {success && <div className="op-advanced-success">{success}</div>}
+            </>
+          ) : error ? <div className="op-advanced-error">{error}</div> : null}
+        </section>
+      )}
 
       {selected === "valor" && role === "administrador" && (
         <section className="op-admin-total-section">
