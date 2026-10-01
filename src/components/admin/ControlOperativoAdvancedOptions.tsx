@@ -415,7 +415,15 @@ export default function ControlOperativoAdvancedOptions() {
         impacto_total: previewPlanAdicional.impacto_total,
       });
       const nuevoTotal = result.nuevo_total;
+      const esAlmuerzo = opcionPlanAdicional.nombre.toLowerCase().includes("almuerzo");
       setReserva({ ...reserva, total: nuevoTotal });
+      window.dispatchEvent(new CustomEvent("control-operativo-reserva-updated", {
+        detail: {
+          id_reserva: reserva.id_reserva,
+          total: nuevoTotal,
+          ...(esAlmuerzo ? { incluye_almuerzo: true } : {}),
+        },
+      }));
       const totalInput = getBaseTotalInput(modal);
       if (totalInput) setReactInputValue(totalInput, nuevoTotal);
       await recargarPlanesAdicionales(reserva.id_reserva);
@@ -439,6 +447,9 @@ export default function ControlOperativoAdvancedOptions() {
       const result = await retirarPlanAdicionalReserva(item.id_reserva_plan_adicional);
       const nuevoTotal = result.nuevo_total;
       setReserva({ ...reserva, total: nuevoTotal });
+      window.dispatchEvent(new CustomEvent("control-operativo-reserva-updated", {
+        detail: { id_reserva: reserva.id_reserva, total: nuevoTotal },
+      }));
       const totalInput = getBaseTotalInput(modal);
       if (totalInput) setReactInputValue(totalInput, nuevoTotal);
       await recargarPlanesAdicionales(reserva.id_reserva);
