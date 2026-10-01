@@ -116,20 +116,36 @@ export type SnackSaleItem = {
   subtotal: number;
 };
 
+export type SnackSalePayment = {
+  id_pago: number | null;
+  id_venta: number;
+  medio_pago: string;
+  monto: number;
+  referencia_pago: string;
+};
+
 export type SnackSale = {
   id_venta: number;
   fecha_venta: string;
   medio_pago: string;
+  referencia_pago: string;
   total: number;
   vendedor_user_id: string | null;
   vendedor_email: string;
   ubicacion_codigo: SnackLocationCode;
   items: SnackSaleItem[];
+  pagos: SnackSalePayment[];
 };
 
 export type SnackSaleInput = {
   id_producto: number;
   cantidad: number;
+};
+
+export type SnackSalePaymentInput = {
+  monto: number;
+  medio_pago: string;
+  referencia_pago?: string;
 };
 
 export type ReservationSnackSaleResult = {
@@ -148,6 +164,16 @@ export type ReservationSnackSaleCancellationResult = {
   nuevo_total: number;
   saldo_pendiente: number;
   exceso_pagado: number;
+  observacion: string;
+};
+
+export type SnackSaleDeletionResult = {
+  id_venta: number;
+  total_eliminado: number;
+  ubicacion: SnackLocationCode;
+  id_reserva: number | null;
+  nuevo_total: number | null;
+  saldo_pendiente: number | null;
   observacion: string;
 };
 
@@ -173,6 +199,16 @@ const isMissingLocationSchema = (error: any) =>
   error?.code === "42P01" ||
   error?.code === "PGRST205" ||
   String(error?.message || "").includes("snack_inventario_ubicacion");
+
+const isMissingSalePaymentSchema = (error: any) =>
+  error?.code === "42P01" ||
+  error?.code === "PGRST205" ||
+  String(error?.message || "").includes("snack_venta_pago");
+
+const isMissingMultiPaymentRpc = (error: any) =>
+  error?.code === "PGRST202" ||
+  error?.code === "42883" ||
+  String(error?.message || "").includes("registrar_venta_snack_multi_pago");
 
 async function requireAdmin() {
   const current = await getCurrentRole();
@@ -463,6 +499,41 @@ export async function getSnackAdminDashboard(
   if (error) throw error;
 
   const raw: any = data ?? {};
+  let paymentMetrics = Array.isArray(raw.metodos_pago) ? raw.metodos_pago.map((row: any) => ({
+    medio_pago: String(row.medio_pago ?? ""),
+    ventas: num(row.ventas),
+    total: num(row.total),
+  })) : [];
+
+  let paymentQuery = client()
+    .from("snack_venta_pago")
+    .select("id_venta,medio_pago,monto,venta:snack_venta!inner(fecha_venta)");
+
+  if (fromDate) paymentQuery = paymentQuery.gte("venta.fecha_venta", `${fromDate}T00:00:00-05:00`);
+  if (toDate) paymentQuery = paymentQuery.lt("venta.fecha_venta", `${nextDate(toDate)}T00:00:00-05:00`);
+
+  const { data: splitPaymentData, error: splitPaymentError } = await paymentQuery;
+  if (!splitPaymentError) {
+    const methodMap = new Map<string, { ventas: Set<number>; total: number }>();
+    for (const row of splitPaymentData ?? []) {
+      const method = String((row as any).medio_pago ?? "");
+      if (!method) continue;
+      const current = methodMap.get(method) ?? { ventas: new Set<number>(), total: 0 };
+      current.ventas.add(Number((row as any).id_venta));
+      current.total += num((row as any).monto);
+      methodMap.set(method, current);
+    }
+    paymentMetrics = [...methodMap.entries()]
+      .map(([medio_pago, value]) => ({
+        medio_pago,
+        ventas: value.ventas.size,
+        total: value.total,
+      }))
+      .sort((a, b) => b.total - a.total);
+  } else if (!isMissingSalePaymentSchema(splitPaymentError)) {
+    console.warn("No fue posible desglosar los métodos de pago de snacks.", splitPaymentError);
+  }
+
   return {
     ventas: num(raw.ventas),
     ingresos: num(raw.ingresos),
@@ -491,11 +562,7 @@ export async function getSnackAdminDashboard(
       margen: num(row.margen),
       lineas_sin_costo: num(row.lineas_sin_costo),
     })) : [],
-    metodos_pago: Array.isArray(raw.metodos_pago) ? raw.metodos_pago.map((row: any) => ({
-      medio_pago: String(row.medio_pago ?? ""),
-      ventas: num(row.ventas),
-      total: num(row.total),
-    })) : [],
+    metodos_pago: paymentMetrics,
     ubicaciones: Array.isArray(raw.ubicaciones) ? raw.ubicaciones.map((row: any) => ({
       ubicacion_codigo: String(row.ubicacion_codigo ?? ""),
       ubicacion: String(row.ubicacion ?? snackLocationLabel(row.ubicacion_codigo)),
@@ -650,7 +717,7 @@ export async function getSnackSalesByDate(
 
   let query = client()
     .from("snack_venta")
-    .select("id_venta,fecha_venta,medio_pago,total,vendedor_user_id,vendedor_email,ubicacion_codigo")
+    .select("id_venta,fecha_venta,medio_pago,referencia_pago,total,vendedor_user_id,vendedor_email,ubicacion_codigo")
     .gte("fecha_venta", from)
     .lt("fecha_venta", to)
     .order("fecha_venta", { ascending: false });
@@ -664,12 +731,23 @@ export async function getSnackSalesByDate(
   const ids = sales.map((row: any) => Number(row.id_venta));
   if (!ids.length) return [];
 
-  const { data: detailData, error: detailError } = await client()
-    .from("snack_venta_detalle")
-    .select("id_detalle,id_venta,id_producto,numero_producto,nombre_producto,cantidad,precio_unitario,subtotal")
-    .in("id_venta", ids)
-    .order("id_detalle", { ascending: true });
+  const [
+    { data: detailData, error: detailError },
+    { data: paymentData, error: paymentError },
+  ] = await Promise.all([
+    client()
+      .from("snack_venta_detalle")
+      .select("id_detalle,id_venta,id_producto,numero_producto,nombre_producto,cantidad,precio_unitario,subtotal")
+      .in("id_venta", ids)
+      .order("id_detalle", { ascending: true }),
+    client()
+      .from("snack_venta_pago")
+      .select("id_pago,id_venta,medio_pago,monto,referencia_pago")
+      .in("id_venta", ids)
+      .order("id_pago", { ascending: true }),
+  ]);
   if (detailError) throw detailError;
+  if (paymentError && !isMissingSalePaymentSchema(paymentError)) throw paymentError;
 
   const grouped = new Map<number, SnackSaleItem[]>();
   for (const row of detailData ?? []) {
@@ -688,21 +766,48 @@ export async function getSnackSalesByDate(
     grouped.set(item.id_venta, list);
   }
 
-  return sales.map((row: any) => ({
-    id_venta: Number(row.id_venta),
-    fecha_venta: String(row.fecha_venta),
-    medio_pago: String(row.medio_pago ?? ""),
-    total: num(row.total),
-    vendedor_user_id: row.vendedor_user_id ? String(row.vendedor_user_id) : null,
-    vendedor_email: String(row.vendedor_email ?? ""),
-    ubicacion_codigo: String(row.ubicacion_codigo || "taquilla_1") as SnackLocationCode,
-    items: grouped.get(Number(row.id_venta)) ?? [],
-  }));
+  const payments = new Map<number, SnackSalePayment[]>();
+  for (const row of paymentData ?? []) {
+    const payment: SnackSalePayment = {
+      id_pago: Number((row as any).id_pago),
+      id_venta: Number((row as any).id_venta),
+      medio_pago: String((row as any).medio_pago ?? ""),
+      monto: num((row as any).monto),
+      referencia_pago: String((row as any).referencia_pago ?? ""),
+    };
+    const list = payments.get(payment.id_venta) ?? [];
+    list.push(payment);
+    payments.set(payment.id_venta, list);
+  }
+
+  return sales.map((row: any) => {
+    const idVenta = Number(row.id_venta);
+    const salePayments = payments.get(idVenta) ?? [{
+      id_pago: null,
+      id_venta: idVenta,
+      medio_pago: String(row.medio_pago ?? ""),
+      monto: num(row.total),
+      referencia_pago: String(row.referencia_pago ?? ""),
+    }];
+
+    return {
+      id_venta: idVenta,
+      fecha_venta: String(row.fecha_venta),
+      medio_pago: String(row.medio_pago ?? ""),
+      referencia_pago: String(row.referencia_pago ?? ""),
+      total: num(row.total),
+      vendedor_user_id: row.vendedor_user_id ? String(row.vendedor_user_id) : null,
+      vendedor_email: String(row.vendedor_email ?? ""),
+      ubicacion_codigo: String(row.ubicacion_codigo || "taquilla_1") as SnackLocationCode,
+      items: grouped.get(idVenta) ?? [],
+      pagos: salePayments,
+    };
+  });
 }
 
 export async function registerSnackSale(
   items: SnackSaleInput[],
-  medioPago: string,
+  pagos: SnackSalePaymentInput[],
   ubicacion: SnackLocationCode = "taquilla_1",
 ) {
   const current = await getCurrentRole();
@@ -715,19 +820,79 @@ export async function registerSnackSale(
     }))
     .filter((item) => item.id_producto > 0 && item.cantidad > 0);
 
-  if (!cleanItems.length) throw new Error("Agrega al menos un producto a la venta.");
-  if (!medioPago.trim()) throw new Error("Selecciona el método de pago.");
+  const cleanPayments = pagos
+    .map((payment) => ({
+      monto: Math.round(num(payment.monto) * 100) / 100,
+      medio_pago: String(payment.medio_pago ?? "").trim(),
+      referencia_pago: String(payment.referencia_pago ?? "").replace(/\D/g, "").slice(0, 4),
+    }))
+    .filter((payment) => payment.monto > 0 || payment.medio_pago || payment.referencia_pago);
 
-  const { data, error } = await client().rpc("registrar_venta_snack", {
+  if (!cleanItems.length) throw new Error("Agrega al menos un producto a la venta.");
+  if (!cleanPayments.length) throw new Error("Agrega al menos un método de pago.");
+
+  for (const payment of cleanPayments) {
+    if (payment.monto <= 0 || !payment.medio_pago) {
+      throw new Error("Cada método de pago debe tener un valor mayor a cero y un medio seleccionado.");
+    }
+    if (payment.referencia_pago && payment.referencia_pago.length !== 4) {
+      throw new Error("Cada referencia de pago debe tener exactamente los últimos 4 dígitos.");
+    }
+  }
+
+  const { data, error } = await client().rpc("registrar_venta_snack_multi_pago", {
     p_items: cleanItems,
-    p_medio_pago: medioPago.trim(),
+    p_pagos: cleanPayments,
     p_ubicacion: ubicacion,
   });
-  if (error) throw error;
+
+  if (error) {
+    if (cleanPayments.length === 1 && isMissingMultiPaymentRpc(error)) {
+      const payment = cleanPayments[0];
+      const fallback = await client().rpc("registrar_venta_snack", {
+        p_items: cleanItems,
+        p_medio_pago: payment.medio_pago,
+        p_ubicacion: ubicacion,
+        p_referencia_pago: payment.referencia_pago || null,
+      });
+      if (fallback.error) throw fallback.error;
+      window.dispatchEvent(new CustomEvent("snack-sale-recorded"));
+      window.dispatchEvent(new CustomEvent("snack-stock-changed"));
+      return fallback.data;
+    }
+    throw error;
+  }
 
   window.dispatchEvent(new CustomEvent("snack-sale-recorded"));
   window.dispatchEvent(new CustomEvent("snack-stock-changed"));
   return data;
+}
+
+export async function updateSnackSalePaymentReference(
+  idVenta: number,
+  referenciaPago: string,
+  idPago?: number | null,
+): Promise<string> {
+  const cleanReference = referenciaPago.replace(/\D/g, "").slice(0, 4);
+  if (cleanReference && cleanReference.length !== 4) {
+    throw new Error("La referencia de pago debe tener exactamente 4 dígitos.");
+  }
+
+  const request = idPago
+    ? client().rpc("actualizar_referencia_pago_venta_snack_pago", {
+        p_id_pago: Number(idPago),
+        p_referencia_pago: cleanReference || null,
+      })
+    : client().rpc("actualizar_referencia_pago_venta_snack", {
+        p_id_venta: Number(idVenta),
+        p_referencia_pago: cleanReference || null,
+      });
+
+  const { data, error } = await request;
+  if (error) throw error;
+
+  window.dispatchEvent(new CustomEvent("snack-sale-recorded"));
+  return String((data as any)?.referencia_pago ?? cleanReference);
 }
 
 export async function getSnackSalesForReservation(idReserva: number): Promise<SnackSale[]> {
@@ -736,7 +901,7 @@ export async function getSnackSalesForReservation(idReserva: number): Promise<Sn
 
   const { data: salesData, error: salesError } = await client()
     .from("snack_venta")
-    .select("id_venta,fecha_venta,medio_pago,total,vendedor_user_id,vendedor_email,ubicacion_codigo")
+    .select("id_venta,fecha_venta,medio_pago,referencia_pago,total,vendedor_user_id,vendedor_email,ubicacion_codigo")
     .eq("id_reserva", id)
     .order("fecha_venta", { ascending: false });
   if (salesError) throw salesError;
@@ -745,12 +910,23 @@ export async function getSnackSalesForReservation(idReserva: number): Promise<Sn
   const ids = sales.map((row: any) => Number(row.id_venta));
   if (!ids.length) return [];
 
-  const { data: detailData, error: detailError } = await client()
-    .from("snack_venta_detalle")
-    .select("id_detalle,id_venta,id_producto,numero_producto,nombre_producto,cantidad,precio_unitario,subtotal")
-    .in("id_venta", ids)
-    .order("id_detalle", { ascending: true });
+  const [
+    { data: detailData, error: detailError },
+    { data: paymentData, error: paymentError },
+  ] = await Promise.all([
+    client()
+      .from("snack_venta_detalle")
+      .select("id_detalle,id_venta,id_producto,numero_producto,nombre_producto,cantidad,precio_unitario,subtotal")
+      .in("id_venta", ids)
+      .order("id_detalle", { ascending: true }),
+    client()
+      .from("snack_venta_pago")
+      .select("id_pago,id_venta,medio_pago,monto,referencia_pago")
+      .in("id_venta", ids)
+      .order("id_pago", { ascending: true }),
+  ]);
   if (detailError) throw detailError;
+  if (paymentError && !isMissingSalePaymentSchema(paymentError)) throw paymentError;
 
   const grouped = new Map<number, SnackSaleItem[]>();
   for (const row of detailData ?? []) {
@@ -769,16 +945,43 @@ export async function getSnackSalesForReservation(idReserva: number): Promise<Sn
     grouped.set(item.id_venta, list);
   }
 
-  return sales.map((row: any) => ({
-    id_venta: Number(row.id_venta),
-    fecha_venta: String(row.fecha_venta),
-    medio_pago: String(row.medio_pago ?? ""),
-    total: num(row.total),
-    vendedor_user_id: row.vendedor_user_id ? String(row.vendedor_user_id) : null,
-    vendedor_email: String(row.vendedor_email ?? ""),
-    ubicacion_codigo: String(row.ubicacion_codigo || "taquilla_1") as SnackLocationCode,
-    items: grouped.get(Number(row.id_venta)) ?? [],
-  }));
+  const payments = new Map<number, SnackSalePayment[]>();
+  for (const row of paymentData ?? []) {
+    const payment: SnackSalePayment = {
+      id_pago: Number((row as any).id_pago),
+      id_venta: Number((row as any).id_venta),
+      medio_pago: String((row as any).medio_pago ?? ""),
+      monto: num((row as any).monto),
+      referencia_pago: String((row as any).referencia_pago ?? ""),
+    };
+    const list = payments.get(payment.id_venta) ?? [];
+    list.push(payment);
+    payments.set(payment.id_venta, list);
+  }
+
+  return sales.map((row: any) => {
+    const idVenta = Number(row.id_venta);
+    const salePayments = payments.get(idVenta) ?? [{
+      id_pago: null,
+      id_venta: idVenta,
+      medio_pago: String(row.medio_pago ?? ""),
+      monto: num(row.total),
+      referencia_pago: String(row.referencia_pago ?? ""),
+    }];
+
+    return {
+      id_venta: idVenta,
+      fecha_venta: String(row.fecha_venta),
+      medio_pago: String(row.medio_pago ?? ""),
+      referencia_pago: String(row.referencia_pago ?? ""),
+      total: num(row.total),
+      vendedor_user_id: row.vendedor_user_id ? String(row.vendedor_user_id) : null,
+      vendedor_email: String(row.vendedor_email ?? ""),
+      ubicacion_codigo: String(row.ubicacion_codigo || "taquilla_1") as SnackLocationCode,
+      items: grouped.get(idVenta) ?? [],
+      pagos: salePayments,
+    };
+  });
 }
 
 export async function registerSnackSaleForReservation(
@@ -834,6 +1037,50 @@ export async function registerSnackSaleForReservation(
       observacion: result.observacion,
     },
   }));
+  return result;
+}
+
+export async function deleteSnackSaleAdmin(
+  idVenta: number,
+): Promise<SnackSaleDeletionResult> {
+  await requireAdmin();
+
+  const saleId = Number(idVenta);
+  if (!Number.isInteger(saleId) || saleId <= 0) {
+    throw new Error("No fue posible identificar la venta.");
+  }
+
+  const { data, error } = await client().rpc("admin_eliminar_venta_snack", {
+    p_id_venta: saleId,
+  });
+  if (error) throw error;
+
+  const raw: any = data ?? {};
+  const idReserva = raw.id_reserva == null ? null : Number(raw.id_reserva);
+  const result: SnackSaleDeletionResult = {
+    id_venta: Number(raw.id_venta ?? saleId),
+    total_eliminado: num(raw.total_eliminado),
+    ubicacion: String(raw.ubicacion ?? "taquilla_1") as SnackLocationCode,
+    id_reserva: Number.isInteger(idReserva) && Number(idReserva) > 0 ? Number(idReserva) : null,
+    nuevo_total: raw.nuevo_total == null ? null : num(raw.nuevo_total),
+    saldo_pendiente: raw.saldo_pendiente == null ? null : num(raw.saldo_pendiente),
+    observacion: String(raw.observacion ?? ""),
+  };
+
+  window.dispatchEvent(new CustomEvent("snack-sale-recorded"));
+  window.dispatchEvent(new CustomEvent("snack-stock-changed"));
+
+  if (result.id_reserva) {
+    window.dispatchEvent(new CustomEvent("control-operativo-reserva-updated", {
+      detail: {
+        id_reserva: result.id_reserva,
+        total: result.nuevo_total,
+        saldo_pendiente: result.saldo_pendiente,
+        observacion: result.observacion,
+      },
+    }));
+  }
+
   return result;
 }
 

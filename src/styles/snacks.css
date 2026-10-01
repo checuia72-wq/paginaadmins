@@ -42,3 +42,122 @@
 .snack-difference-form{grid-column:1/-1;display:grid;grid-template-columns:180px minmax(260px,1fr) auto auto;gap:10px;align-items:end;padding-top:12px;border-top:1px solid #edf1ef}
 @media(max-width:1150px){.snack-expiry-form{grid-template-columns:repeat(2,minmax(0,1fr))}.snack-expiry-note{grid-column:span 2}.snack-verify-row{grid-template-columns:1fr 110px 1fr}.snack-verify-actions{grid-column:1/-1;justify-content:flex-start}.snack-difference-form{grid-template-columns:1fr 1fr}.snack-difference-form .snack-btn{width:100%}}
 @media(max-width:700px){.snack-expiry-form,.snack-difference-form{grid-template-columns:1fr}.snack-expiry-note{grid-column:auto}.snack-verify-row{grid-template-columns:1fr}.snack-verify-actions{grid-column:auto;justify-content:stretch}.snack-verify-actions .snack-btn{width:100%}.snack-difference-form{grid-column:auto}.snack-card-title{align-items:flex-start;gap:10px;flex-wrap:wrap}.snack-verify-location{width:100%}}
+
+
+/* Referencia opcional de pago en ventas de snacks */
+.snack-payment-label input{border:1px solid #d8e0dc;border-radius:9px;padding:9px 10px;background:#fff;color:#1f2937;outline:none}
+.snack-payment-label input:focus{border-color:#70a386;box-shadow:0 0 0 3px rgba(47,111,78,.1)}
+.snack-optional-label{font-size:10px;font-weight:600;color:#87938d}
+.snack-payment-reference{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#edf7f1;color:#2f6f4e;font-size:11px;font-weight:800;white-space:nowrap}
+.snack-payment-reference.empty{background:#f4f6f5;color:#7b8780;font-weight:700}
+.snack-reference-editor{display:flex;align-items:center;gap:5px;min-width:150px}
+.snack-reference-editor input{width:76px;box-sizing:border-box;border:1px solid #cfdad3;border-radius:8px;padding:7px 8px;text-align:center;letter-spacing:1px;color:#263d31;outline:none}
+.snack-reference-editor input:focus{border-color:#70a386;box-shadow:0 0 0 2px rgba(47,111,78,.1)}
+
+
+/* Pagos divididos en ventas de snacks */
+.snack-split-payments{border-top:1px solid #e5ece8;margin-top:4px;padding-top:12px;margin-bottom:14px}
+.snack-split-payments-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.snack-split-payments-head strong{display:block;color:#294c3a;font-size:13px}
+.snack-split-payments-head small{display:block;color:#7b8780;font-size:11px;margin-top:2px}
+.snack-btn.compact{padding:7px 9px;font-size:11px;white-space:nowrap}
+.snack-split-payment-row{display:grid;grid-template-columns:86px minmax(110px,1fr) minmax(118px,1fr) auto;gap:7px;align-items:end;padding:9px 0;border-bottom:1px solid #eef2f0}
+.snack-split-payment-row label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:700;color:#52635b;min-width:0}
+.snack-split-payment-row label>span{font-size:9px;font-weight:600;color:#87938d}
+.snack-split-payment-row input,.snack-split-payment-row select{width:100%;box-sizing:border-box;border:1px solid #d8e0dc;border-radius:8px;padding:8px;background:#fff;color:#1f2937;outline:none;min-width:0}
+.snack-split-payment-row input:focus,.snack-split-payment-row select:focus{border-color:#70a386;box-shadow:0 0 0 2px rgba(47,111,78,.1)}
+.snack-split-totals{display:flex;justify-content:space-between;gap:8px;padding-top:10px;font-size:12px;color:#64748b}
+.snack-split-totals b{color:#294c3a}
+.snack-split-totals .pending b{color:#b45309}
+.snack-split-totals .complete b{color:#15803d}
+.snack-sale-payments,.snack-sale-references{display:flex;flex-direction:column;gap:6px;min-width:145px}
+.snack-sale-payments>div{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.snack-sale-payments strong{font-size:12px;color:#334b3f}
+.snack-sale-payments span{font-size:11px;color:#64748b;white-space:nowrap}
+.snack-sale-references>div{display:flex;align-items:center;gap:5px;min-height:30px}
+.snack-icon-btn.danger{color:#b42318;border-color:#f0c7c2}
+.snack-icon-btn.danger:hover{background:#fff5f4}
+@media(max-width:700px){
+  .snack-split-payment-row{grid-template-columns:1fr 1fr}
+  .snack-split-payment-row .reference{grid-column:1 / -1}
+  .snack-split-payment-row>.snack-icon-btn{justify-self:end}
+  .snack-split-payments-head{flex-direction:column}
+}
+
+
+/* Checkout visual de ventas de snacks */
+.snack-sales-layout{grid-template-columns:minmax(0,1fr) minmax(480px,520px);gap:20px}
+.snack-cart-card{padding:22px;border-radius:18px;border-color:#dfe7e2;box-shadow:0 8px 26px rgba(29,58,42,.07)}
+.snack-cart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:18px}
+.snack-cart-heading{display:flex;align-items:center;gap:11px;min-width:0}
+.snack-cart-icon{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#eff7f2;color:#26734d;flex:0 0 auto}
+.snack-cart-heading strong{display:block;color:#183c2a;font-size:18px;line-height:1.25}
+.snack-cart-heading small{display:block;margin-top:4px;color:#819087;font-size:11px}
+.snack-unit-badge{min-width:66px;padding:9px 12px;border-radius:12px;background:#f3f7fb;text-align:center;color:#315f49;flex:0 0 auto}
+.snack-unit-badge b{display:block;font-size:17px;line-height:1}
+.snack-unit-badge span{display:block;margin-top:5px;font-size:10px;color:#73847b}
+.snack-cart-list{max-height:320px;overflow:auto}
+.snack-cart-list.is-empty{max-height:none;overflow:visible}
+.snack-cart-empty{min-height:190px;border:1px solid #e1ebe5;border-radius:14px;background:linear-gradient(180deg,#fbfefc,#f6fbf8);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22px}
+.snack-cart-empty-icon{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:#eaf5ee;color:#28714e;margin-bottom:11px}
+.snack-cart-empty strong{font-size:15px;color:#203b2e}
+.snack-cart-empty p{margin:6px 0 15px;color:#819087;font-size:12px}
+.snack-empty-add-btn{min-width:190px;border:1px solid #9dc3ae;background:#fff;color:#257049;border-radius:10px;padding:9px 14px;font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer}
+.snack-empty-add-btn:hover{background:#f4faf6}
+.snack-cart-total{margin-top:18px;padding:18px 0;border-top:1px solid #e4ebe7;border-bottom:1px solid #e4ebe7;font-size:inherit}
+.snack-cart-total>div{display:flex;flex-direction:column;gap:4px}
+.snack-cart-total>div>span{font-size:15px;font-weight:800;color:#20382c}
+.snack-cart-total small{font-size:11px;color:#829087}
+.snack-cart-total>b{font-size:30px;color:#1f6a46;line-height:1}
+.snack-split-payments{border-top:0;margin-top:0;padding-top:20px;margin-bottom:16px}
+.snack-split-payments-head{align-items:center;margin-bottom:14px}
+.snack-split-payments-head strong{font-size:17px;color:#183c2a}
+.snack-split-payments-head small{font-size:11px;line-height:1.45;max-width:260px}
+.snack-btn.compact{padding:9px 11px;border-radius:10px;font-size:11px}
+.snack-payment-cards{display:flex;flex-direction:column;gap:10px}
+.snack-split-payment-row{display:grid;grid-template-columns:34px minmax(120px,1.2fr) minmax(86px,.75fr) minmax(112px,1fr) 34px;gap:8px;align-items:end;padding:13px 12px;border:1px solid #e1e7e4;border-radius:13px;background:#fff}
+.snack-payment-number{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;align-self:center;background:#e6f4eb;color:#216b47;font-size:13px;font-weight:900}
+.snack-split-payment-row label{gap:5px;font-size:11px}
+.snack-field-title{display:flex;align-items:center;gap:4px;min-height:16px;color:#52635b;font-size:10px;font-weight:800}
+.snack-field-title em{font-style:normal;color:#dc2626}
+.snack-reference-help{display:inline-flex;color:#71847a}
+.snack-split-payment-row label.reference>small{font-size:8px;color:#87958d;font-weight:600;margin-top:-4px}
+.snack-split-payment-row input,.snack-split-payment-row select{height:40px;padding:0 9px;border-radius:9px;font-size:11px}
+.snack-money-input{display:grid;grid-template-columns:28px 1fr;height:40px;border:1px solid #d8e0dc;border-radius:9px;overflow:hidden;background:#fff}
+.snack-money-input:focus-within{border-color:#70a386;box-shadow:0 0 0 2px rgba(47,111,78,.1)}
+.snack-money-input>span{display:grid;place-items:center;background:#f3f6f4;color:#6c7b73;font-weight:800;border-right:1px solid #e0e6e2}
+.snack-money-input input{height:100%;border:0!important;border-radius:0!important;box-shadow:none!important;padding:0 8px}
+.snack-payment-delete{width:32px;height:32px;align-self:end;margin-bottom:4px;border:1px solid #efcbc7;border-radius:9px;background:#fff;color:#b42318;display:grid;place-items:center;cursor:pointer}
+.snack-payment-delete:hover{background:#fff5f4}
+.snack-payment-info{display:flex;align-items:flex-start;gap:10px;margin-top:13px;padding:11px 12px;border:1px solid #cfe3f6;border-radius:11px;background:#f3f9ff;color:#215d8e}
+.snack-payment-info>svg{flex:0 0 auto;margin-top:1px}
+.snack-payment-info strong{display:block;font-size:10px;line-height:1.4}
+.snack-payment-info span{display:block;margin-top:2px;font-size:9px;color:#63809a}
+.snack-split-totals{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:14px;padding-top:14px;border-top:1px solid #e4ebe7}
+.snack-split-totals>div{display:flex;flex-direction:column;gap:4px;padding:0 12px}
+.snack-split-totals>div:first-child{padding-left:0;border-right:1px solid #e4ebe7}
+.snack-split-totals>div:last-child{padding-right:0}
+.snack-split-totals span{font-size:10px;color:#77877f}
+.snack-split-totals b{font-size:20px;color:#176a43}
+.snack-split-totals .pending b{color:#b45309}
+.snack-split-totals .complete b{color:#176a43}
+.snack-charge-btn{min-height:48px;border-radius:11px;font-size:16px;box-shadow:0 6px 14px rgba(47,111,78,.14)}
+.snack-charge-btn:disabled{box-shadow:none}
+@media(max-width:1220px){
+  .snack-sales-layout{grid-template-columns:1fr}
+  .snack-cart-card{position:static;width:auto}
+}
+@media(max-width:700px){
+  .snack-cart-card{padding:16px}
+  .snack-cart-heading strong{font-size:16px}
+  .snack-unit-badge{min-width:58px;padding:8px 9px}
+  .snack-split-payment-row{grid-template-columns:32px 1fr 34px;align-items:end;padding:12px}
+  .snack-split-payment-row .method,.snack-split-payment-row .amount,.snack-split-payment-row .reference{grid-column:2 / 3}
+  .snack-split-payment-row .method{grid-row:1}
+  .snack-split-payment-row .amount{grid-row:2}
+  .snack-split-payment-row .reference{grid-row:3}
+  .snack-payment-number{grid-column:1;grid-row:1;align-self:end;margin-bottom:5px}
+  .snack-payment-delete{grid-column:3;grid-row:1;align-self:end}
+  .snack-split-payments-head{align-items:flex-start}
+  .snack-split-totals b{font-size:18px}
+}

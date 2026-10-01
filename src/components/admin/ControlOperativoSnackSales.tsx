@@ -99,7 +99,11 @@ export default function ControlOperativoSnackSales() {
   const total = useMemo(() => sales.reduce((sum, sale) => sum + sale.total, 0), [sales]);
   const byMethod = useMemo(() => {
     const map = new Map<string, number>();
-    for (const sale of sales) map.set(sale.medio_pago, (map.get(sale.medio_pago) ?? 0) + sale.total);
+    for (const sale of sales) {
+      for (const payment of sale.pagos) {
+        map.set(payment.medio_pago, (map.get(payment.medio_pago) ?? 0) + payment.monto);
+      }
+    }
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [sales]);
 
@@ -130,7 +134,7 @@ export default function ControlOperativoSnackSales() {
           <div className="op-snack-table-wrap">
             <table className="op-snack-table">
               <thead><tr><th>Hora</th><th>Punto</th><th>Productos vendidos</th><th>Método de pago</th><th>Vendedor</th><th>Total</th></tr></thead>
-              <tbody>{sales.map((sale) => <tr key={sale.id_venta}><td>{timeBogota(sale.fecha_venta)}</td><td><strong>{snackLocationLabel(sale.ubicacion_codigo)}</strong></td><td>{sale.items.map((item) => `${item.cantidad}× ${item.nombre_producto}`).join(", ")}</td><td>{sale.medio_pago}</td><td>{sale.vendedor_email || "—"}</td><td><strong>{money(sale.total)}</strong></td></tr>)}</tbody>
+              <tbody>{sales.map((sale) => <tr key={sale.id_venta}><td>{timeBogota(sale.fecha_venta)}</td><td><strong>{snackLocationLabel(sale.ubicacion_codigo)}</strong></td><td>{sale.items.map((item) => `${item.cantidad}× ${item.nombre_producto}`).join(", ")}</td><td>{sale.pagos.map((payment) => `${payment.medio_pago}: ${money(payment.monto)}`).join(" · ")}</td><td>{sale.vendedor_email || "—"}</td><td><strong>{money(sale.total)}</strong></td></tr>)}</tbody>
             </table>
           </div>
         </>
