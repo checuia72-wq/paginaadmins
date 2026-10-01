@@ -22,6 +22,7 @@ import SalesAccessRoute from "./components/SalesAccessRoute";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 import GlobalAlertModal from "./components/common/GlobalAlertModal";
+import SnackExpiryAlertWatcher from "./components/common/SnackExpiryAlertWatcher";
 import ControlOperativoAdvancedOptions from "./components/admin/ControlOperativoAdvancedOptions";
 import ControlOperativoReprogramPenalty from "./components/admin/ControlOperativoReprogramPenalty";
 import ControlOperativoMealSelector from "./components/admin/ControlOperativoMealSelector";
@@ -34,6 +35,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <GlobalAlertModal />
+      <SnackExpiryAlertWatcher />
       <ControlOperativoAdvancedOptions />
       <ControlOperativoReprogramPenalty />
       <ControlOperativoMealSelector />
@@ -49,7 +51,7 @@ export default function App() {
           <Route path="control-operativo" element={<RoleRoute allow={["administrador", "atencion", "coordinador"]}><ControlOperativoAccessPage /></RoleRoute>} />
           <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion", "guia"]}><SalesAccessRoute location="taquilla_1"><VentasSnacksPage ubicacion="taquilla_1" titulo="Ventas Taquilla 1" /></SalesAccessRoute></RoleRoute>} />
           <Route path="ventas-snacks-enclave" element={<RoleRoute allow={["administrador", "atencion", "guia"]}><SalesAccessRoute location="enclave"><VentasSnacksPage ubicacion="enclave" titulo="Ventas Enclave" /></SalesAccessRoute></RoleRoute>} />
-          <Route path="inventario-snacks" element={<RoleRoute allow={["administrador", "coordinador"]}><InventarioSnacksPage /></RoleRoute>} />
+          <Route path="inventario-snacks" element={<RoleRoute allow={["administrador", "coordinador", "guia"]}><InventarioSnacksPage /></RoleRoute>} />
           <Route path="transferencias-snacks" element={<RoleRoute allow={["administrador"]}><TransferenciaSnacksPage /></RoleRoute>} />
           <Route path="accesos-guias" element={<RoleRoute allow={["administrador", "coordinador"]}><AccesosGuiasPage /></RoleRoute>} />
           <Route path="entrega-efectivo" element={<RoleRoute allow={["administrador", "coordinador", "guia"]}><EntregaEfectivoPage /></RoleRoute>} />

@@ -1,19 +1,54 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArchiveRestore, PackageMinus, PackagePlus, Pencil, RefreshCw, Save, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArchiveRestore,
+  CalendarClock,
+  CheckCircle2,
+  PackageMinus,
+  PackagePlus,
+  Pencil,
+  RefreshCw,
+  Save,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   createSnackProduct,
+  deleteSnackExpiryLot,
+  getSnackExpiryLots,
+  getSnackInventoryVerificationSnapshot,
   getSnackProductsAdmin,
+  recordSnackInventoryVerification,
+  saveSnackExpiryLot,
   saveSnackPurchasePrice,
   setSnackStockByLocation,
   setSnackProductActive,
   updateSnackProduct,
   withdrawSnackStock,
   type SnackAdminProduct,
+  type SnackExpiryLot,
+  type SnackInventoryVerificationRow,
+  type SnackLocationCode,
 } from "../services/snack.service";
-import { getCurrentRole } from "../services/role.service";
+import { getCurrentRole, type AppRole } from "../services/role.service";
 import "../styles/snacks.css";
 
 const money = (value: number) => `$${Number(value || 0).toLocaleString("es-CO")}`;
+const locationLabel = (value: SnackLocationCode) => value === "taquilla_1" ? "Taquilla 1" : "Enclave";
+
+function daysUntil(dateValue: string) {
+  const [year, month, day] = dateValue.slice(0, 10).split("-").map(Number);
+  const target = Date.UTC(year, month - 1, day);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target - today) / 86400000);
+}
+
+function dateLabel(value?: string | null) {
+  if (!value) return "Sin corroboración previa";
+  return new Date(value).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" });
+}
 
 type FormState = {
   numero_producto: string;
@@ -24,10 +59,30 @@ type FormState = {
   precio_compra: string;
 };
 
+type ExpiryForm = {
+  id_producto: string;
+  codigo_ubicacion: SnackLocationCode;
+  fecha_vencimiento: string;
+  cantidad_actual: string;
+  observacion: string;
+};
+
 const emptyForm: FormState = { numero_producto: "", nombre_producto: "", cantidad_taquilla_1: "0", cantidad_enclave: "0", precio: "", precio_compra: "" };
+const emptyExpiryForm: ExpiryForm = { id_producto: "", codigo_ubicacion: "taquilla_1", fecha_vencimiento: "", cantidad_actual: "", observacion: "" };
 
 export default function InventarioSnacksPage() {
+  const [role, setRole] = useState<AppRole | null>(null);
   const [products, setProducts] = useState<SnackAdminProduct[]>([]);
+  const [expiryLots, setExpiryLots] = useState<SnackExpiryLot[]>([]);
+  const [verificationRows, setVerificationRows] = useState<SnackInventoryVerificationRow[]>([]);
+  const [verifyLocation, setVerifyLocation] = useState<SnackLocationCode>("taquilla_1");
+  const [differenceProduct, setDifferenceProduct] = useState<number | null>(null);
+  const [differenceQty, setDifferenceQty] = useState("");
+  const [differenceNote, setDifferenceNote] = useState("");
+  const [verificationSaving, setVerificationSaving] = useState<number | null>(null);
+  const [expiryEditing, setExpiryEditing] = useState<SnackExpiryLot | null>(null);
+  const [expiryForm, setExpiryForm] = useState<ExpiryForm>(emptyExpiryForm);
+  const [expirySaving, setExpirySaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,30 +94,49 @@ export default function InventarioSnacksPage() {
   const [editing, setEditing] = useState<SnackAdminProduct | null>(null);
   const [withdrawing, setWithdrawing] = useState<SnackAdminProduct | null>(null);
   const [withdrawQty, setWithdrawQty] = useState("1");
-  const [withdrawLocation, setWithdrawLocation] = useState<"taquilla_1" | "enclave">("taquilla_1");
+  const [withdrawLocation, setWithdrawLocation] = useState<SnackLocationCode>("taquilla_1");
   const [withdrawReason, setWithdrawReason] = useState("Vencimiento");
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [isAdmin, setIsAdmin] = useState(false);
+
+  const isAdmin = role === "administrador";
+  const canManageInventory = role === "administrador" || role === "coordinador";
+  const canViewVerification = role === "administrador" || role === "coordinador" || role === "guia";
+  const canVerifyInventory = role === "coordinador" || role === "guia";
 
   const load = useCallback(async (silent = false) => {
     silent ? setRefreshing(true) : setLoading(true);
     setError("");
     try {
-      setProducts(await getSnackProductsAdmin(true));
+      const current = await getCurrentRole();
+      const currentRole = current?.role ?? null;
+      setRole(currentRole);
+
+      if (currentRole === "administrador" || currentRole === "coordinador") {
+        const [nextProducts, nextLots] = await Promise.all([
+          getSnackProductsAdmin(true),
+          getSnackExpiryLots(),
+        ]);
+        setProducts(nextProducts);
+        setExpiryLots(nextLots);
+      } else {
+        setProducts([]);
+        setExpiryLots([]);
+      }
+
+      if (currentRole === "administrador" || currentRole === "coordinador" || currentRole === "guia") {
+        setVerificationRows(await getSnackInventoryVerificationSnapshot(verifyLocation));
+      } else {
+        setVerificationRows([]);
+      }
     } catch (e: any) {
       setError(e?.message || "No fue posible cargar el inventario de snacks.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [verifyLocation]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => {
-    getCurrentRole()
-      .then((current) => setIsAdmin(current?.role === "administrador"))
-      .catch(() => setIsAdmin(false));
-  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -80,6 +154,8 @@ export default function InventarioSnacksPage() {
   const potentialRevenue = products.filter((p) => p.activo).reduce((sum, p) => sum + p.cantidad_total * p.precio, 0);
   const potentialProfit = potentialRevenue - inventoryCost;
   const lowStock = products.filter((p) => p.activo && (p.cantidad_taquilla_1 <= 5 || p.cantidad_enclave <= 5)).length;
+  const expiryAlerts = useMemo(() => expiryLots.filter((lot) => daysUntil(lot.fecha_vencimiento) <= 20), [expiryLots]);
+  const expiryUnits = expiryAlerts.reduce((sum, lot) => sum + lot.cantidad_actual, 0);
 
   const startCreate = () => {
     setEditing(null);
@@ -106,7 +182,7 @@ export default function InventarioSnacksPage() {
   const startWithdrawal = (product: SnackAdminProduct) => {
     setWithdrawing(product);
     setEditing(null);
-    const initialLocation = product.cantidad_taquilla_1 > 0 ? "taquilla_1" : "enclave";
+    const initialLocation: SnackLocationCode = product.cantidad_taquilla_1 > 0 ? "taquilla_1" : "enclave";
     const available = initialLocation === "taquilla_1" ? product.cantidad_taquilla_1 : product.cantidad_enclave;
     setWithdrawLocation(initialLocation);
     setWithdrawQty(available > 0 ? "1" : "0");
@@ -120,32 +196,16 @@ export default function InventarioSnacksPage() {
     const cantidadEnclave = Number(form.cantidad_enclave || 0);
     const precio = Number(form.precio || 0);
     const precioCompra = Number(form.precio_compra || 0);
-    if (!form.numero_producto.trim() || !form.nombre_producto.trim()) {
-      setError("Número y nombre del producto son obligatorios.");
-      return;
-    }
-    if (!Number.isInteger(cantidadTaquilla) || cantidadTaquilla < 0 || !Number.isInteger(cantidadEnclave) || cantidadEnclave < 0) {
-      setError("Las cantidades de Taquilla 1 y Enclave deben ser números enteros iguales o mayores a cero.");
-      return;
-    }
-    if (!Number.isFinite(precio) || precio <= 0) {
-      setError("El precio de venta debe ser mayor a cero.");
-      return;
-    }
-    if (isAdmin && (!Number.isFinite(precioCompra) || precioCompra < 0)) {
-      setError("El precio de compra debe ser igual o mayor a cero.");
-      return;
-    }
+    if (!form.numero_producto.trim() || !form.nombre_producto.trim()) return setError("Número y nombre del producto son obligatorios.");
+    if (!Number.isInteger(cantidadTaquilla) || cantidadTaquilla < 0 || !Number.isInteger(cantidadEnclave) || cantidadEnclave < 0) return setError("Las cantidades de Taquilla 1 y Enclave deben ser números enteros iguales o mayores a cero.");
+    if (!Number.isFinite(precio) || precio <= 0) return setError("El precio de venta debe ser mayor a cero.");
+    if (isAdmin && (!Number.isFinite(precioCompra) || precioCompra < 0)) return setError("El precio de compra debe ser igual o mayor a cero.");
 
     setSaving(true);
     setError("");
     setSuccess("");
     try {
-      const payload = {
-        numero_producto: form.numero_producto,
-        nombre_producto: form.nombre_producto,
-        precio,
-      };
+      const payload = { numero_producto: form.numero_producto, nombre_producto: form.nombre_producto, precio };
       if (editing) {
         await updateSnackProduct(editing.id_producto, payload);
         if (isAdmin) await saveSnackPurchasePrice(editing.id_producto, precioCompra);
@@ -173,29 +233,17 @@ export default function InventarioSnacksPage() {
   const confirmWithdrawal = async () => {
     if (!withdrawing) return;
     const cantidad = Number(withdrawQty || 0);
-    if (!Number.isInteger(cantidad) || cantidad <= 0) {
-      setError("La cantidad a retirar debe ser un número entero mayor a cero.");
-      return;
-    }
+    if (!Number.isInteger(cantidad) || cantidad <= 0) return setError("La cantidad a retirar debe ser un número entero mayor a cero.");
     const available = withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave;
-    if (cantidad > available) {
-      setError(`No puedes retirar ${cantidad} unidades. En ${withdrawLocation === "taquilla_1" ? "Taquilla 1" : "Enclave"} hay ${available} disponibles.`);
-      return;
-    }
-    if (!withdrawReason.trim()) {
-      setError("Indica el motivo del retiro.");
-      return;
-    }
+    if (cantidad > available) return setError(`No puedes retirar ${cantidad} unidades. En ${locationLabel(withdrawLocation)} hay ${available} disponibles.`);
+    if (!withdrawReason.trim()) return setError("Indica el motivo del retiro.");
 
     setWithdrawingSaving(true);
     setError("");
     setSuccess("");
     try {
       await withdrawSnackStock(withdrawing.id_producto, cantidad, withdrawReason, withdrawLocation);
-      const available = withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave;
-      const remaining = available - cantidad;
-      const locationLabel = withdrawLocation === "taquilla_1" ? "Taquilla 1" : "Enclave";
-      setSuccess(`${cantidad} unidad${cantidad === 1 ? "" : "es"} de ${withdrawing.nombre_producto} retirada${cantidad === 1 ? "" : "s"} de ${locationLabel}. Stock restante allí: ${remaining}.`);
+      setSuccess(`${cantidad} unidad${cantidad === 1 ? "" : "es"} de ${withdrawing.nombre_producto} retirada${cantidad === 1 ? "" : "s"} de ${locationLabel(withdrawLocation)}. Stock restante allí: ${available - cantidad}.`);
       setWithdrawing(null);
       setWithdrawQty("1");
       setWithdrawReason("Vencimiento");
@@ -219,12 +267,125 @@ export default function InventarioSnacksPage() {
     }
   };
 
+  const startExpiryEdit = (lot: SnackExpiryLot) => {
+    setExpiryEditing(lot);
+    setExpiryForm({
+      id_producto: String(lot.id_producto),
+      codigo_ubicacion: lot.codigo_ubicacion,
+      fecha_vencimiento: lot.fecha_vencimiento,
+      cantidad_actual: String(lot.cantidad_actual),
+      observacion: lot.observacion,
+    });
+    setError("");
+    setSuccess("");
+  };
+
+  const resetExpiry = () => {
+    setExpiryEditing(null);
+    setExpiryForm(emptyExpiryForm);
+  };
+
+  const saveExpiry = async () => {
+    const quantity = Number(expiryForm.cantidad_actual);
+    if (!expiryForm.id_producto) return setError("Selecciona el producto del lote.");
+    if (!expiryForm.fecha_vencimiento) return setError("Selecciona la fecha de vencimiento.");
+    if (!Number.isInteger(quantity) || quantity <= 0) return setError("La cantidad del lote debe ser un entero mayor a cero.");
+
+    setExpirySaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      await saveSnackExpiryLot({
+        id_lote_vencimiento: expiryEditing?.id_lote_vencimiento,
+        id_producto: Number(expiryForm.id_producto),
+        codigo_ubicacion: expiryForm.codigo_ubicacion,
+        fecha_vencimiento: expiryForm.fecha_vencimiento,
+        cantidad_actual: quantity,
+        observacion: expiryForm.observacion,
+      });
+      setSuccess(expiryEditing ? "Lote y fecha de vencimiento actualizados." : "Nueva fecha de vencimiento registrada.");
+      resetExpiry();
+      await load(true);
+    } catch (e: any) {
+      setError(e?.message || "No fue posible guardar la fecha de vencimiento.");
+    } finally {
+      setExpirySaving(false);
+    }
+  };
+
+  const removeExpiry = async (lot: SnackExpiryLot) => {
+    if (!window.confirm(`¿Eliminar el lote de ${lot.nombre_producto} con vencimiento ${lot.fecha_vencimiento}? Úsalo cuando ese lote ya no tenga unidades.`)) return;
+    setError("");
+    setSuccess("");
+    try {
+      await deleteSnackExpiryLot(lot.id_lote_vencimiento);
+      setSuccess("Fecha de vencimiento eliminada del control de lotes.");
+      if (expiryEditing?.id_lote_vencimiento === lot.id_lote_vencimiento) resetExpiry();
+      await load(true);
+    } catch (e: any) {
+      setError(e?.message || "No fue posible eliminar el lote.");
+    }
+  };
+
+  const confirmVerification = async (row: SnackInventoryVerificationRow) => {
+    setVerificationSaving(row.id_producto);
+    setError("");
+    setSuccess("");
+    try {
+      await recordSnackInventoryVerification({
+        id_producto: row.id_producto,
+        codigo_ubicacion: verifyLocation,
+        coincide: true,
+      });
+      setSuccess(`Inventario de ${row.nombre_producto} confirmado: ${row.cantidad_sistema} unidades.`);
+      setVerificationRows(await getSnackInventoryVerificationSnapshot(verifyLocation));
+    } catch (e: any) {
+      setError(e?.message || "No fue posible confirmar el inventario.");
+    } finally {
+      setVerificationSaving(null);
+    }
+  };
+
+  const reportDifference = async (row: SnackInventoryVerificationRow) => {
+    const counted = Number(differenceQty);
+    if (!Number.isInteger(counted) || counted < 0) return setError("Indica la cantidad actual encontrada.");
+    if (!differenceNote.trim()) return setError("La observación es obligatoria cuando hay una diferencia.");
+
+    setVerificationSaving(row.id_producto);
+    setError("");
+    setSuccess("");
+    try {
+      await recordSnackInventoryVerification({
+        id_producto: row.id_producto,
+        codigo_ubicacion: verifyLocation,
+        coincide: false,
+        cantidad_contada: counted,
+        observacion: differenceNote,
+      });
+      setSuccess(`Diferencia reportada para ${row.nombre_producto}: sistema ${row.cantidad_sistema}, conteo físico ${counted}.`);
+      setDifferenceProduct(null);
+      setDifferenceQty("");
+      setDifferenceNote("");
+      setVerificationRows(await getSnackInventoryVerificationSnapshot(verifyLocation));
+    } catch (e: any) {
+      setError(e?.message || "No fue posible reportar la diferencia.");
+    } finally {
+      setVerificationSaving(null);
+    }
+  };
+
   return (
     <div className="snack-page">
       <div className="snack-page-head">
         <div>
-          <h1>Inventario de snacks</h1>
-          <p>{isAdmin ? "Administra por separado las existencias de Taquilla 1 y Enclave, incluidos los costos de compra." : "Administra las existencias de Taquilla 1 y Enclave. Los costos de compra permanecen reservados para Administración."}</p>
+          <h1>{role === "guia" ? "Corroborar inventario de snacks" : "Inventario de snacks"}</h1>
+          <p>
+            {role === "guia"
+              ? "Compara el conteo físico con el último inventario registrado y reporta cualquier diferencia con una observación."
+              : isAdmin
+                ? "Administra existencias por punto, lotes y fechas de vencimiento."
+                : "Administra existencias por punto, revisa alertas de vencimiento y corrobora el inventario físico."}
+          </p>
         </div>
         <button className="snack-btn secondary" onClick={() => load(true)} disabled={refreshing}>
           <RefreshCw size={16} className={refreshing ? "spin-icon" : ""} /> Actualizar
@@ -234,84 +395,204 @@ export default function InventarioSnacksPage() {
       {error && <div className="snack-alert error">{error}</div>}
       {success && <div className="snack-alert success">{success}</div>}
 
-      <div className="snack-kpis">
-        <div><span>Productos activos</span><b>{products.filter((p) => p.activo).length}</b></div>
-        <div><span>Stock Taquilla 1</span><b>{stockTaquilla}</b></div>
-        <div><span>Stock Enclave</span><b>{stockEnclave}</b></div>
-        <div><span>Total unidades</span><b>{stockTotal}</b></div>
-        {isAdmin && <div><span>Capital invertido</span><b>{money(inventoryCost)}</b></div>}
-        {isAdmin && <div><span>Ganancia potencial</span><b>{money(potentialProfit)}</b></div>}
-        <div className={lowStock ? "warning" : ""}><span>Stock bajo ≤ 5</span><b>{lowStock}</b></div>
-      </div>
-
-      <section className="snack-card snack-form-card">
-        <div className="snack-card-title">
-          <div><PackagePlus size={18} /><strong>{editing ? `Editar ${editing.numero_producto}` : "Nuevo producto"}</strong></div>
-          {editing && <button className="snack-icon-btn" onClick={startCreate} title="Cancelar edición"><X size={16} /></button>}
-        </div>
-        <div className="snack-product-form">
-          <label>Número de producto *<input value={form.numero_producto} onChange={(e) => setForm({ ...form, numero_producto: e.target.value })} placeholder="Ej. SNK-001" /></label>
-          <label>Nombre del producto *<input value={form.nombre_producto} onChange={(e) => setForm({ ...form, nombre_producto: e.target.value })} placeholder="Ej. Agua 600 ml" /></label>
-          <label>Stock Taquilla 1 *<input type="number" min={0} step={1} value={form.cantidad_taquilla_1} onChange={(e) => setForm({ ...form, cantidad_taquilla_1: e.target.value })} /></label>
-          <label>Stock Enclave *<input type="number" min={0} step={1} value={form.cantidad_enclave} onChange={(e) => setForm({ ...form, cantidad_enclave: e.target.value })} /></label>
-          {isAdmin && <label>Precio de compra *<input type="number" min={0} step={100} value={form.precio_compra} onChange={(e) => setForm({ ...form, precio_compra: e.target.value })} placeholder="2000" /></label>}
-          <label>Precio de venta *<input type="number" min={0} step={100} value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} placeholder="5000" /></label>
-          <button className="snack-btn primary" disabled={saving} onClick={save}><Save size={16} /> {saving ? "Guardando…" : editing ? "Guardar cambios" : "Agregar producto"}</button>
-        </div>
-      </section>
-
-      {withdrawing && (
-        <section className="snack-card snack-form-card">
-          <div className="snack-card-title">
-            <div><PackageMinus size={18} /><strong>Retirar unidades · {withdrawing.nombre_producto}</strong></div>
-            <button className="snack-icon-btn" onClick={() => setWithdrawing(null)} title="Cancelar retiro"><X size={16} /></button>
+      {canManageInventory && (
+        <>
+          <div className="snack-kpis">
+            <div><span>Productos activos</span><b>{products.filter((p) => p.activo).length}</b></div>
+            <div><span>Stock Taquilla 1</span><b>{stockTaquilla}</b></div>
+            <div><span>Stock Enclave</span><b>{stockEnclave}</b></div>
+            <div><span>Total unidades</span><b>{stockTotal}</b></div>
+            {isAdmin && <div><span>Capital invertido</span><b>{money(inventoryCost)}</b></div>}
+            {isAdmin && <div><span>Ganancia potencial</span><b>{money(potentialProfit)}</b></div>}
+            <div className={lowStock ? "warning" : ""}><span>Stock bajo ≤ 5</span><b>{lowStock}</b></div>
+            <div className={expiryAlerts.length ? "warning" : ""}><span>Por vencer ≤ 20 días</span><b>{expiryUnits}</b></div>
           </div>
-          <p style={{ margin: "0 0 12px", color: "#6f7785" }}>
-            Usa esta opción para sacar productos vencidos, dañados o no vendibles del punto correcto. Taquilla 1: <strong>{withdrawing.cantidad_taquilla_1}</strong> · Enclave: <strong>{withdrawing.cantidad_enclave}</strong>.
-          </p>
-          <div className="snack-product-form">
-            <label>Punto de inventario *
-              <select value={withdrawLocation} onChange={(e) => { const next = e.target.value as "taquilla_1" | "enclave"; setWithdrawLocation(next); setWithdrawQty("1"); }}>
-                <option value="taquilla_1">Taquilla 1 · {withdrawing.cantidad_taquilla_1} disponibles</option>
-                <option value="enclave">Enclave · {withdrawing.cantidad_enclave} disponibles</option>
-              </select>
-            </label>
-            <label>Cantidad a retirar *<input type="number" min={1} max={withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave} step={1} value={withdrawQty} onChange={(e) => setWithdrawQty(e.target.value)} /></label>
-            <label style={{ gridColumn: "span 2" }}>Motivo *<input value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} placeholder="Ej. Vencimiento, producto dañado…" /></label>
-            <label>Stock después<input value={Math.max(0, (withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave) - Number(withdrawQty || 0))} readOnly /></label>
-            <button className="snack-btn primary" disabled={withdrawingSaving || (withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave) <= 0} onClick={confirmWithdrawal}><PackageMinus size={16} /> {withdrawingSaving ? "Retirando…" : "Confirmar retiro"}</button>
+
+          <section className="snack-card snack-expiry-card">
+            <div className="snack-card-title">
+              <div><CalendarClock size={18} /><strong>Control de vencimientos por lote</strong></div>
+              <span className="snack-muted">{isAdmin ? "Administración registra y actualiza los lotes." : "Coordinación recibe las alertas de los próximos 20 días."}</span>
+            </div>
+
+            {isAdmin && (
+              <div className="snack-expiry-form">
+                <label>Producto *
+                  <select value={expiryForm.id_producto} onChange={(e) => setExpiryForm({ ...expiryForm, id_producto: e.target.value })}>
+                    <option value="">Seleccionar…</option>
+                    {products.filter((p) => p.activo).map((p) => <option key={p.id_producto} value={p.id_producto}>{p.numero_producto} · {p.nombre_producto}</option>)}
+                  </select>
+                </label>
+                <label>Punto *
+                  <select value={expiryForm.codigo_ubicacion} onChange={(e) => setExpiryForm({ ...expiryForm, codigo_ubicacion: e.target.value as SnackLocationCode })}>
+                    <option value="taquilla_1">Taquilla 1</option>
+                    <option value="enclave">Enclave</option>
+                  </select>
+                </label>
+                <label>Fecha de vencimiento *
+                  <input type="date" value={expiryForm.fecha_vencimiento} onChange={(e) => setExpiryForm({ ...expiryForm, fecha_vencimiento: e.target.value })} />
+                </label>
+                <label>Unidades de este lote *
+                  <input type="number" min={1} step={1} value={expiryForm.cantidad_actual} onChange={(e) => setExpiryForm({ ...expiryForm, cantidad_actual: e.target.value })} placeholder="Ej. 10" />
+                </label>
+                <label className="snack-expiry-note">Observación
+                  <input value={expiryForm.observacion} onChange={(e) => setExpiryForm({ ...expiryForm, observacion: e.target.value })} placeholder="Ej. Lote recibido el 1 de octubre" />
+                </label>
+                <button className="snack-btn primary" disabled={expirySaving} onClick={saveExpiry}><Save size={16} /> {expirySaving ? "Guardando…" : expiryEditing ? "Actualizar lote" : "Agregar fecha"}</button>
+                {expiryEditing && <button className="snack-btn secondary" onClick={resetExpiry}><X size={16} /> Cancelar</button>}
+              </div>
+            )}
+
+            {expiryAlerts.length > 0 && (
+              <div className="snack-expiry-warning">
+                <AlertTriangle size={18} />
+                <div><strong>Hay {expiryUnits} unidad{expiryUnits === 1 ? "" : "es"} próximas a vencer o vencidas.</strong><span>La alerta se activa desde 20 días antes de la fecha registrada.</span></div>
+              </div>
+            )}
+
+            <div className="snack-table-wrap">
+              <table className="snack-table">
+                <thead><tr><th>Producto</th><th>Punto</th><th>Vencimiento</th><th>Unidades</th><th>Estado</th>{isAdmin && <th>Acciones</th>}</tr></thead>
+                <tbody>
+                  {loading ? <tr><td colSpan={isAdmin ? 6 : 5} className="snack-empty">Cargando lotes…</td></tr> : expiryLots.length === 0 ? <tr><td colSpan={isAdmin ? 6 : 5} className="snack-empty">Todavía no hay fechas de vencimiento activas.</td></tr> : expiryLots.map((lot) => {
+                    const days = daysUntil(lot.fecha_vencimiento);
+                    const urgent = days <= 20;
+                    const status = days < 0 ? `Vencido hace ${Math.abs(days)} día${Math.abs(days) === 1 ? "" : "s"}` : days === 0 ? "Vence hoy" : `${days} día${days === 1 ? "" : "s"}`;
+                    return (
+                      <tr key={lot.id_lote_vencimiento} className={urgent ? "snack-expiry-row-warning" : ""}>
+                        <td><strong>{lot.nombre_producto}</strong><small className="snack-cell-sub">{lot.numero_producto}</small></td>
+                        <td>{locationLabel(lot.codigo_ubicacion)}</td>
+                        <td>{lot.fecha_vencimiento}</td>
+                        <td><strong>{lot.cantidad_actual}</strong></td>
+                        <td><span className={`snack-expiry-badge ${urgent ? "warning" : "ok"}`}>{status}</span></td>
+                        {isAdmin && <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startExpiryEdit(lot)} title="Editar lote"><Pencil size={15} /></button><button className="snack-icon-btn danger" onClick={() => removeExpiry(lot)} title="Eliminar fecha cuando el lote ya salió"><Trash2 size={15} /></button></div></td>}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+
+      {canViewVerification && (
+        <section className="snack-card snack-verify-card">
+          <div className="snack-card-title">
+            <div><CheckCircle2 size={18} /><strong>Corroborar inventario</strong></div>
+            <select className="snack-verify-location" value={verifyLocation} onChange={(e) => setVerifyLocation(e.target.value as SnackLocationCode)}>
+              <option value="taquilla_1">Taquilla 1</option>
+              <option value="enclave">Enclave</option>
+            </select>
+          </div>
+          <p className="snack-admin-note">{canVerifyInventory ? "Compara el conteo físico con el sistema. Si coincide, solo confirma. Si encuentras más o menos unidades, reporta la cantidad actual y escribe obligatoriamente qué ocurrió. Esta corroboración no modifica el stock automáticamente." : "Aquí puedes revisar la última corroboración realizada por Coordinación o Guías. Las diferencias quedan visibles para que Administración pueda revisar y ajustar el inventario cuando corresponda."}</p>
+
+          <div className="snack-verify-list">
+            {loading ? <div className="snack-empty">Cargando inventario…</div> : verificationRows.length === 0 ? <div className="snack-empty">No hay productos activos en {locationLabel(verifyLocation)}.</div> : verificationRows.map((row) => (
+              <article key={row.id_producto} className={`snack-verify-row ${row.ultima_coincide === false ? "has-difference" : ""}`}>
+                <div className="snack-verify-product">
+                  <strong>{row.nombre_producto}</strong>
+                  <span>{row.numero_producto}</span>
+                </div>
+                <div className="snack-verify-count">
+                  <span>Stock del sistema</span>
+                  <b>{row.cantidad_sistema}</b>
+                </div>
+                <div className="snack-verify-last">
+                  <span>Última corroboración</span>
+                  <strong>{dateLabel(row.ultima_verificacion_fecha)}</strong>
+                  {row.ultima_verificacion_fecha && <small>Conteo: {row.ultima_cantidad_contada ?? row.ultima_cantidad_sistema ?? 0}{row.ultima_coincide === false ? " · Diferencia reportada" : " · Confirmado"}</small>}
+                </div>
+                {canVerifyInventory && <div className="snack-verify-actions">
+                  <button className="snack-btn secondary" disabled={verificationSaving === row.id_producto} onClick={() => confirmVerification(row)}><CheckCircle2 size={15} /> Confirmar</button>
+                  <button className="snack-btn warning-btn" disabled={verificationSaving === row.id_producto} onClick={() => { setDifferenceProduct(row.id_producto); setDifferenceQty(""); setDifferenceNote(""); }}><AlertTriangle size={15} /> Hay diferencia</button>
+                </div>}
+                {canVerifyInventory && differenceProduct === row.id_producto && (
+                  <div className="snack-difference-form">
+                    <label>Cantidad actual encontrada *
+                      <input type="number" min={0} step={1} value={differenceQty} onChange={(e) => setDifferenceQty(e.target.value)} placeholder="Ej. 3" />
+                    </label>
+                    <label>Observación obligatoria *
+                      <input value={differenceNote} onChange={(e) => setDifferenceNote(e.target.value)} placeholder="Ej. Faltan 2 unidades al hacer el conteo físico" />
+                    </label>
+                    <button className="snack-btn primary" disabled={verificationSaving === row.id_producto} onClick={() => reportDifference(row)}><Save size={15} /> Guardar alerta</button>
+                    <button className="snack-btn secondary" onClick={() => setDifferenceProduct(null)}><X size={15} /> Cancelar</button>
+                  </div>
+                )}
+              </article>
+            ))}
           </div>
         </section>
       )}
 
-      <section className="snack-card">
-        <div className="snack-toolbar">
-          <div className="snack-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" /></div>
-          <label className="snack-check"><input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Mostrar inactivos</label>
-        </div>
+      {canManageInventory && (
+        <>
+          <section className="snack-card snack-form-card">
+            <div className="snack-card-title">
+              <div><PackagePlus size={18} /><strong>{editing ? `Editar ${editing.numero_producto}` : "Nuevo producto"}</strong></div>
+              {editing && <button className="snack-icon-btn" onClick={startCreate} title="Cancelar edición"><X size={16} /></button>}
+            </div>
+            <div className="snack-product-form">
+              <label>Número de producto *<input value={form.numero_producto} onChange={(e) => setForm({ ...form, numero_producto: e.target.value })} placeholder="Ej. SNK-001" /></label>
+              <label>Nombre del producto *<input value={form.nombre_producto} onChange={(e) => setForm({ ...form, nombre_producto: e.target.value })} placeholder="Ej. Agua 600 ml" /></label>
+              <label>Stock Taquilla 1 *<input type="number" min={0} step={1} value={form.cantidad_taquilla_1} onChange={(e) => setForm({ ...form, cantidad_taquilla_1: e.target.value })} /></label>
+              <label>Stock Enclave *<input type="number" min={0} step={1} value={form.cantidad_enclave} onChange={(e) => setForm({ ...form, cantidad_enclave: e.target.value })} /></label>
+              {isAdmin && <label>Precio de compra *<input type="number" min={0} step={100} value={form.precio_compra} onChange={(e) => setForm({ ...form, precio_compra: e.target.value })} placeholder="2000" /></label>}
+              <label>Precio de venta *<input type="number" min={0} step={100} value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} placeholder="5000" /></label>
+              <button className="snack-btn primary" disabled={saving} onClick={save}><Save size={16} /> {saving ? "Guardando…" : editing ? "Guardar cambios" : "Agregar producto"}</button>
+            </div>
+          </section>
 
-        <div className="snack-table-wrap">
-          <table className="snack-table">
-            <thead><tr><th>N.º producto</th><th>Producto</th><th>Taquilla 1</th><th>Enclave</th><th>Total</th>{isAdmin && <th>Precio compra</th>}<th>Precio venta</th>{isAdmin && <th>Ganancia/u</th>}<th>Estado</th><th>Acciones</th></tr></thead>
-            <tbody>
-              {loading ? <tr><td colSpan={isAdmin ? 10 : 8} className="snack-empty">Cargando inventario…</td></tr> : filtered.length === 0 ? <tr><td colSpan={isAdmin ? 10 : 8} className="snack-empty">No hay productos para mostrar.</td></tr> : filtered.map((product) => (
-                <tr key={product.id_producto} className={!product.activo ? "inactive" : ""}>
-                  <td><strong>{product.numero_producto}</strong></td>
-                  <td>{product.nombre_producto}</td>
-                  <td><span className={`snack-stock ${product.cantidad_taquilla_1 <= 5 ? "low" : ""}`}>{product.cantidad_taquilla_1}</span></td>
-                  <td><span className={`snack-stock ${product.cantidad_enclave <= 5 ? "low" : ""}`}>{product.cantidad_enclave}</span></td>
-                  <td><strong>{product.cantidad_total}</strong></td>
-                  {isAdmin && <td>{product.precio_compra == null ? "Sin definir" : money(product.precio_compra)}</td>}
-                  <td>{money(product.precio)}</td>
-                  {isAdmin && <td><strong>{product.precio_compra == null ? "—" : money(product.precio - product.precio_compra)}</strong></td>}
-                  <td><span className={`snack-status ${product.activo ? "active" : "inactive"}`}>{product.activo ? "Activo" : "Inactivo"}</span></td>
-                  <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startEdit(product)} title="Editar"><Pencil size={15} /></button><button className="snack-icon-btn" onClick={() => startWithdrawal(product)} disabled={product.cantidad_total <= 0} title="Retirar unidades del inventario"><PackageMinus size={15} /></button><button className="snack-icon-btn" onClick={() => toggleActive(product)} title={product.activo ? "Desactivar" : "Reactivar"}><ArchiveRestore size={15} /></button></div></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          {withdrawing && (
+            <section className="snack-card snack-form-card">
+              <div className="snack-card-title">
+                <div><PackageMinus size={18} /><strong>Retirar unidades · {withdrawing.nombre_producto}</strong></div>
+                <button className="snack-icon-btn" onClick={() => setWithdrawing(null)} title="Cancelar retiro"><X size={16} /></button>
+              </div>
+              <p style={{ margin: "0 0 12px", color: "#6f7785" }}>Usa esta opción para sacar productos vencidos, dañados o no vendibles del punto correcto. Taquilla 1: <strong>{withdrawing.cantidad_taquilla_1}</strong> · Enclave: <strong>{withdrawing.cantidad_enclave}</strong>.</p>
+              <div className="snack-product-form">
+                <label>Punto de inventario *
+                  <select value={withdrawLocation} onChange={(e) => { const next = e.target.value as SnackLocationCode; setWithdrawLocation(next); setWithdrawQty("1"); }}>
+                    <option value="taquilla_1">Taquilla 1 · {withdrawing.cantidad_taquilla_1} disponibles</option>
+                    <option value="enclave">Enclave · {withdrawing.cantidad_enclave} disponibles</option>
+                  </select>
+                </label>
+                <label>Cantidad a retirar *<input type="number" min={1} max={withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave} step={1} value={withdrawQty} onChange={(e) => setWithdrawQty(e.target.value)} /></label>
+                <label style={{ gridColumn: "span 2" }}>Motivo *<input value={withdrawReason} onChange={(e) => setWithdrawReason(e.target.value)} placeholder="Ej. Vencimiento, producto dañado…" /></label>
+                <label>Stock después<input value={Math.max(0, (withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave) - Number(withdrawQty || 0))} readOnly /></label>
+                <button className="snack-btn primary" disabled={withdrawingSaving || (withdrawLocation === "taquilla_1" ? withdrawing.cantidad_taquilla_1 : withdrawing.cantidad_enclave) <= 0} onClick={confirmWithdrawal}><PackageMinus size={16} /> {withdrawingSaving ? "Retirando…" : "Confirmar retiro"}</button>
+              </div>
+            </section>
+          )}
+
+          <section className="snack-card">
+            <div className="snack-toolbar">
+              <div className="snack-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar producto…" /></div>
+              <label className="snack-check"><input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Mostrar inactivos</label>
+            </div>
+            <div className="snack-table-wrap">
+              <table className="snack-table">
+                <thead><tr><th>N.º producto</th><th>Producto</th><th>Taquilla 1</th><th>Enclave</th><th>Total</th>{isAdmin && <th>Precio compra</th>}<th>Precio venta</th>{isAdmin && <th>Ganancia/u</th>}<th>Estado</th><th>Acciones</th></tr></thead>
+                <tbody>
+                  {loading ? <tr><td colSpan={isAdmin ? 10 : 8} className="snack-empty">Cargando inventario…</td></tr> : filtered.length === 0 ? <tr><td colSpan={isAdmin ? 10 : 8} className="snack-empty">No hay productos para mostrar.</td></tr> : filtered.map((product) => (
+                    <tr key={product.id_producto} className={!product.activo ? "inactive" : ""}>
+                      <td><strong>{product.numero_producto}</strong></td>
+                      <td>{product.nombre_producto}</td>
+                      <td><span className={`snack-stock ${product.cantidad_taquilla_1 <= 5 ? "low" : ""}`}>{product.cantidad_taquilla_1}</span></td>
+                      <td><span className={`snack-stock ${product.cantidad_enclave <= 5 ? "low" : ""}`}>{product.cantidad_enclave}</span></td>
+                      <td><strong>{product.cantidad_total}</strong></td>
+                      {isAdmin && <td>{product.precio_compra == null ? "Sin definir" : money(product.precio_compra)}</td>}
+                      <td>{money(product.precio)}</td>
+                      {isAdmin && <td><strong>{product.precio_compra == null ? "—" : money(product.precio - product.precio_compra)}</strong></td>}
+                      <td><span className={`snack-status ${product.activo ? "active" : "inactive"}`}>{product.activo ? "Activo" : "Inactivo"}</span></td>
+                      <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startEdit(product)} title="Editar"><Pencil size={15} /></button><button className="snack-icon-btn" onClick={() => startWithdrawal(product)} disabled={product.cantidad_total <= 0} title="Retirar unidades del inventario"><PackageMinus size={15} /></button><button className="snack-icon-btn" onClick={() => toggleActive(product)} title={product.activo ? "Desactivar" : "Reactivar"}><ArchiveRestore size={15} /></button></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

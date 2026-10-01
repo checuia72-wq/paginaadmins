@@ -48,7 +48,7 @@ export function canAccess(role: AppRole, path: string) {
   if (role === "coordinador") {
     return ["/app/control-operativo", "/app/inventario-snacks", "/app/accesos-guias", "/app/entrega-efectivo"].includes(path);
   }
-  return path === "/app/ventas-snacks" || path === "/app/ventas-snacks-enclave" || path === "/app/entrega-efectivo";
+  return path === "/app/ventas-snacks" || path === "/app/ventas-snacks-enclave" || path === "/app/inventario-snacks" || path === "/app/entrega-efectivo";
 }
 
 export function appRoleLabel(role: AppRole) {

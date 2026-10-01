@@ -35,6 +35,34 @@ export type SnackAdminProduct = SnackProduct & {
   cantidad_total: number;
 };
 
+export type SnackExpiryLot = {
+  id_lote_vencimiento: number;
+  id_producto: number;
+  numero_producto: string;
+  nombre_producto: string;
+  codigo_ubicacion: SnackLocationCode;
+  fecha_vencimiento: string;
+  cantidad_inicial: number;
+  cantidad_actual: number;
+  observacion: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SnackInventoryVerificationRow = {
+  id_producto: number;
+  numero_producto: string;
+  nombre_producto: string;
+  codigo_ubicacion: SnackLocationCode;
+  cantidad_sistema: number;
+  ultima_verificacion_fecha: string | null;
+  ultima_cantidad_sistema: number | null;
+  ultima_cantidad_contada: number | null;
+  ultima_coincide: boolean | null;
+  ultima_observacion: string;
+  ultima_verificado_email: string;
+};
+
 export type SnackAdminDashboardProduct = {
   id_producto: number | null;
   nombre_producto: string;
@@ -102,6 +130,25 @@ export type SnackSale = {
 export type SnackSaleInput = {
   id_producto: number;
   cantidad: number;
+};
+
+export type ReservationSnackSaleResult = {
+  id_venta: number;
+  total: number;
+  nuevo_total: number;
+  saldo_pendiente: number;
+  medio_pago: string;
+  ubicacion: SnackLocationCode;
+  observacion: string;
+};
+
+export type ReservationSnackSaleCancellationResult = {
+  id_venta: number;
+  total_retirado: number;
+  nuevo_total: number;
+  saldo_pendiente: number;
+  exceso_pagado: number;
+  observacion: string;
 };
 
 export type SnackTransfer = {
@@ -234,6 +281,132 @@ export async function getSnackProductsAdmin(includeInactive = true): Promise<Sna
       precio_compra: isAdmin && costMap.has(id) ? costMap.get(id)! : null,
     };
   }) as SnackAdminProduct[];
+}
+
+export async function getSnackExpiryLots(): Promise<SnackExpiryLot[]> {
+  const current = await getCurrentRole();
+  if (!current || !["administrador", "coordinador"].includes(current.role)) {
+    throw new Error("Solo Administración o Coordinación pueden consultar vencimientos de snacks.");
+  }
+
+  const { data, error } = await client()
+    .from("snack_lote_vencimiento")
+    .select("id_lote_vencimiento,id_producto,codigo_ubicacion,fecha_vencimiento,cantidad_inicial,cantidad_actual,observacion,created_at,updated_at,producto:snack_producto(numero_producto,nombre_producto)")
+    .gt("cantidad_actual", 0)
+    .order("fecha_vencimiento", { ascending: true });
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id_lote_vencimiento: Number(row.id_lote_vencimiento),
+    id_producto: Number(row.id_producto),
+    numero_producto: String(row.producto?.numero_producto ?? ""),
+    nombre_producto: String(row.producto?.nombre_producto ?? ""),
+    codigo_ubicacion: String(row.codigo_ubicacion) as SnackLocationCode,
+    fecha_vencimiento: String(row.fecha_vencimiento ?? "").slice(0, 10),
+    cantidad_inicial: num(row.cantidad_inicial),
+    cantidad_actual: num(row.cantidad_actual),
+    observacion: String(row.observacion ?? ""),
+    created_at: String(row.created_at ?? ""),
+    updated_at: String(row.updated_at ?? ""),
+  }));
+}
+
+export async function saveSnackExpiryLot(args: {
+  id_lote_vencimiento?: number | null;
+  id_producto: number;
+  codigo_ubicacion: SnackLocationCode;
+  fecha_vencimiento: string;
+  cantidad_actual: number;
+  observacion?: string;
+}) {
+  await requireAdmin();
+  const quantity = Math.floor(num(args.cantidad_actual));
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error("La cantidad del lote debe ser un entero mayor a cero.");
+  }
+  if (!args.fecha_vencimiento) throw new Error("Selecciona la fecha de vencimiento.");
+
+  const { data, error } = await client().rpc("admin_guardar_lote_vencimiento_snack", {
+    p_id_lote_vencimiento: args.id_lote_vencimiento ?? null,
+    p_id_producto: Number(args.id_producto),
+    p_ubicacion: args.codigo_ubicacion,
+    p_fecha_vencimiento: args.fecha_vencimiento,
+    p_cantidad_actual: quantity,
+    p_observacion: args.observacion?.trim() || null,
+  });
+  if (error) throw error;
+  window.dispatchEvent(new CustomEvent("snack-expiry-changed"));
+  return data;
+}
+
+export async function deleteSnackExpiryLot(idLote: number) {
+  await requireAdmin();
+  const { data, error } = await client().rpc("admin_eliminar_lote_vencimiento_snack", {
+    p_id_lote_vencimiento: Number(idLote),
+  });
+  if (error) throw error;
+  window.dispatchEvent(new CustomEvent("snack-expiry-changed"));
+  return data;
+}
+
+export async function getSnackInventoryVerificationSnapshot(
+  ubicacion: SnackLocationCode,
+): Promise<SnackInventoryVerificationRow[]> {
+  const current = await getCurrentRole();
+  if (!current || !["administrador", "coordinador", "guia"].includes(current.role)) {
+    throw new Error("No tienes permiso para corroborar el inventario.");
+  }
+
+  const { data, error } = await client().rpc("obtener_snapshot_corrobacion_snacks", {
+    p_ubicacion: ubicacion,
+  });
+  if (error) throw error;
+
+  return (Array.isArray(data) ? data : []).map((row: any) => ({
+    id_producto: Number(row.id_producto),
+    numero_producto: String(row.numero_producto ?? ""),
+    nombre_producto: String(row.nombre_producto ?? ""),
+    codigo_ubicacion: String(row.codigo_ubicacion ?? ubicacion) as SnackLocationCode,
+    cantidad_sistema: num(row.cantidad_sistema),
+    ultima_verificacion_fecha: row.ultima_verificacion_fecha ? String(row.ultima_verificacion_fecha) : null,
+    ultima_cantidad_sistema: row.ultima_cantidad_sistema == null ? null : num(row.ultima_cantidad_sistema),
+    ultima_cantidad_contada: row.ultima_cantidad_contada == null ? null : num(row.ultima_cantidad_contada),
+    ultima_coincide: row.ultima_coincide == null ? null : Boolean(row.ultima_coincide),
+    ultima_observacion: String(row.ultima_observacion ?? ""),
+    ultima_verificado_email: String(row.ultima_verificado_email ?? ""),
+  }));
+}
+
+export async function recordSnackInventoryVerification(args: {
+  id_producto: number;
+  codigo_ubicacion: SnackLocationCode;
+  coincide: boolean;
+  cantidad_contada?: number | null;
+  observacion?: string;
+}) {
+  const current = await getCurrentRole();
+  if (!current || !["coordinador", "guia"].includes(current.role)) {
+    throw new Error("La corroboración de inventario está habilitada para Coordinación y Guías.");
+  }
+
+  const counted = args.coincide ? null : Math.floor(num(args.cantidad_contada));
+  if (!args.coincide && (counted == null || !Number.isInteger(counted) || counted < 0)) {
+    throw new Error("Indica cuántas unidades hay actualmente.");
+  }
+  if (!args.coincide && !args.observacion?.trim()) {
+    throw new Error("La observación es obligatoria cuando reportas una diferencia.");
+  }
+
+  const { data, error } = await client().rpc("registrar_corrobacion_inventario_snack", {
+    p_id_producto: Number(args.id_producto),
+    p_ubicacion: args.codigo_ubicacion,
+    p_coincide: args.coincide,
+    p_cantidad_contada: args.coincide ? null : counted,
+    p_observacion: args.coincide ? null : args.observacion!.trim(),
+  });
+  if (error) throw error;
+  window.dispatchEvent(new CustomEvent("snack-inventory-verified"));
+  return data;
 }
 
 export async function saveSnackPurchasePrice(idProducto: number, precioCompra: number) {
@@ -556,3 +729,151 @@ export async function registerSnackSale(
   window.dispatchEvent(new CustomEvent("snack-stock-changed"));
   return data;
 }
+
+export async function getSnackSalesForReservation(idReserva: number): Promise<SnackSale[]> {
+  const id = Number(idReserva);
+  if (!Number.isInteger(id) || id <= 0) return [];
+
+  const { data: salesData, error: salesError } = await client()
+    .from("snack_venta")
+    .select("id_venta,fecha_venta,medio_pago,total,vendedor_user_id,vendedor_email,ubicacion_codigo")
+    .eq("id_reserva", id)
+    .order("fecha_venta", { ascending: false });
+  if (salesError) throw salesError;
+
+  const sales = salesData ?? [];
+  const ids = sales.map((row: any) => Number(row.id_venta));
+  if (!ids.length) return [];
+
+  const { data: detailData, error: detailError } = await client()
+    .from("snack_venta_detalle")
+    .select("id_detalle,id_venta,id_producto,numero_producto,nombre_producto,cantidad,precio_unitario,subtotal")
+    .in("id_venta", ids)
+    .order("id_detalle", { ascending: true });
+  if (detailError) throw detailError;
+
+  const grouped = new Map<number, SnackSaleItem[]>();
+  for (const row of detailData ?? []) {
+    const item: SnackSaleItem = {
+      id_detalle: Number((row as any).id_detalle),
+      id_venta: Number((row as any).id_venta),
+      id_producto: (row as any).id_producto == null ? null : Number((row as any).id_producto),
+      numero_producto: String((row as any).numero_producto ?? ""),
+      nombre_producto: String((row as any).nombre_producto ?? ""),
+      cantidad: num((row as any).cantidad),
+      precio_unitario: num((row as any).precio_unitario),
+      subtotal: num((row as any).subtotal),
+    };
+    const list = grouped.get(item.id_venta) ?? [];
+    list.push(item);
+    grouped.set(item.id_venta, list);
+  }
+
+  return sales.map((row: any) => ({
+    id_venta: Number(row.id_venta),
+    fecha_venta: String(row.fecha_venta),
+    medio_pago: String(row.medio_pago ?? ""),
+    total: num(row.total),
+    vendedor_user_id: row.vendedor_user_id ? String(row.vendedor_user_id) : null,
+    vendedor_email: String(row.vendedor_email ?? ""),
+    ubicacion_codigo: String(row.ubicacion_codigo || "taquilla_1") as SnackLocationCode,
+    items: grouped.get(Number(row.id_venta)) ?? [],
+  }));
+}
+
+export async function registerSnackSaleForReservation(
+  idReserva: number,
+  items: SnackSaleInput[],
+  medioPago: string,
+  ubicacion: SnackLocationCode = "taquilla_1",
+): Promise<ReservationSnackSaleResult> {
+  const current = await getCurrentRole();
+  if (!current || !["administrador", "atencion"].includes(current.role)) {
+    throw new Error("Solo Administración o Atención pueden vincular una venta de snacks a una reserva.");
+  }
+
+  const cleanItems = items
+    .map((item) => ({
+      id_producto: Number(item.id_producto),
+      cantidad: Math.floor(num(item.cantidad)),
+    }))
+    .filter((item) => item.id_producto > 0 && item.cantidad > 0);
+
+  if (!Number.isInteger(Number(idReserva)) || Number(idReserva) <= 0) {
+    throw new Error("No fue posible identificar la reserva.");
+  }
+  if (!cleanItems.length) throw new Error("Agrega al menos un producto a la venta.");
+  if (!medioPago.trim()) throw new Error("Selecciona el método de pago.");
+
+  const { data, error } = await client().rpc("registrar_venta_snack_reserva", {
+    p_id_reserva: Number(idReserva),
+    p_items: cleanItems,
+    p_medio_pago: medioPago.trim(),
+    p_ubicacion: ubicacion,
+  });
+  if (error) throw error;
+
+  const raw: any = data ?? {};
+  const result: ReservationSnackSaleResult = {
+    id_venta: Number(raw.id_venta ?? 0),
+    total: num(raw.total),
+    nuevo_total: num(raw.nuevo_total),
+    saldo_pendiente: num(raw.saldo_pendiente),
+    medio_pago: String(raw.medio_pago ?? medioPago),
+    ubicacion: String(raw.ubicacion ?? ubicacion) as SnackLocationCode,
+    observacion: String(raw.observacion ?? ""),
+  };
+
+  window.dispatchEvent(new CustomEvent("snack-sale-recorded"));
+  window.dispatchEvent(new CustomEvent("snack-stock-changed"));
+  window.dispatchEvent(new CustomEvent("control-operativo-reserva-updated", {
+    detail: {
+      id_reserva: Number(idReserva),
+      total: result.nuevo_total,
+      saldo_pendiente: result.saldo_pendiente,
+      observacion: result.observacion,
+    },
+  }));
+  return result;
+}
+
+export async function cancelSnackSaleForReservation(
+  idReserva: number,
+  idVenta: number,
+  motivo = "Cliente desistió de la compra",
+): Promise<ReservationSnackSaleCancellationResult> {
+  const current = await getCurrentRole();
+  if (!current || !["administrador", "atencion"].includes(current.role)) {
+    throw new Error("Solo Administración o Atención pueden retirar una venta de snacks de una reserva.");
+  }
+
+  const { data, error } = await client().rpc("anular_venta_snack_reserva", {
+    p_id_reserva: Number(idReserva),
+    p_id_venta: Number(idVenta),
+    p_motivo: motivo.trim() || "Cliente desistió de la compra",
+  });
+  if (error) throw error;
+
+  const raw: any = data ?? {};
+  const result: ReservationSnackSaleCancellationResult = {
+    id_venta: Number(raw.id_venta ?? idVenta),
+    total_retirado: num(raw.total_retirado),
+    nuevo_total: num(raw.nuevo_total),
+    saldo_pendiente: num(raw.saldo_pendiente),
+    exceso_pagado: num(raw.exceso_pagado),
+    observacion: String(raw.observacion ?? ""),
+  };
+
+  window.dispatchEvent(new CustomEvent("snack-sale-recorded"));
+  window.dispatchEvent(new CustomEvent("snack-stock-changed"));
+  window.dispatchEvent(new CustomEvent("control-operativo-reserva-updated", {
+    detail: {
+      id_reserva: Number(idReserva),
+      total: result.nuevo_total,
+      saldo_pendiente: result.saldo_pendiente,
+      observacion: result.observacion,
+    },
+  }));
+  return result;
+}
+

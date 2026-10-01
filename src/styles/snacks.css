@@ -15,3 +15,30 @@
 .snack-cash-form .wide-field{min-width:0}
 @media(max-width:1050px){.snack-user-form,.snack-cash-form{grid-template-columns:repeat(2,minmax(0,1fr))}.snack-user-form>.snack-btn,.snack-cash-form>.snack-btn{width:100%}}
 @media(max-width:650px){.snack-user-form,.snack-cash-form{grid-template-columns:1fr}.snack-cash-form .wide-field{grid-column:auto}.snack-modal-actions{flex-direction:column-reverse}.snack-modal-actions .snack-btn{width:100%}}
+
+
+/* Vencimientos por lote y corroboración física de inventario */
+.snack-muted{font-size:12px;color:#758178;font-weight:600}
+.snack-expiry-form{display:grid;grid-template-columns:2fr 1.2fr 1.2fr 1.2fr 2fr auto auto;gap:10px;align-items:end;margin:14px 0}
+.snack-expiry-form label,.snack-difference-form label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:800;color:#45554c}
+.snack-expiry-form input,.snack-expiry-form select,.snack-difference-form input,.snack-verify-location{height:40px;border:1px solid #d9e1dc;border-radius:9px;padding:0 11px;background:#fff;color:#21352a;outline:none}
+.snack-expiry-form input:focus,.snack-expiry-form select:focus,.snack-difference-form input:focus,.snack-verify-location:focus{border-color:#7aa089;box-shadow:0 0 0 3px rgba(72,116,91,.1)}
+.snack-expiry-warning{display:flex;align-items:center;gap:10px;margin:12px 0;padding:12px 14px;border:1px solid #f0d49a;border-radius:11px;background:#fff8e8;color:#795c1e}
+.snack-expiry-warning div{display:flex;flex-direction:column;gap:2px}.snack-expiry-warning span{font-size:12px}
+.snack-expiry-row-warning{background:#fffdf6}.snack-cell-sub{display:block;color:#7a877f;margin-top:3px;font-size:11px}
+.snack-expiry-badge{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+.snack-expiry-badge.warning{background:#fff2cc;color:#7a5510}.snack-expiry-badge.ok{background:#ecfdf5;color:#166534}
+.snack-icon-btn.danger{color:#b42318;border-color:#f0c9c5}.snack-icon-btn.danger:hover{background:#fff4f2}
+.snack-verify-location{min-width:150px}
+.snack-verify-list{display:flex;flex-direction:column;gap:10px}
+.snack-verify-row{display:grid;grid-template-columns:minmax(180px,1.4fr) 120px minmax(220px,1.4fr) auto;gap:14px;align-items:center;border:1px solid #e1e8e4;border-radius:12px;padding:13px;background:#fff}
+.snack-verify-row.has-difference{border-color:#efcf8e;background:#fffdf7}
+.snack-verify-product,.snack-verify-count,.snack-verify-last{display:flex;flex-direction:column;gap:3px}
+.snack-verify-product strong{color:#243c30}.snack-verify-product span,.snack-verify-count span,.snack-verify-last span{font-size:11px;color:#78857d;font-weight:700}
+.snack-verify-count b{font-size:24px;color:#244c38}.snack-verify-last strong{font-size:12px;color:#33463c}.snack-verify-last small{font-size:11px;color:#7a877f}
+.snack-verify-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.snack-btn.warning-btn{background:#fff7e2;border:1px solid #e8c777;color:#795c1e}
+.snack-btn.warning-btn:hover{background:#ffefc2}
+.snack-difference-form{grid-column:1/-1;display:grid;grid-template-columns:180px minmax(260px,1fr) auto auto;gap:10px;align-items:end;padding-top:12px;border-top:1px solid #edf1ef}
+@media(max-width:1150px){.snack-expiry-form{grid-template-columns:repeat(2,minmax(0,1fr))}.snack-expiry-note{grid-column:span 2}.snack-verify-row{grid-template-columns:1fr 110px 1fr}.snack-verify-actions{grid-column:1/-1;justify-content:flex-start}.snack-difference-form{grid-template-columns:1fr 1fr}.snack-difference-form .snack-btn{width:100%}}
+@media(max-width:700px){.snack-expiry-form,.snack-difference-form{grid-template-columns:1fr}.snack-expiry-note{grid-column:auto}.snack-verify-row{grid-template-columns:1fr}.snack-verify-actions{grid-column:auto;justify-content:stretch}.snack-verify-actions .snack-btn{width:100%}.snack-difference-form{grid-column:auto}.snack-card-title{align-items:flex-start;gap:10px;flex-wrap:wrap}.snack-verify-location{width:100%}}

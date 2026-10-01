@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
-import { ChevronDown, CircleDollarSign, PackagePlus, ShieldCheck, Trash2, UsersRound } from "lucide-react";
+import { ChevronDown, CircleDollarSign, Minus, PackagePlus, Plus, ShieldCheck, ShoppingCart, Trash2, UsersRound } from "lucide-react";
 import {
   cambiarEstadoOperativo,
   getControlOperativo,
@@ -18,9 +18,20 @@ import {
   type OpcionPlanAdicional,
   type ReservaPlanAdicional,
 } from "../../services/reservaPlanAdicional.service";
+import { getMetodosPagoActivos } from "../../services/medioPago.service";
+import {
+  cancelSnackSaleForReservation,
+  getSnackProducts,
+  getSnackSalesForReservation,
+  registerSnackSaleForReservation,
+  snackLocationLabel,
+  type SnackLocationCode,
+  type SnackProduct,
+  type SnackSale,
+} from "../../services/snack.service";
 import "../../styles/control-operativo-advanced.css";
 
-type AdvancedOption = "" | "estado" | "reprogramar" | "devoluciones" | "planes_adicionales" | "valor";
+type AdvancedOption = "" | "estado" | "reprogramar" | "devoluciones" | "planes_adicionales" | "ventas_snacks" | "valor";
 type AttendanceMode = "todos" | "faltaron";
 
 type ReservaResumen = {
@@ -131,6 +142,15 @@ export default function ControlOperativoAdvancedOptions() {
   const [planAdicionalKey, setPlanAdicionalKey] = useState("");
   const [alcancePlanAdicional, setAlcancePlanAdicional] = useState<"todos" | "algunos">("todos");
   const [cantidadPlanAdicional, setCantidadPlanAdicional] = useState("");
+  const [snackProducts, setSnackProducts] = useState<SnackProduct[]>([]);
+  const [snackCart, setSnackCart] = useState<Record<number, number>>({});
+  const [snackLocation, setSnackLocation] = useState<SnackLocationCode>("taquilla_1");
+  const [snackPayment, setSnackPayment] = useState("");
+  const [snackMethods, setSnackMethods] = useState<string[]>([]);
+  const [snackSearch, setSnackSearch] = useState("");
+  const [snackReservationSales, setSnackReservationSales] = useState<SnackSale[]>([]);
+  const [loadingSnacks, setLoadingSnacks] = useState(false);
+  const [loadingSnackSales, setLoadingSnackSales] = useState(false);
   const [loadingReserva, setLoadingReserva] = useState(false);
   const [loadingPlanesAdicionales, setLoadingPlanesAdicionales] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -173,6 +193,13 @@ export default function ControlOperativoAdvancedOptions() {
         setPlanAdicionalKey("");
         setAlcancePlanAdicional("todos");
         setCantidadPlanAdicional("");
+        setSnackProducts([]);
+        setSnackCart({});
+        setSnackLocation("taquilla_1");
+        setSnackPayment("");
+        setSnackMethods([]);
+        setSnackSearch("");
+        setSnackReservationSales([]);
         setError("");
         setSuccess("");
         return;
@@ -265,7 +292,7 @@ export default function ControlOperativoAdvancedOptions() {
   }, [modal]);
 
   useEffect(() => {
-    if (!modal || (selected !== "valor" && selected !== "estado" && selected !== "planes_adicionales")) return;
+    if (!modal || (selected !== "valor" && selected !== "estado" && selected !== "planes_adicionales" && selected !== "ventas_snacks")) return;
     const codigo = getReservaCode(modal);
     if (!codigo) {
       setError("No fue posible identificar la reserva abierta.");
@@ -327,6 +354,79 @@ export default function ControlOperativoAdvancedOptions() {
       .finally(() => active && setLoadingPlanesAdicionales(false));
     return () => { active = false; };
   }, [selected, reserva?.id_reserva, reserva?.id_plan]);
+
+  useEffect(() => {
+    if (selected !== "ventas_snacks") return;
+    let active = true;
+    setLoadingSnacks(true);
+    setError("");
+    Promise.all([
+      getSnackProducts(false, snackLocation),
+      getMetodosPagoActivos(),
+    ])
+      .then(([products, methods]) => {
+        if (!active) return;
+        setSnackProducts(products);
+        setSnackMethods(methods);
+        setSnackCart((current) => {
+          const next: Record<number, number> = {};
+          for (const product of products) {
+            const quantity = Math.min(current[product.id_producto] ?? 0, product.cantidad);
+            if (quantity > 0) next[product.id_producto] = quantity;
+          }
+          return next;
+        });
+        if (!snackPayment && methods.length === 1) setSnackPayment(methods[0]);
+      })
+      .catch((e: any) => active && setError(e?.message || "No fue posible cargar los snacks disponibles."))
+      .finally(() => active && setLoadingSnacks(false));
+    return () => { active = false; };
+  }, [selected, snackLocation]);
+
+  useEffect(() => {
+    if (selected !== "ventas_snacks" || !reserva) {
+      setSnackReservationSales([]);
+      return;
+    }
+
+    let active = true;
+    setLoadingSnackSales(true);
+    getSnackSalesForReservation(reserva.id_reserva)
+      .then((sales) => active && setSnackReservationSales(sales))
+      .catch((e: any) => active && setError(e?.message || "No fue posible cargar las ventas de snacks vinculadas a la reserva."))
+      .finally(() => active && setLoadingSnackSales(false));
+
+    return () => { active = false; };
+  }, [selected, reserva?.id_reserva]);
+
+    const filteredSnackProducts = useMemo(() => {
+    const query = snackSearch.trim().toLowerCase();
+    return snackProducts.filter((product) =>
+      !query || [product.numero_producto, product.nombre_producto].some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [snackProducts, snackSearch]);
+
+  const snackCartItems = useMemo(
+    () => snackProducts
+      .filter((product) => (snackCart[product.id_producto] ?? 0) > 0)
+      .map((product) => ({ product, cantidad: snackCart[product.id_producto] ?? 0 })),
+    [snackProducts, snackCart],
+  );
+
+  const snackTotal = useMemo(
+    () => snackCartItems.reduce((sum, item) => sum + item.product.precio * item.cantidad, 0),
+    [snackCartItems],
+  );
+
+  const setSnackQuantity = (product: SnackProduct, quantity: number) => {
+    const nextQuantity = Math.max(0, Math.min(product.cantidad, Math.floor(Number(quantity) || 0)));
+    setSnackCart((current) => {
+      const next = { ...current };
+      if (nextQuantity <= 0) delete next[product.id_producto];
+      else next[product.id_producto] = nextQuantity;
+      return next;
+    });
+  };
 
   const opcionesDisponibles = useMemo(
     () => opcionesPlanesAdicionales.filter((opcion) => !planesAdicionalesReserva.some((agregado) => opcionCoincideConAgregado(opcion, agregado))),
@@ -461,7 +561,101 @@ export default function ControlOperativoAdvancedOptions() {
     }
   };
 
-  const saveTotal = async () => {
+  const saveSnackSale = async () => {
+    if (!modal || !reserva) return;
+    if (!snackCartItems.length) {
+      setError("Agrega al menos un snack a la venta.");
+      return;
+    }
+    if (!snackPayment) {
+      setError("Selecciona el método de pago de los snacks.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await registerSnackSaleForReservation(
+        reserva.id_reserva,
+        snackCartItems.map(({ product, cantidad }) => ({
+          id_producto: product.id_producto,
+          cantidad,
+        })),
+        snackPayment,
+        snackLocation,
+      );
+
+      setReserva({
+        ...reserva,
+        total: result.nuevo_total,
+        observacion: result.observacion || reserva.observacion,
+      });
+      const totalInput = getBaseTotalInput(modal);
+      if (totalInput) setReactInputValue(totalInput, result.nuevo_total);
+
+      setSnackCart({});
+      const [refreshedProducts, refreshedSales] = await Promise.all([
+        getSnackProducts(false, snackLocation),
+        getSnackSalesForReservation(reserva.id_reserva),
+      ]);
+      setSnackProducts(refreshedProducts);
+      setSnackReservationSales(refreshedSales);
+      setSuccess(
+        `Venta de snacks registrada por ${money(result.total)}. Nuevo total de la reserva: ${money(result.nuevo_total)} · Saldo pendiente: ${money(result.saldo_pendiente)}.`,
+      );
+    } catch (e: any) {
+      setError(e?.message || "No fue posible registrar la venta de snacks en esta reserva.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeSnackSale = async (sale: SnackSale) => {
+    if (!modal || !reserva) return;
+    const detalle = sale.items.map((item) => `${item.cantidad}× ${item.nombre_producto}`).join(", ");
+    if (!window.confirm(
+      `¿Quitar la venta de snacks #${sale.id_venta} por ${money(sale.total)}?\n\n${detalle}\n\nLos productos volverán al inventario y el valor se descontará de la reserva.`,
+    )) return;
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await cancelSnackSaleForReservation(
+        reserva.id_reserva,
+        sale.id_venta,
+        "Cliente desistió de la compra",
+      );
+
+      setReserva({
+        ...reserva,
+        total: result.nuevo_total,
+        observacion: result.observacion || reserva.observacion,
+      });
+      const totalInput = getBaseTotalInput(modal);
+      if (totalInput) setReactInputValue(totalInput, result.nuevo_total);
+
+      const [refreshedProducts, refreshedSales] = await Promise.all([
+        getSnackProducts(false, snackLocation),
+        getSnackSalesForReservation(reserva.id_reserva),
+      ]);
+      setSnackProducts(refreshedProducts);
+      setSnackReservationSales(refreshedSales);
+
+      setSuccess(
+        result.exceso_pagado > 0
+          ? `Venta #${sale.id_venta} retirada. Se descontaron ${money(result.total_retirado)} y los productos volvieron al inventario. Quedó ${money(result.exceso_pagado)} a favor del cliente para gestionar como devolución.`
+          : `Venta #${sale.id_venta} retirada. Se descontaron ${money(result.total_retirado)} de la reserva, se restauró el inventario y el nuevo saldo pendiente es ${money(result.saldo_pendiente)}.`,
+      );
+    } catch (e: any) {
+      setError(e?.message || "No fue posible retirar la venta de snacks de esta reserva.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+      const saveTotal = async () => {
     if (role !== "administrador" || !reserva) return;
     const total = Number(String(nuevoTotal).replace(/[^0-9.]/g, ""));
     if (!Number.isFinite(total) || total <= 0) {
@@ -619,12 +813,140 @@ export default function ControlOperativoAdvancedOptions() {
           <option value="reprogramar">Reprogramar reserva</option>
           <option value="devoluciones">Devoluciones</option>
           {(role === "administrador" || role === "atencion") && <option value="planes_adicionales">Planes adicionales</option>}
+          {(role === "administrador" || role === "atencion") && <option value="ventas_snacks">Ventas de snacks</option>}
           {role === "administrador" && <option value="valor">Cambiar valor total</option>}
         </select>
         <ChevronDown size={17} aria-hidden="true" />
       </div>
 
-      {selected === "planes_adicionales" && (role === "administrador" || role === "atencion") && (
+      {selected === "ventas_snacks" && (role === "administrador" || role === "atencion") && (
+        <section className="op-snack-sale-section">
+          <div className="op-plan-additional-title">
+            <div className="op-snack-sale-icon"><ShoppingCart size={19} /></div>
+            <div>
+              <strong>Ventas de snacks</strong>
+              <small>Vende snacks desde Control Operativo y vincula la compra a esta reserva. El valor se suma al total y se refleja inmediatamente en el saldo pendiente.</small>
+            </div>
+          </div>
+
+          {loadingReserva || loadingSnacks ? (
+            <div className="op-advanced-loading">Cargando inventario y métodos de pago…</div>
+          ) : reserva ? (
+            <>
+              <div className="op-snack-financial-summary">
+                <div><span>Total actual</span><b>{money(reserva.total)}</b></div>
+                <div><span>Ya pagado</span><b>{money(reserva.abono + reserva.pagoSaldo)}</b></div>
+                <div><span>Saldo actual</span><b>{money(Math.max(0, reserva.total - reserva.abono - reserva.pagoSaldo))}</b></div>
+                <div className="accent"><span>Snacks seleccionados</span><b>{money(snackTotal)}</b></div>
+                <div><span>Nuevo total</span><b>{money(reserva.total + snackTotal)}</b></div>
+                <div><span>Nuevo saldo</span><b>{money(Math.max(0, reserva.total + snackTotal - reserva.abono - reserva.pagoSaldo))}</b></div>
+              </div>
+
+              <div className="op-snack-sale-controls">
+                <label>
+                  Punto de venta *
+                  <select value={snackLocation} onChange={(e) => { setSnackLocation(e.target.value as SnackLocationCode); setSnackCart({}); setError(""); }}>
+                    <option value="taquilla_1">Taquilla 1</option>
+                    <option value="enclave">Enclave</option>
+                  </select>
+                </label>
+                <label>
+                  Método de pago *
+                  <select value={snackPayment} onChange={(e) => setSnackPayment(e.target.value)}>
+                    <option value="">Seleccionar</option>
+                    {snackMethods.map((method) => <option key={method} value={method}>{method}</option>)}
+                  </select>
+                </label>
+                <label className="wide">
+                  Buscar producto
+                  <input value={snackSearch} onChange={(e) => setSnackSearch(e.target.value)} placeholder={`Buscar snack en ${snackLocationLabel(snackLocation)}…`} />
+                </label>
+              </div>
+
+              <div className="op-snack-product-list">
+                {filteredSnackProducts.length === 0 ? (
+                  <div className="op-plan-additional-empty">No hay snacks disponibles en {snackLocationLabel(snackLocation)}.</div>
+                ) : filteredSnackProducts.map((product) => {
+                  const quantity = snackCart[product.id_producto] ?? 0;
+                  return (
+                    <div className="op-snack-product-row" key={product.id_producto}>
+                      <div>
+                        <strong>{product.nombre_producto}</strong>
+                        <small>{product.numero_producto} · {product.cantidad} disponible{product.cantidad === 1 ? "" : "s"} · {money(product.precio)} c/u</small>
+                      </div>
+                      <div className="op-snack-qty">
+                        <button type="button" disabled={quantity <= 0} onClick={() => setSnackQuantity(product, quantity - 1)}><Minus size={14} /></button>
+                        <input type="number" min={0} max={product.cantidad} value={quantity} onChange={(e) => setSnackQuantity(product, Number(e.target.value))} />
+                        <button type="button" disabled={product.cantidad <= 0 || quantity >= product.cantidad} onClick={() => setSnackQuantity(product, quantity + 1)}><Plus size={14} /></button>
+                      </div>
+                      <b>{money(product.precio * quantity)}</b>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {snackCartItems.length > 0 && (
+                <div className="op-snack-cart">
+                  <div className="op-snack-cart-head"><strong>Productos a cobrar</strong><b>{money(snackTotal)}</b></div>
+                  {snackCartItems.map(({ product, cantidad }) => (
+                    <div className="op-snack-cart-line" key={product.id_producto}>
+                      <span>{cantidad}× {product.nombre_producto}</span>
+                      <b>{money(product.precio * cantidad)}</b>
+                    </div>
+                  ))}
+                  <small>El sistema agregará automáticamente una observación a la reserva con los productos, cantidades, total, método de pago y número de venta.</small>
+                </div>
+              )}
+
+              <div className="op-plan-additional-actions">
+                <button type="button" className="op-btn primary" disabled={saving || !snackCartItems.length || !snackPayment} onClick={saveSnackSale}>
+                  {saving ? "Registrando venta…" : `Registrar venta · ${money(snackTotal)}`}
+                </button>
+              </div>
+
+              <div className="op-snack-linked-sales">
+                <div className="op-plan-additional-current-head">
+                  <strong>Ventas vinculadas a esta reserva</strong>
+                  <small>Si el cliente se arrepiente, puedes retirar la venta. El stock vuelve al punto de venta y el total de la reserva se corrige.</small>
+                </div>
+
+                {loadingSnackSales ? (
+                  <div className="op-advanced-loading">Cargando ventas vinculadas…</div>
+                ) : snackReservationSales.length === 0 ? (
+                  <div className="op-plan-additional-empty">Esta reserva todavía no tiene ventas de snacks vinculadas.</div>
+                ) : (
+                  <div className="op-snack-linked-list">
+                    {snackReservationSales.map((sale) => (
+                      <div className="op-snack-linked-row" key={sale.id_venta}>
+                        <div>
+                          <strong>Venta #{sale.id_venta} · {money(sale.total)}</strong>
+                          <small>
+                            {sale.items.map((item) => `${item.cantidad}× ${item.nombre_producto}`).join(" · ")}
+                          </small>
+                          <small>{sale.medio_pago} · {snackLocationLabel(sale.ubicacion_codigo)}</small>
+                        </div>
+                        <button
+                          type="button"
+                          title="Quitar venta de snacks"
+                          aria-label={`Quitar venta de snacks #${sale.id_venta}`}
+                          disabled={saving}
+                          onClick={() => removeSnackSale(sale)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="op-plan-additional-empty">No fue posible cargar la información de la reserva.</div>
+          )}
+        </section>
+      )}
+
+            {selected === "planes_adicionales" && (role === "administrador" || role === "atencion") && (
         <section className="op-plan-additional-section">
           <div className="op-plan-additional-title">
             <div className="op-plan-additional-icon"><PackagePlus size={19} /></div>

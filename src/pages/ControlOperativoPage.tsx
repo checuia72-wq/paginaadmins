@@ -59,11 +59,16 @@ export default function ControlOperativoPage() {
   useEffect(()=>{load();},[load]);
   useEffect(()=>{
     const handleReservaUpdated=(event:Event)=>{
-      const detail=(event as CustomEvent<{id_reserva:number;total?:number;incluye_almuerzo?:boolean}>).detail;
+      const detail=(event as CustomEvent<{id_reserva:number;total?:number;saldo_pendiente?:number;observacion?:string;incluye_almuerzo?:boolean}>).detail;
       if(!detail?.id_reserva)return;
       const patch=(row:ControlOperativoRow)=>{
         const next={...row};
-        if(Number.isFinite(detail.total))next.total=Number(detail.total);
+        if(Number.isFinite(detail.total)){
+          next.total=Number(detail.total);
+          next.saldo_pendiente=Math.max(0,next.total-next.abono-next.pago_saldo);
+        }
+        if(Number.isFinite(detail.saldo_pendiente))next.saldo_pendiente=Number(detail.saldo_pendiente);
+        if(typeof detail.observacion==="string"&&detail.observacion.trim())next.observacion=detail.observacion;
         if(detail.incluye_almuerzo===true)next.incluye_almuerzo=true;
         return next;
       };
