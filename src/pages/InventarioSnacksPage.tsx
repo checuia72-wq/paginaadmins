@@ -100,6 +100,7 @@ export default function InventarioSnacksPage() {
 
   const isAdmin = role === "administrador";
   const canManageInventory = role === "administrador" || role === "coordinador";
+  const canManageExpiry = role === "administrador" || role === "coordinador";
   const canViewVerification = role === "administrador" || role === "coordinador" || role === "guia";
   const canVerifyInventory = role === "coordinador" || role === "guia";
 
@@ -384,7 +385,7 @@ export default function InventarioSnacksPage() {
               ? "Compara el conteo físico con el último inventario registrado y reporta cualquier diferencia con una observación."
               : isAdmin
                 ? "Administra existencias por punto, lotes y fechas de vencimiento."
-                : "Administra existencias por punto, revisa alertas de vencimiento y corrobora el inventario físico."}
+                : "Administra existencias por punto, registra y actualiza lotes con fecha de vencimiento y corrobora el inventario físico."}
           </p>
         </div>
         <button className="snack-btn secondary" onClick={() => load(true)} disabled={refreshing}>
@@ -411,10 +412,10 @@ export default function InventarioSnacksPage() {
           <section className="snack-card snack-expiry-card">
             <div className="snack-card-title">
               <div><CalendarClock size={18} /><strong>Control de vencimientos por lote</strong></div>
-              <span className="snack-muted">{isAdmin ? "Administración registra y actualiza los lotes." : "Coordinación recibe las alertas de los próximos 20 días."}</span>
+              <span className="snack-muted">Administración y Coordinación pueden registrar, editar y cerrar lotes. Las alertas se activan 20 días antes.</span>
             </div>
 
-            {isAdmin && (
+            {canManageExpiry && (
               <div className="snack-expiry-form">
                 <label>Producto *
                   <select value={expiryForm.id_producto} onChange={(e) => setExpiryForm({ ...expiryForm, id_producto: e.target.value })}>
@@ -451,9 +452,9 @@ export default function InventarioSnacksPage() {
 
             <div className="snack-table-wrap">
               <table className="snack-table">
-                <thead><tr><th>Producto</th><th>Punto</th><th>Vencimiento</th><th>Unidades</th><th>Estado</th>{isAdmin && <th>Acciones</th>}</tr></thead>
+                <thead><tr><th>Producto</th><th>Punto</th><th>Vencimiento</th><th>Unidades</th><th>Estado</th>{canManageExpiry && <th>Acciones</th>}</tr></thead>
                 <tbody>
-                  {loading ? <tr><td colSpan={isAdmin ? 6 : 5} className="snack-empty">Cargando lotes…</td></tr> : expiryLots.length === 0 ? <tr><td colSpan={isAdmin ? 6 : 5} className="snack-empty">Todavía no hay fechas de vencimiento activas.</td></tr> : expiryLots.map((lot) => {
+                  {loading ? <tr><td colSpan={canManageExpiry ? 6 : 5} className="snack-empty">Cargando lotes…</td></tr> : expiryLots.length === 0 ? <tr><td colSpan={canManageExpiry ? 6 : 5} className="snack-empty">Todavía no hay fechas de vencimiento activas.</td></tr> : expiryLots.map((lot) => {
                     const days = daysUntil(lot.fecha_vencimiento);
                     const urgent = days <= 20;
                     const status = days < 0 ? `Vencido hace ${Math.abs(days)} día${Math.abs(days) === 1 ? "" : "s"}` : days === 0 ? "Vence hoy" : `${days} día${days === 1 ? "" : "s"}`;
@@ -464,7 +465,7 @@ export default function InventarioSnacksPage() {
                         <td>{lot.fecha_vencimiento}</td>
                         <td><strong>{lot.cantidad_actual}</strong></td>
                         <td><span className={`snack-expiry-badge ${urgent ? "warning" : "ok"}`}>{status}</span></td>
-                        {isAdmin && <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startExpiryEdit(lot)} title="Editar lote"><Pencil size={15} /></button><button className="snack-icon-btn danger" onClick={() => removeExpiry(lot)} title="Eliminar fecha cuando el lote ya salió"><Trash2 size={15} /></button></div></td>}
+                        {canManageExpiry && <td><div className="snack-actions"><button className="snack-icon-btn" onClick={() => startExpiryEdit(lot)} title="Editar lote"><Pencil size={15} /></button><button className="snack-icon-btn danger" onClick={() => removeExpiry(lot)} title="Eliminar fecha cuando el lote ya salió"><Trash2 size={15} /></button></div></td>}
                       </tr>
                     );
                   })}

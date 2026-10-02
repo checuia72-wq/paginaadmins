@@ -355,14 +355,17 @@ export async function saveSnackExpiryLot(args: {
   cantidad_actual: number;
   observacion?: string;
 }) {
-  await requireAdmin();
+  const current = await requireInventoryManager();
   const quantity = Math.floor(num(args.cantidad_actual));
   if (!Number.isInteger(quantity) || quantity <= 0) {
     throw new Error("La cantidad del lote debe ser un entero mayor a cero.");
   }
   if (!args.fecha_vencimiento) throw new Error("Selecciona la fecha de vencimiento.");
 
-  const { data, error } = await client().rpc("admin_guardar_lote_vencimiento_snack", {
+  const rpcName = current.role === "coordinador"
+    ? "coordinador_guardar_lote_vencimiento_snack"
+    : "admin_guardar_lote_vencimiento_snack";
+  const { data, error } = await client().rpc(rpcName, {
     p_id_lote_vencimiento: args.id_lote_vencimiento ?? null,
     p_id_producto: Number(args.id_producto),
     p_ubicacion: args.codigo_ubicacion,
@@ -376,8 +379,11 @@ export async function saveSnackExpiryLot(args: {
 }
 
 export async function deleteSnackExpiryLot(idLote: number) {
-  await requireAdmin();
-  const { data, error } = await client().rpc("admin_eliminar_lote_vencimiento_snack", {
+  const current = await requireInventoryManager();
+  const rpcName = current.role === "coordinador"
+    ? "coordinador_eliminar_lote_vencimiento_snack"
+    : "admin_eliminar_lote_vencimiento_snack";
+  const { data, error } = await client().rpc(rpcName, {
     p_id_lote_vencimiento: Number(idLote),
   });
   if (error) throw error;
