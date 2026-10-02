@@ -24,7 +24,7 @@ export default function SalesAccessRoute({ location, children }: Props) {
           return;
         }
 
-        if (current.role === "administrador" || current.role === "atencion") {
+        if (current.role === "administrador" || current.role === "atencion" || current.role === "coordinador") {
           if (active) setAllowed(true);
           return;
         }

@@ -49,8 +49,8 @@ export default function App() {
           <Route index element={<RoleHomePage />} />
           <Route path="reservas" element={<RoleRoute allow={["administrador", "atencion"]}><ReservasPage /></RoleRoute>} />
           <Route path="control-operativo" element={<RoleRoute allow={["administrador", "atencion", "coordinador"]}><ControlOperativoAccessPage /></RoleRoute>} />
-          <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion", "guia"]}><SalesAccessRoute location="taquilla_1"><VentasSnacksPage ubicacion="taquilla_1" titulo="Ventas Taquilla 1" /></SalesAccessRoute></RoleRoute>} />
-          <Route path="ventas-snacks-enclave" element={<RoleRoute allow={["administrador", "atencion", "guia"]}><SalesAccessRoute location="enclave"><VentasSnacksPage ubicacion="enclave" titulo="Ventas Enclave" /></SalesAccessRoute></RoleRoute>} />
+          <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion", "coordinador", "guia"]}><SalesAccessRoute location="taquilla_1"><VentasSnacksPage ubicacion="taquilla_1" titulo="Ventas Taquilla 1" /></SalesAccessRoute></RoleRoute>} />
+          <Route path="ventas-snacks-enclave" element={<RoleRoute allow={["administrador", "atencion", "coordinador", "guia"]}><SalesAccessRoute location="enclave"><VentasSnacksPage ubicacion="enclave" titulo="Ventas Enclave" /></SalesAccessRoute></RoleRoute>} />
           <Route path="inventario-snacks" element={<RoleRoute allow={["administrador", "coordinador", "guia"]}><InventarioSnacksPage /></RoleRoute>} />
           <Route path="transferencias-snacks" element={<RoleRoute allow={["administrador"]}><TransferenciaSnacksPage /></RoleRoute>} />
           <Route path="accesos-guias" element={<RoleRoute allow={["administrador", "coordinador"]}><AccesosGuiasPage /></RoleRoute>} />
