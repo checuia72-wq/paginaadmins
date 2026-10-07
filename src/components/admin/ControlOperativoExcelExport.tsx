@@ -22,6 +22,91 @@ const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Bo
 
 type ExportMode = "excel" | "policies" | "mines";
 
+type ExportFilters = {
+  search: string;
+  plan: string;
+  estado: string;
+  hora: string;
+  mina: string;
+  refrigerio: string;
+  restaurante: string;
+  almuerzo: string;
+  saldo: string;
+};
+
+const emptyExportFilters = (): ExportFilters => ({
+  search: "",
+  plan: "",
+  estado: "",
+  hora: "",
+  mina: "",
+  refrigerio: "",
+  restaurante: "",
+  almuerzo: "",
+  saldo: "",
+});
+
+const norm = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
+function rowMatchesFilters(row: ControlOperativoRow, filters: ExportFilters) {
+  const q = norm(filters.search);
+  if (filters.plan && row.plan !== filters.plan) return false;
+  if (filters.estado && row.estado_operativo !== filters.estado) return false;
+  if (filters.hora && hora(row.hora) !== filters.hora) return false;
+  if (filters.mina && String(!!row.mina) !== (filters.mina === "si" ? "true" : "false")) return false;
+  if (filters.refrigerio && String(!!row.refrigerio) !== (filters.refrigerio === "si" ? "true" : "false")) return false;
+  if (filters.restaurante && row.restaurante !== filters.restaurante) return false;
+  if (filters.almuerzo === "si" && !row.incluye_almuerzo) return false;
+  if (filters.almuerzo === "no" && row.incluye_almuerzo) return false;
+  if (filters.saldo === "pendiente" && Number(row.saldo_pendiente || 0) <= 0) return false;
+  if (filters.saldo === "pagado" && Number(row.saldo_pendiente || 0) > 0) return false;
+
+  if (!q) return true;
+  return [
+    row.reserva_codigo,
+    row.plan,
+    row.nombre,
+    row.documento,
+    row.contacto,
+    row.observacion,
+    row.almuerzo,
+    row.medio_abono,
+    row.referencia_pago_abono,
+    row.medio_saldo,
+    row.estado_operativo,
+    row.motivo_estado_operativo,
+  ].map(norm).join(" ").includes(q);
+}
+
+function readCurrentPageFilters(): { date: string; filters: ExportFilters } {
+  const root = document.querySelector(".op-filters");
+  const filters = emptyExportFilters();
+  if (!root) return { date: "", filters };
+
+  const search = root.querySelector<HTMLInputElement>(".op-search input");
+  filters.search = search?.value ?? "";
+
+  let date = "";
+  for (const label of Array.from(root.querySelectorAll<HTMLLabelElement>("label"))) {
+    const name = label.querySelector("span")?.textContent?.trim().toLowerCase() ?? "";
+    const field = label.querySelector<HTMLInputElement | HTMLSelectElement>("input,select");
+    if (!field) continue;
+    const value = field.value ?? "";
+
+    if (name === "fecha reserva") date = value;
+    else if (name === "plan") filters.plan = value;
+    else if (name === "estado operativo") filters.estado = value;
+    else if (name === "horario") filters.hora = value;
+    else if (name === "mina") filters.mina = value;
+    else if (name === "refrigerio") filters.refrigerio = value;
+    else if (name === "restaurante") filters.restaurante = value;
+    else if (name === "almuerzo") filters.almuerzo = value;
+    else if (name === "saldo") filters.saldo = value;
+  }
+
+  return { date, filters };
+}
+
 const estadoLabel = (value: string) => ({
   programada: "Programada",
   asistio: "Asistió",
@@ -67,7 +152,7 @@ function devolucionesPorReserva(devoluciones: ReservaDevolucion[]) {
   return map;
 }
 
-async function exportarControlOperativoExcel(desde: string, hasta: string) {
+async function exportarControlOperativoExcel(desde: string, hasta: string, filters: ExportFilters) {
   if (!desde || !hasta) throw new Error("Selecciona la fecha inicial y la fecha final.");
   if (desde > hasta) throw new Error("La fecha inicial no puede ser posterior a la fecha final.");
 
@@ -77,8 +162,10 @@ async function exportarControlOperativoExcel(desde: string, hasta: string) {
     getDevolucionesControlOperativo(),
   ]);
 
-  const rows = allRows.filter((row) => fechaEnRango(row.fecha, desde, hasta));
-  if (!rows.length) throw new Error("No hay reservas registradas dentro del rango seleccionado.");
+  const rows = allRows.filter((row) =>
+    fechaEnRango(row.fecha, desde, hasta) && rowMatchesFilters(row, filters)
+  );
+  if (!rows.length) throw new Error("No hay registros que coincidan con el rango y los filtros seleccionados.");
 
   const reservationIds = new Set(rows.map((row) => row.id_reserva));
   const pagos = allPagos.filter((pago) => reservationIds.has(pago.id_reserva));
@@ -244,10 +331,25 @@ export default function ControlOperativoExcelExport() {
   const [selectedDate, setSelectedDate] = useState(hoy());
   const [rangeStart, setRangeStart] = useState(hoy());
   const [rangeEnd, setRangeEnd] = useState(hoy());
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [filters, setFilters] = useState<ExportFilters>(emptyExportFilters());
   const [rows, setRows] = useState<ControlOperativoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
+
+  const exportPlans = useMemo(
+    () => [...new Set(rows.map((row) => row.plan).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")),
+    [rows],
+  );
+  const exportHours = useMemo(
+    () => [...new Set(rows.map((row) => hora(row.hora)).filter(Boolean))].sort(),
+    [rows],
+  );
+  const exportRestaurants = useMemo(
+    () => [...new Set(rows.map((row) => row.restaurante).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")),
+    [rows],
+  );
 
   const asistentesCount = useMemo(
     () => mode === "excel" ? 0 : participantesActivosPorFecha(selectedDate, rows, mode === "mines").length,
@@ -258,10 +360,10 @@ export default function ControlOperativoExcelExport() {
     if (mode !== "excel" || !rangeStart || !rangeEnd || rangeStart > rangeEnd) return 0;
     return new Set(
       rows
-        .filter((row) => fechaEnRango(row.fecha, rangeStart, rangeEnd))
+        .filter((row) => fechaEnRango(row.fecha, rangeStart, rangeEnd) && rowMatchesFilters(row, filters))
         .map((row) => row.id_reserva)
     ).size;
-  }, [rows, rangeStart, rangeEnd, mode]);
+  }, [rows, rangeStart, rangeEnd, mode, filters]);
 
   useEffect(() => {
     const ensureExportButtons = () => {
@@ -326,7 +428,8 @@ export default function ControlOperativoExcelExport() {
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      const pageDate = (document.querySelector('.op-filters input[type="date"]') as HTMLInputElement | null)?.value;
+      const pageState = readCurrentPageFilters();
+      const pageDate = pageState.date;
       const nextMode: ExportMode = buttonMode === "excel" ? "excel" : buttonMode === "mines" ? "mines" : "policies";
       setMode(nextMode);
       setError("");
@@ -335,6 +438,8 @@ export default function ControlOperativoExcelExport() {
         const initialDate = pageDate || hoy();
         setRangeStart(initialDate);
         setRangeEnd(initialDate);
+        setFilters(pageState.filters);
+        setAdvancedOpen(Object.values(pageState.filters).some(Boolean));
       } else {
         setSelectedDate(pageDate || hoy());
       }
@@ -368,7 +473,7 @@ export default function ControlOperativoExcelExport() {
     setExporting(true);
     try {
       if (mode === "excel") {
-        await exportarControlOperativoExcel(rangeStart, rangeEnd);
+        await exportarControlOperativoExcel(rangeStart, rangeEnd, filters);
       } else {
         const latest = await getControlOperativo();
         setRows(latest);
@@ -403,7 +508,7 @@ export default function ControlOperativoExcelExport() {
             <h2 id="daily-export-title" style={{ margin:"5px 0 4px", fontSize:24, color:"#211a12" }}>{title}</h2>
             <p style={{ margin:0, color:"#786b5d", fontSize:14 }}>
               {isExcel
-                ? "Selecciona el rango de fechas de visita que quieres incluir. Se exportarán las reservas, pagos y devoluciones correspondientes a esas reservas."
+                ? "Selecciona el rango de fechas y, si lo necesitas, usa las opciones avanzadas para exportar únicamente las reservas o personas que coincidan con tus filtros."
                 : isMines
                   ? "Selecciona la fecha de visita. El Excel incluirá nombre, cédula, edad y nacionalidad de los asistentes de ese día que tienen Mina."
                   : "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día."}
@@ -414,15 +519,87 @@ export default function ControlOperativoExcelExport() {
 
         <div style={{ padding:"24px 26px" }}>
           {isExcel ? (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:14 }}>
-              <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
-                Desde
-                <input type="date" value={rangeStart} onChange={(e) => { setRangeStart(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
-              </label>
-              <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
-                Hasta
-                <input type="date" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => { setRangeEnd(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
-              </label>
+            <div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:14 }}>
+                <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
+                  Desde
+                  <input type="date" value={rangeStart} onChange={(e) => { setRangeStart(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
+                </label>
+                <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
+                  Hasta
+                  <input type="date" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => { setRangeEnd(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen((value) => !value)}
+                style={{ marginTop:16, width:"100%", minHeight:44, border:"1px solid #e2cfb2", borderRadius:12, background:"#fffaf2", color:"#6b5130", fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 14px" }}
+              >
+                <span>Opciones avanzadas de exportación</span>
+                <span>{advancedOpen ? "▲" : "▼"}</span>
+              </button>
+
+              {advancedOpen && (
+                <div style={{ marginTop:12, padding:14, border:"1px solid #eadbc5", borderRadius:14, background:"#fffdf9", display:"grid", gap:12 }}>
+                  <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>
+                    Buscar persona, código o documento
+                    <input
+                      value={filters.search}
+                      onChange={(e) => setFilters((current) => ({ ...current, search:e.target.value }))}
+                      placeholder="Ej. CH..., nombre, cédula..."
+                      style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 11px" }}
+                    />
+                  </label>
+
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:10 }}>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Estado operativo
+                      <select value={filters.estado} onChange={(e) => setFilters((current) => ({...current, estado:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option><option value="programada">Programada</option><option value="asistio">Asistió</option><option value="no_asistio">No asistió</option><option value="reprogramada">Reprogramada</option><option value="cancelada">Cancelada</option>
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, minWidth:0, fontSize:12, fontWeight:700, color:"#5f5244" }}>Plan
+                      <select value={filters.plan} onChange={(e) => setFilters((current) => ({...current, plan:e.target.value}))} style={{ width:"100%", minWidth:0, maxWidth:"100%", boxSizing:"border-box", height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option>{exportPlans.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Horario
+                      <select value={filters.hora} onChange={(e) => setFilters((current) => ({...current, hora:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option>{exportHours.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Saldo
+                      <select value={filters.saldo} onChange={(e) => setFilters((current) => ({...current, saldo:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option><option value="pendiente">Pendiente</option><option value="pagado">Pagado</option>
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Mina
+                      <select value={filters.mina} onChange={(e) => setFilters((current) => ({...current, mina:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option><option value="si">Sí</option><option value="no">No</option>
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Refrigerio
+                      <select value={filters.refrigerio} onChange={(e) => setFilters((current) => ({...current, refrigerio:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option><option value="si">Sí</option><option value="no">No</option>
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Almuerzo
+                      <select value={filters.almuerzo} onChange={(e) => setFilters((current) => ({...current, almuerzo:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option><option value="si">Con almuerzo</option><option value="no">Sin almuerzo</option>
+                      </select>
+                    </label>
+                    <label style={{ display:"grid", gap:6, fontSize:12, fontWeight:700, color:"#5f5244" }}>Restaurante
+                      <select value={filters.restaurante} onChange={(e) => setFilters((current) => ({...current, restaurante:e.target.value}))} style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 10px" }}>
+                        <option value="">Todos</option>{exportRestaurants.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                    </label>
+                  </div>
+
+                  <button type="button" onClick={() => setFilters(emptyExportFilters())} style={{ justifySelf:"start", border:0, background:"transparent", color:"#b15c36", fontWeight:800, cursor:"pointer", padding:0 }}>
+                    Limpiar filtros avanzados
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
