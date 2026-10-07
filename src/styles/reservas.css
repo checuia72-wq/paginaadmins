@@ -41,3 +41,23 @@
 @media(max-width:900px){.rv-kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.rv-header{flex-direction:column;align-items:flex-start}.rv-kpis{grid-template-columns:repeat(2,1fr);gap:10px}.rv-kpi{padding:12px 14px;gap:10px}.rv-kpi-value{font-size:22px}.rv-kpi-icon{width:36px;height:36px}.rv-filter-label{display:none}.rv-detail-grid{grid-template-columns:1fr}.rv-approval-grid{grid-template-columns:1fr}.rv-approval-modal{max-width:96vw}.rv-approval-header,.rv-approval-body,.rv-approval-footer{padding-left:16px;padding-right:16px}.rv-approval-footer{flex-direction:column-reverse}.rv-approval-footer .rv-btn-cancel,.rv-approval-footer .rv-btn-save{width:100%}}
 @media(max-width:760px){.rv-desktop-only{display:none!important}.rv-mobile-only{display:flex!important}}
+
+/* Configuración de tarifas por ocupación para planes Buggy */
+.rv-buggy-config{border:1px solid #cfe7d9;background:linear-gradient(180deg,#f7fcf9,#ffffff);border-radius:14px;padding:16px;margin:0 0 18px}
+.rv-buggy-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.rv-buggy-head>div{display:flex;flex-direction:column;gap:4px}
+.rv-buggy-head strong{color:#234b37;font-size:14px}
+.rv-buggy-head span{color:#64748b;font-size:12px}
+.rv-buggy-route{display:inline-flex!important;align-items:center;background:#e9f7ee;color:#2f6f4e!important;border:1px solid #cfe7d9;border-radius:999px;padding:5px 9px;font-size:11px!important;font-weight:800;max-width:48%;text-align:right}
+.rv-buggy-distribution{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.rv-buggy-distribution>div{border:1px solid #dfe9e3;background:#fff;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:5px}
+.rv-buggy-distribution span,.rv-buggy-total span{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b}
+.rv-buggy-distribution b{font-size:24px;color:#244c38}
+.rv-buggy-distribution small{color:#2f6f4e;font-weight:700}
+.rv-buggy-total{display:grid;grid-template-columns:1fr 1fr;gap:10px;border-top:1px solid #e2ebe6;padding-top:12px;margin-top:12px}
+.rv-buggy-total>div{display:flex;flex-direction:column;gap:4px}
+.rv-buggy-total>div:last-child{text-align:right}
+.rv-buggy-total strong{font-size:14px;color:#1f3d2f}
+.rv-buggy-total>div:last-child strong{font-size:18px;color:#2f6f4e}
+.rv-buggy-note{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#f1f8f4;color:#536b5d;font-size:11px;line-height:1.45}
+@media(max-width:640px){.rv-buggy-head{flex-direction:column}.rv-buggy-route{max-width:100%;text-align:left}.rv-buggy-distribution,.rv-buggy-total{grid-template-columns:1fr}.rv-buggy-total>div:last-child{text-align:left}}

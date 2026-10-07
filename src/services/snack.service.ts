@@ -190,6 +190,32 @@ export type SnackTransfer = {
   created_at: string;
 };
 
+export type SnackOperationalProduct = {
+  id_producto: number;
+  numero_producto: string;
+  nombre_producto: string;
+  cantidad: number;
+};
+
+export type SnackOperationalConsumptionItem = {
+  id_detalle: number;
+  id_consumo: number;
+  id_producto: number | null;
+  numero_producto: string;
+  nombre_producto: string;
+  cantidad: number;
+};
+
+export type SnackOperationalConsumption = {
+  id_consumo: number;
+  fecha_consumo: string;
+  ubicacion_codigo: SnackLocationCode;
+  total_unidades: number;
+  registrado_por: string | null;
+  registrado_email: string;
+  items: SnackOperationalConsumptionItem[];
+};
+
 const num = (value: unknown) => {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1130,3 +1156,104 @@ export async function cancelSnackSaleForReservation(
   return result;
 }
 
+
+
+export async function getOperationalSnackProducts(
+  ubicacion: SnackLocationCode,
+): Promise<SnackOperationalProduct[]> {
+  const current = await getCurrentRole();
+  if (!current) throw new Error("Debes iniciar sesión para consultar los snacks.");
+
+  const { data, error } = await client().rpc("listar_snacks_consumo_operativo", {
+    p_ubicacion: ubicacion,
+  });
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id_producto: Number(row.id_producto),
+    numero_producto: String(row.numero_producto ?? ""),
+    nombre_producto: String(row.nombre_producto ?? ""),
+    cantidad: Math.max(0, Math.floor(num(row.cantidad))),
+  }));
+}
+
+export async function registerOperationalSnackConsumption(
+  items: SnackSaleInput[],
+  ubicacion: SnackLocationCode,
+) {
+  const current = await getCurrentRole();
+  if (!current || !["administrador", "atencion", "coordinador", "guia"].includes(current.role)) {
+    throw new Error("No tienes permisos para registrar consumos operativos.");
+  }
+
+  const cleanItems = items
+    .map((item) => ({
+      id_producto: Number(item.id_producto),
+      cantidad: Math.floor(num(item.cantidad)),
+    }))
+    .filter((item) => item.id_producto > 0 && item.cantidad > 0);
+
+  if (!cleanItems.length) throw new Error("Agrega al menos un snack al consumo.");
+
+  const { data, error } = await client().rpc("registrar_consumo_operativo_snack", {
+    p_items: cleanItems,
+    p_ubicacion: ubicacion,
+  });
+  if (error) throw error;
+
+  window.dispatchEvent(new CustomEvent("snack-stock-changed"));
+  window.dispatchEvent(new CustomEvent("snack-operational-consumption-recorded"));
+  return data;
+}
+
+export async function getOperationalSnackConsumptions(
+  limit = 100,
+): Promise<SnackOperationalConsumption[]> {
+  const current = await getCurrentRole();
+  if (!current || !["administrador", "coordinador"].includes(current.role)) {
+    return [];
+  }
+
+  const { data: consumptions, error: consumptionError } = await client()
+    .from("snack_consumo_operativo")
+    .select("id_consumo,fecha_consumo,ubicacion_codigo,total_unidades,registrado_por,registrado_email")
+    .order("fecha_consumo", { ascending: false })
+    .limit(Math.max(1, Math.min(300, Math.floor(limit))));
+  if (consumptionError) throw consumptionError;
+
+  const rows = consumptions ?? [];
+  const ids = rows.map((row: any) => Number(row.id_consumo));
+  if (!ids.length) return [];
+
+  const { data: details, error: detailError } = await client()
+    .from("snack_consumo_operativo_detalle")
+    .select("id_detalle,id_consumo,id_producto,numero_producto,nombre_producto,cantidad")
+    .in("id_consumo", ids)
+    .order("id_detalle", { ascending: true });
+  if (detailError) throw detailError;
+
+  const grouped = new Map<number, SnackOperationalConsumptionItem[]>();
+  for (const row of details ?? []) {
+    const item: SnackOperationalConsumptionItem = {
+      id_detalle: Number((row as any).id_detalle),
+      id_consumo: Number((row as any).id_consumo),
+      id_producto: (row as any).id_producto == null ? null : Number((row as any).id_producto),
+      numero_producto: String((row as any).numero_producto ?? ""),
+      nombre_producto: String((row as any).nombre_producto ?? ""),
+      cantidad: Math.max(0, Math.floor(num((row as any).cantidad))),
+    };
+    const list = grouped.get(item.id_consumo) ?? [];
+    list.push(item);
+    grouped.set(item.id_consumo, list);
+  }
+
+  return rows.map((row: any) => ({
+    id_consumo: Number(row.id_consumo),
+    fecha_consumo: String(row.fecha_consumo ?? ""),
+    ubicacion_codigo: String(row.ubicacion_codigo || "taquilla_1") as SnackLocationCode,
+    total_unidades: Math.max(0, Math.floor(num(row.total_unidades))),
+    registrado_por: row.registrado_por ? String(row.registrado_por) : null,
+    registrado_email: String(row.registrado_email ?? ""),
+    items: grouped.get(Number(row.id_consumo)) ?? [],
+  }));
+}

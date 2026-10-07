@@ -30,6 +30,7 @@ import {
   Calendar,
   UserCheck,
 } from "lucide-react";
+import { calcularTotalPlan } from "../../services/planTarifa.service";
 import ReservationApprovalModal from "../common/ReservationApprovalModal";
 import LargeGroupExcelImport, { type ImportedGroupParticipant } from "./LargeGroupExcelImport";
 import "../../styles/reservas.css";
@@ -48,6 +49,9 @@ interface Reserva {
   aprobado?: boolean | null;
   fecha_reserva?: string | null;
   hora_reserva?: string | null;
+  precio_unitario?: number | null;
+  valor_total?: number | null;
+  observacion?: string | null;
 }
 
 interface PlanHora {
@@ -59,6 +63,8 @@ interface Plan {
   id_plan: number;
   nombre_plan: string;
   tipo_hora?: string | null;
+  id_plan_padre?: number | null;
+  es_grupo?: boolean | null;
   plan_horas?: PlanHora[];
 }
 
@@ -105,6 +111,33 @@ const emptyForm = {
   hora_visita: "",
   cantidad_personas: 1,
   aprobado: false,
+};
+
+type BuggyPricingPreview = {
+  singlePrice: number;
+  doublePrice: number;
+  singleBuggies: number;
+  doubleBuggies: number;
+  totalPrice: number;
+  averageUnitPrice: number;
+};
+
+const normalizeName = (value?: string | null) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const defaultBuggyCount = (people: number) => Math.max(1, Math.ceil(Math.max(1, people) / 2));
+
+const buggyShape = (people: number, requested: number) => {
+  const totalPeople = Math.max(1, Math.floor(Number(people) || 1));
+  const minBuggies = Math.ceil(totalPeople / 2);
+  const maxBuggies = totalPeople;
+  const buggyCount = Math.min(maxBuggies, Math.max(minBuggies, Math.floor(Number(requested) || minBuggies)));
+  const doubleBuggies = totalPeople - buggyCount;
+  const singleBuggies = buggyCount - doubleBuggies;
+  return { totalPeople, minBuggies, maxBuggies, buggyCount, doubleBuggies, singleBuggies };
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -158,6 +191,9 @@ export default function ReservasAdmin() {
   const [hasFullGroupList, setHasFullGroupList] = useState(false);
   const [groupImportFile, setGroupImportFile] = useState("");
   const [groupImportDirty, setGroupImportDirty] = useState(false);
+  const [buggyCount, setBuggyCount] = useState(1);
+  const [buggyPricing, setBuggyPricing] = useState<BuggyPricingPreview | null>(null);
+  const [loadingBuggyPricing, setLoadingBuggyPricing] = useState(false);
 
   const [viewing, setViewing] = useState<Reserva | null>(null);
   const [participantes, setParticipantes] = useState<Participante[]>([]);
@@ -191,6 +227,20 @@ export default function ReservasAdmin() {
     [planes, formData.id_plan],
   );
 
+  const selectedParentPlan = useMemo(
+    () => selectedPlan?.id_plan_padre
+      ? planes.find((p) => Number(p.id_plan) === Number(selectedPlan.id_plan_padre)) ?? null
+      : null,
+    [planes, selectedPlan],
+  );
+
+  const isBuggyPlan = useMemo(() => {
+    if (!selectedPlan) return false;
+    const ownName = normalizeName(selectedPlan.nombre_plan);
+    const parentName = normalizeName(selectedParentPlan?.nombre_plan);
+    return ownName.includes("bugg") || parentName.includes("bugg");
+  }, [selectedPlan, selectedParentPlan]);
+
   const availableHours = useMemo(
     () =>
       [...(selectedPlan?.plan_horas ?? [])].sort((a, b) =>
@@ -199,10 +249,65 @@ export default function ReservasAdmin() {
     [selectedPlan],
   );
 
+  useEffect(() => {
+    if (!isBuggyPlan) {
+      setBuggyPricing(null);
+      setLoadingBuggyPricing(false);
+      return;
+    }
+
+    const people = Math.max(1, Number(formData.cantidad_personas) || 1);
+    const shape = buggyShape(people, buggyCount);
+    if (shape.buggyCount !== buggyCount) setBuggyCount(shape.buggyCount);
+
+    if (!formData.fecha_visita || formData.id_plan === "") {
+      setBuggyPricing(null);
+      return;
+    }
+
+    let active = true;
+    setLoadingBuggyPricing(true);
+
+    Promise.all([
+      calcularTotalPlan(Number(formData.id_plan), 1, formData.fecha_visita),
+      calcularTotalPlan(Number(formData.id_plan), 2, formData.fecha_visita),
+    ])
+      .then(([singlePrice, doublePrice]) => {
+        if (!active) return;
+        const currentShape = buggyShape(people, shape.buggyCount);
+        const totalPrice =
+          currentShape.singleBuggies * Number(singlePrice || 0) +
+          currentShape.doubleBuggies * Number(doublePrice || 0);
+
+        setBuggyPricing({
+          singlePrice: Number(singlePrice || 0),
+          doublePrice: Number(doublePrice || 0),
+          singleBuggies: currentShape.singleBuggies,
+          doubleBuggies: currentShape.doubleBuggies,
+          totalPrice,
+          averageUnitPrice: totalPrice / currentShape.totalPeople,
+        });
+      })
+      .catch((error) => {
+        console.error("No fue posible calcular las tarifas de Buggy:", error);
+        if (active) setBuggyPricing(null);
+      })
+      .finally(() => {
+        if (active) setLoadingBuggyPricing(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isBuggyPlan, formData.id_plan, formData.fecha_visita, formData.cantidad_personas, buggyCount]);
+
   const syncParticipantCount = (count: number) => {
     const max = isLargeGroup ? 1000 : 30;
     const safe = Math.max(1, Math.min(max, Number(count) || 1));
     setFormData((p) => ({ ...p, cantidad_personas: safe }));
+    if (isBuggyPlan) {
+      setBuggyCount((current) => buggyShape(safe, current).buggyCount);
+    }
 
     if (isLargeGroup) {
       if (!hasFullGroupList) setNewParticipants((p) => [p[0] ?? emptyParticipant()]);
@@ -276,6 +381,8 @@ export default function ReservasAdmin() {
     setGroupImportDirty(false);
     setFormData(emptyForm);
     setNewParticipants([emptyParticipant()]);
+    setBuggyCount(1);
+    setBuggyPricing(null);
     setFormError(null);
     setShowForm(true);
   };
@@ -298,6 +405,17 @@ export default function ReservasAdmin() {
       aprobado: !!r.aprobado,
     });
     setNewParticipants([]);
+    let savedBuggyCount = defaultBuggyCount(Number(r.cantidad_personas ?? 1));
+    try {
+      const parsed = r.observacion ? JSON.parse(r.observacion) : null;
+      if (parsed?.tipo === "configuracion_buggy" && Number(parsed?.cantidad_buggies) > 0) {
+        savedBuggyCount = Number(parsed.cantidad_buggies);
+      }
+    } catch {
+      // Observaciones antiguas en texto libre se ignoran.
+    }
+    setBuggyCount(savedBuggyCount);
+    setBuggyPricing(null);
     setFormError(null);
     setShowForm(true);
     setLoadingEditParticipants(true);
@@ -374,6 +492,15 @@ export default function ReservasAdmin() {
     if (isLargeGroup && hasFullGroupList && newParticipants.length !== Number(formData.cantidad_personas)) {
       return "La cantidad de personas debe coincidir con la lista importada desde Excel.";
     }
+    if (isBuggyPlan) {
+      const shape = buggyShape(Number(formData.cantidad_personas), buggyCount);
+      if (shape.buggyCount !== buggyCount) {
+        return `Para ${shape.totalPeople} persona(s), selecciona entre ${shape.minBuggies} y ${shape.maxBuggies} buggy(s).`;
+      }
+      if (!buggyPricing || buggyPricing.totalPrice <= 0 || buggyPricing.averageUnitPrice <= 0) {
+        return "No fue posible calcular las tarifas del Buggy para 1 y 2 ocupantes. Verifica la fecha y las tarifas del subplan.";
+      }
+    }
 
     const participantsToValidate = isLargeGroup
       ? hasFullGroupList
@@ -435,6 +562,26 @@ export default function ReservasAdmin() {
       const idFecha = await getOrCreatePlanFecha(Number(formData.id_plan), formData.fecha_visita);
       const idHora = await getOrCreatePlanHora(Number(formData.id_plan), formData.hora_visita);
       const fechaReserva = `${formData.fecha_visita}T${formData.hora_visita}:00`;
+      const buggyReservationFields = isBuggyPlan && buggyPricing
+        ? {
+            precio_unitario: buggyPricing.averageUnitPrice,
+            valor_total: buggyPricing.totalPrice,
+            valor_abonado: Math.round(buggyPricing.totalPrice * 0.3),
+            observacion: JSON.stringify({
+              tipo: "configuracion_buggy",
+              version: 1,
+              ruta: selectedPlan?.nombre_plan ?? null,
+              grupo: selectedParentPlan?.nombre_plan ?? "Buggys",
+              cantidad_buggies: buggyCount,
+              cantidad_personas: Number(formData.cantidad_personas),
+              buggies_individuales: buggyPricing.singleBuggies,
+              buggies_dobles: buggyPricing.doubleBuggies,
+              tarifa_buggy_individual: buggyPricing.singlePrice,
+              tarifa_buggy_doble: buggyPricing.doublePrice,
+              total_aplicado: buggyPricing.totalPrice,
+            }),
+          }
+        : {};
 
       if (editing) {
         await updateReserva(editing.id_reserva, {
@@ -446,6 +593,7 @@ export default function ReservasAdmin() {
           cantidad_personas: Number(formData.cantidad_personas),
           aprobado: formData.aprobado,
           fecha_aprobacion,
+          ...buggyReservationFields,
         });
 
         if (isLargeGroup && groupImportDirty) {
@@ -481,6 +629,7 @@ export default function ReservasAdmin() {
           cantidad_personas: Number(formData.cantidad_personas),
           aprobado: formData.aprobado,
           fecha_aprobacion,
+          ...buggyReservationFields,
         });
 
         for (let i = 0; i < participantsToSave.length; i++) {
@@ -846,7 +995,11 @@ export default function ReservasAdmin() {
                 <label>Plan *</label>
                 <select
                   value={formData.id_plan}
-                  onChange={(e) => setFormData({ ...formData, id_plan: e.target.value ? Number(e.target.value) : "", id_fecha: "", id_hora: "" })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, id_plan: e.target.value ? Number(e.target.value) : "", id_fecha: "", id_hora: "" });
+                    setBuggyCount(defaultBuggyCount(Number(formData.cantidad_personas)));
+                    setBuggyPricing(null);
+                  }}
                 >
                   <option value="">Seleccionar plan</option>
                   {planes.map((p) => <option key={p.id_plan} value={p.id_plan}>#{p.id_plan} — {p.nombre_plan}</option>)}
@@ -896,6 +1049,91 @@ export default function ReservasAdmin() {
                     : "Si aumentas esta cantidad, aparecerán formularios nuevos para registrar a las personas faltantes."}
                 </small>
               </div>
+
+              {isBuggyPlan && (
+                <div className="rv-buggy-config">
+                  <div className="rv-buggy-head">
+                    <div>
+                      <strong>🚙 Configuración de Buggies</strong>
+                      <span>El precio cambia según cada buggy lleve 1 o 2 ocupantes.</span>
+                    </div>
+                    <span className="rv-buggy-route">{selectedPlan?.nombre_plan}</span>
+                  </div>
+
+                  {(() => {
+                    const shape = buggyShape(Number(formData.cantidad_personas), buggyCount);
+                    return (
+                      <>
+                        <div className="rv-form-group" style={{ marginBottom: 12 }}>
+                          <label>Cantidad de buggies *</label>
+                          <input
+                            type="number"
+                            min={shape.minBuggies}
+                            max={shape.maxBuggies}
+                            value={shape.buggyCount}
+                            onChange={(e) => setBuggyCount(
+                              buggyShape(Number(formData.cantidad_personas), Number(e.target.value)).buggyCount,
+                            )}
+                          />
+                          <small style={{ color: "#64748b" }}>
+                            Para {shape.totalPeople} persona(s) puedes usar entre {shape.minBuggies} y {shape.maxBuggies} buggy(s).
+                          </small>
+                        </div>
+
+                        <div className="rv-buggy-distribution">
+                          <div>
+                            <span>Buggies con 1 persona</span>
+                            <b>{shape.singleBuggies}</b>
+                            <small>
+                              {loadingBuggyPricing
+                                ? "Calculando tarifa…"
+                                : buggyPricing
+                                  ? `${buggyPricing.singlePrice.toLocaleString("es-CO")} c/u`
+                                  : "Selecciona fecha para calcular"}
+                            </small>
+                          </div>
+                          <div>
+                            <span>Buggies con 2 personas</span>
+                            <b>{shape.doubleBuggies}</b>
+                            <small>
+                              {loadingBuggyPricing
+                                ? "Calculando tarifa…"
+                                : buggyPricing
+                                  ? `${buggyPricing.doublePrice.toLocaleString("es-CO")} c/u`
+                                  : "Selecciona fecha para calcular"}
+                            </small>
+                          </div>
+                        </div>
+
+                        <div className="rv-buggy-total">
+                          <div>
+                            <span>Distribución</span>
+                            <strong>
+                              {shape.singleBuggies > 0 ? `${shape.singleBuggies} individual${shape.singleBuggies === 1 ? "" : "es"}` : ""}
+                              {shape.singleBuggies > 0 && shape.doubleBuggies > 0 ? " + " : ""}
+                              {shape.doubleBuggies > 0 ? `${shape.doubleBuggies} doble${shape.doubleBuggies === 1 ? "" : "s"}` : ""}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Total del plan</span>
+                            <strong>
+                              {loadingBuggyPricing
+                                ? "Calculando…"
+                                : buggyPricing
+                                  ? `${buggyPricing.totalPrice.toLocaleString("es-CO")} COP`
+                                  : "—"}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <p className="rv-buggy-note">
+                          Este cálculo usa las tarifas configuradas para 1 y 2 personas del subplan seleccionado, igual que el formulario público de Checua.
+                        </p>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
 
               {isLargeGroup && (
                 <>

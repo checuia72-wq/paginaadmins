@@ -296,7 +296,8 @@ export async function createReserva(payload:any){
 }
 export async function updateReserva(id:number,payload:any){
   const db=getClient();
-  const shouldRecalculate=Object.prototype.hasOwnProperty.call(payload,"id_plan")||Object.prototype.hasOwnProperty.call(payload,"id_fecha")||Object.prototype.hasOwnProperty.call(payload,"cantidad_personas");
+  const hasExplicitPricing=Object.prototype.hasOwnProperty.call(payload,"precio_unitario")&&Object.prototype.hasOwnProperty.call(payload,"valor_total");
+  const shouldRecalculate=!hasExplicitPricing&&(Object.prototype.hasOwnProperty.call(payload,"id_plan")||Object.prototype.hasOwnProperty.call(payload,"id_fecha")||Object.prototype.hasOwnProperty.call(payload,"cantidad_personas"));
   const finalPayload={...payload};
 
   if(shouldRecalculate){

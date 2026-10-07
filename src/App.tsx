@@ -15,6 +15,7 @@ import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import AdicionalesPage from "./pages/AdicionalesPage";
 import InventarioSnacksPage from "./pages/InventarioSnacksPage";
 import VentasSnacksPage from "./pages/VentasSnacksPage";
+import ConsumoOperativoSnacksPage from "./pages/ConsumoOperativoSnacksPage";
 import TransferenciaSnacksPage from "./pages/TransferenciaSnacksPage";
 import AccesosGuiasPage from "./pages/AccesosGuiasPage";
 import EntregaEfectivoPage from "./pages/EntregaEfectivoPage";
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="control-operativo" element={<RoleRoute allow={["administrador", "atencion", "coordinador"]}><ControlOperativoAccessPage /></RoleRoute>} />
           <Route path="ventas-snacks" element={<RoleRoute allow={["administrador", "atencion", "coordinador", "guia"]}><SalesAccessRoute location="taquilla_1"><VentasSnacksPage ubicacion="taquilla_1" titulo="Ventas Taquilla 1" /></SalesAccessRoute></RoleRoute>} />
           <Route path="ventas-snacks-enclave" element={<RoleRoute allow={["administrador", "atencion", "coordinador", "guia"]}><SalesAccessRoute location="enclave"><VentasSnacksPage ubicacion="enclave" titulo="Ventas Enclave" /></SalesAccessRoute></RoleRoute>} />
+          <Route path="consumo-operativo-snacks" element={<RoleRoute allow={["administrador", "atencion", "coordinador", "guia"]}><ConsumoOperativoSnacksPage /></RoleRoute>} />
           <Route path="inventario-snacks" element={<RoleRoute allow={["administrador", "coordinador", "guia"]}><InventarioSnacksPage /></RoleRoute>} />
           <Route path="transferencias-snacks" element={<RoleRoute allow={["administrador"]}><TransferenciaSnacksPage /></RoleRoute>} />
           <Route path="accesos-guias" element={<RoleRoute allow={["administrador", "coordinador"]}><AccesosGuiasPage /></RoleRoute>} />
