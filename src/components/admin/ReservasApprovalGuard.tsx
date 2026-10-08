@@ -72,6 +72,7 @@ export default function ReservasApprovalGuard() {
   const [observacion, setObservacion] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advancedSaved, setAdvancedSaved] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -203,6 +204,7 @@ export default function ReservasApprovalGuard() {
     setValorUnitario(formatMoney(unitario));
     setObservacion(String(reserva.observacion ?? ""));
     setError(null);
+    setAdvancedSaved("");
   };
 
   const closeModal = () => {
@@ -237,6 +239,67 @@ export default function ReservasApprovalGuard() {
       if (!hasLunch) setRestaurante("");
     }
     setError(null);
+  };
+
+  const guardarCambioValor = async () => {
+    if (!selected) return;
+
+    const cantidad = Math.max(1, Number(selected.cantidad_personas || 1));
+    const totalNuevo = advancedOption === "valor_total"
+      ? parseMoney(valorTotal)
+      : advancedOption === "valor_unitario"
+        ? parseMoney(valorUnitario) * cantidad
+        : 0;
+    const unitarioNuevo = totalNuevo / cantidad;
+
+    if (advancedOption !== "valor_total" && advancedOption !== "valor_unitario") {
+      setError("Selecciona una opción de cambio de valor.");
+      return;
+    }
+    if (!Number.isFinite(totalNuevo) || totalNuevo <= 0) {
+      setError("El valor total de la reserva debe ser mayor a $0.");
+      return;
+    }
+    if (!Number.isFinite(unitarioNuevo) || unitarioNuevo <= 0) {
+      setError("El valor unitario debe ser mayor a $0.");
+      return;
+    }
+    if (!observacion.trim()) {
+      setError("Debes registrar una observación explicando el cambio de valor.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setAdvancedSaved("");
+
+    try {
+      await updateReserva(selected.id_reserva, {
+        valor_total: totalNuevo,
+        precio_unitario: unitarioNuevo,
+        observacion: observacion.trim(),
+      });
+
+      setSelected({
+        ...selected,
+        valor_total: totalNuevo,
+        precio_unitario: unitarioNuevo,
+        observacion: observacion.trim(),
+      });
+      setReservas((current) => current.map((item) =>
+        item.id_reserva === selected.id_reserva
+          ? { ...item, valor_total: totalNuevo, precio_unitario: unitarioNuevo, observacion: observacion.trim() }
+          : item
+      ));
+      setValorTotal(formatMoney(totalNuevo));
+      setValorUnitario(formatMoney(unitarioNuevo));
+      setAdvancedSaved(`Cambios guardados. Nuevo total: ${formatMoney(totalNuevo)}.`);
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || "No fue posible guardar el nuevo valor de la reserva.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const aprobarReserva = async () => {
@@ -524,6 +587,7 @@ export default function ReservasApprovalGuard() {
                     setValorUnitario(formatMoney(selected.precio_unitario || (Number(selected.valor_total || 0) / cantidadSeleccionada)));
                     setObservacion(String(selected.observacion ?? ""));
                     setError(null);
+                    setAdvancedSaved("");
                   }}
                   disabled={saving}
                   style={{ width: "100%" }}
@@ -579,6 +643,7 @@ export default function ReservasApprovalGuard() {
                           const digits = e.target.value.replace(/\D/g, "");
                           setValorTotal(digits ? Number(digits).toLocaleString("es-CO") : "");
                           setError(null);
+                          setAdvancedSaved("");
                         }}
                         placeholder="0"
                         disabled={saving}
@@ -593,13 +658,24 @@ export default function ReservasApprovalGuard() {
                     <label>Observación del cambio *</label>
                     <textarea
                       value={observacion}
-                      onChange={(e) => { setObservacion(e.target.value); setError(null); }}
+                      onChange={(e) => { setObservacion(e.target.value); setError(null); setAdvancedSaved(""); }}
                       placeholder="Ej. Tarifa especial, descuento autorizado o ajuste operativo."
                       rows={3}
                       disabled={saving}
                       style={{ resize: "vertical", minHeight: 82 }}
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    className="rv-btn-save"
+                    onClick={guardarCambioValor}
+                    disabled={saving}
+                    style={{ justifySelf: "start" }}
+                  >
+                    {saving ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                  {advancedSaved && <div className="rv-approval-success">{advancedSaved}</div>}
                 </div>
               )}
 
@@ -617,6 +693,7 @@ export default function ReservasApprovalGuard() {
                           const digits = e.target.value.replace(/\D/g, "");
                           setValorUnitario(digits ? Number(digits).toLocaleString("es-CO") : "");
                           setError(null);
+                          setAdvancedSaved("");
                         }}
                         placeholder="0"
                         disabled={saving}
@@ -638,6 +715,17 @@ export default function ReservasApprovalGuard() {
                       style={{ resize: "vertical", minHeight: 82 }}
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    className="rv-btn-save"
+                    onClick={guardarCambioValor}
+                    disabled={saving}
+                    style={{ justifySelf: "start" }}
+                  >
+                    {saving ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                  {advancedSaved && <div className="rv-approval-success">{advancedSaved}</div>}
                 </div>
               )}
             </div>
