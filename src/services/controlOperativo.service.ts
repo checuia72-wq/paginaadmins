@@ -302,6 +302,57 @@ export async function registrarDevolucionReserva(args:{id_reserva:number;monto:n
   return data==null?null:Number(data);
 }
 
+
+export async function replaceAbonoPagos(
+  idReserva:number,
+  pagos:Array<{monto:number;medio_pago:string;referencia?:string|null}>
+){
+  const validos=pagos
+    .map((p)=>({
+      monto:num(p.monto),
+      medio_pago:text(p.medio_pago).trim(),
+      referencia:text(p.referencia).trim().toUpperCase(),
+    }))
+    .filter((p)=>p.monto>0&&p.medio_pago);
+
+  const db=client();
+  const{error:deleteError}=await db
+    .from("reserva_pago")
+    .delete()
+    .eq("id_reserva",idReserva)
+    .eq("tipo_pago","abono");
+  if(deleteError)throw deleteError;
+
+  if(validos.length){
+    const{error:insertError}=await db
+      .from("reserva_pago")
+      .insert(validos.map((p)=>({
+        id_reserva:idReserva,
+        tipo_pago:"abono",
+        monto:p.monto,
+        medio_pago:p.medio_pago,
+        observacion:p.referencia?("Referencia abono: "+p.referencia):null,
+      })));
+    if(insertError)throw insertError;
+  }
+
+  const total=validos.reduce((s,p)=>s+p.monto,0);
+  const metodo=validos.length===1?validos[0].medio_pago:null;
+  const referencia=validos.length===1?(validos[0].referencia||null):null;
+
+  const{error:updateError}=await db
+    .from("reserva")
+    .update({
+      valor_abonado:total,
+      metodo_pago_abono:metodo,
+      referencia_pago_abono:referencia,
+    })
+    .eq("id_reserva",idReserva);
+  if(updateError)throw updateError;
+
+  return total;
+}
+
 export async function replaceSaldoPagos(idReserva:number,pagos:Array<{monto:number;medio_pago:string}>){const validos=pagos.filter(p=>num(p.monto)>0&&text(p.medio_pago).trim());const total=validos.reduce((s,p)=>s+num(p.monto),0);const{error:deleteError}=await client().from("reserva_pago").delete().eq("id_reserva",idReserva).eq("tipo_pago","saldo");if(deleteError)throw deleteError;if(validos.length){const{error:insertError}=await client().from("reserva_pago").insert(validos.map(p=>({id_reserva:idReserva,tipo_pago:"saldo",monto:num(p.monto),medio_pago:p.medio_pago.trim()})));if(insertError)throw insertError;}const metodo=validos.length===1?validos[0].medio_pago:null;const{error:updateError}=await client().from("reserva").update({valor_saldo_pagado:total,metodo_pago_saldo:metodo}).eq("id_reserva",idReserva);if(updateError)throw updateError;return total;}
 export async function updateControlReserva(idReserva:number,payload:Record<string,unknown>){
   const patch={...payload};

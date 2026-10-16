@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CreditCard, Settings2, Tag, X } from "lucide-react";
+import { CheckCircle2, CreditCard, Plus, Settings2, Tag, Trash2, X } from "lucide-react";
 import ReservasAdmin from "./ReservasAdmin";
 import { getReservas, updateReserva } from "../../services/api.service";
 import { getMetodosPagoActivos } from "../../services/medioPago.service";
 import { getRestaurantesActivos } from "../../services/restaurante.service";
+import { replaceAbonoPagos } from "../../services/controlOperativo.service";
 import {
   aprobarReservaOperativa,
   codigosCompatibles,
@@ -42,6 +43,11 @@ type ReservaLite = {
 };
 
 type AdvancedOption = "" | "refrigerio" | "adicionales" | "valor_total" | "valor_unitario";
+type AbonoSplit = {
+  monto: string;
+  metodoPago: string;
+  referencia: string;
+};
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
 const parseMoney = (value: string) => Number(value.replace(/\./g, "").replace(/,/g, ".").replace(/[^\d.]/g, "") || 0);
@@ -59,9 +65,9 @@ export default function ReservasApprovalGuard() {
   const [incluirAdicionales, setIncluirAdicionales] = useState(false);
   const [reservaAdicionalesOriginales, setReservaAdicionalesOriginales] = useState<ReservaAdicional[]>([]);
   const [selected, setSelected] = useState<ReservaLite | null>(null);
-  const [valorAbonado, setValorAbonado] = useState("");
-  const [metodoPago, setMetodoPago] = useState("");
-  const [referenciaPagoAbono, setReferenciaPagoAbono] = useState("");
+  const [abonos, setAbonos] = useState<AbonoSplit[]>([
+    { monto: "", metodoPago: "", referencia: "" },
+  ]);
   const [incluyeAlmuerzo, setIncluyeAlmuerzo] = useState(false);
   const [restaurante, setRestaurante] = useState("");
   const [codigoId, setCodigoId] = useState<number | "">("");
@@ -189,9 +195,7 @@ export default function ReservasApprovalGuard() {
     const lunch = adicionalesPlan.find((item) => item.adicional.codigo === "almuerzo");
 
     setSelected(reserva);
-    setValorAbonado("");
-    setMetodoPago("");
-    setReferenciaPagoAbono("");
+    setAbonos([{ monto: "", metodoPago: "", referencia: "" }]);
     setReservaAdicionalesOriginales(existentes);
     setAdicionalCantidad(cantidades);
     setIncluirAdicionales(existentes.some((row) => row.tipo_movimiento === "agregado" && Number(row.cantidad_aplicada || 0) > 0));
@@ -305,8 +309,14 @@ export default function ReservasApprovalGuard() {
   const aprobarReserva = async () => {
     if (!selected) return;
 
-    const valor = parseMoney(valorAbonado);
-    const referencia = referenciaPagoAbono.trim().toUpperCase();
+    const pagosAbono = abonos
+      .map((p) => ({
+        monto: parseMoney(p.monto),
+        medio_pago: p.metodoPago.trim(),
+        referencia: p.referencia.trim().toUpperCase(),
+      }))
+      .filter((p) => p.monto > 0 || p.medio_pago || p.referencia);
+    const valor = pagosAbono.reduce((total, p) => total + p.monto, 0);
     const cantidad = Math.max(1, Number(selected.cantidad_personas || 1));
     const totalOriginal = Number(selected.valor_total || 0);
     const unitarioOriginal = Number(selected.precio_unitario || (totalOriginal > 0 ? totalOriginal / cantidad : 0));
@@ -397,15 +407,23 @@ export default function ReservasApprovalGuard() {
         : false;
 
     if (!Number.isFinite(valor) || valor <= 0) {
-      setError("Ingresa un valor abonado mayor a $0.");
+      setError("Ingresa al menos un valor abonado mayor a $0.");
       return;
     }
-    if (!metodoPago) {
-      setError("Selecciona el método de pago del abono.");
+    if (!pagosAbono.length) {
+      setError("Agrega al menos un método de pago para el abono.");
       return;
     }
-    if (!/^[A-Z0-9]{4}$/.test(referencia)) {
-      setError("Ingresa los últimos 4 caracteres de la referencia del pago del abono.");
+    if (pagosAbono.some((p) => p.monto <= 0)) {
+      setError("Cada método de pago debe tener un valor mayor a $0.");
+      return;
+    }
+    if (pagosAbono.some((p) => !p.medio_pago)) {
+      setError("Selecciona el método de pago de cada abono.");
+      return;
+    }
+    if (pagosAbono.some((p) => !/^[A-Z0-9]{4}$/.test(p.referencia))) {
+      setError("Cada abono debe tener los últimos 4 caracteres de su referencia.");
       return;
     }
     if (!Number.isFinite(totalNuevo) || totalNuevo <= 0) {
@@ -440,7 +458,7 @@ export default function ReservasApprovalGuard() {
     try {
       const patch: Record<string, unknown> = {
         refrigerio: incluyeRefrigerio,
-        referencia_pago_abono: referencia,
+        referencia_pago_abono: pagosAbono.length === 1 ? pagosAbono[0].referencia : null,
       };
 
       if (ajusteMonetario || Math.abs(impactoAdicionales - impactoOriginal) > 0.01) {
@@ -452,11 +470,12 @@ export default function ReservasApprovalGuard() {
       await updateReserva(selected.id_reserva, patch);
       reservaActualizada = true;
       await replaceReservaAdicionales(selected.id_reserva, movimientosAdicionalesFinales);
+      await replaceAbonoPagos(selected.id_reserva, pagosAbono);
 
       await aprobarReservaOperativa({
         id_reserva: selected.id_reserva,
         valor_abonado: valor,
-        metodo_pago: metodoPago,
+        metodo_pago: pagosAbono[0].medio_pago,
         incluye_almuerzo: incluyeAlmuerzo,
         restaurante: incluyeAlmuerzo ? restaurante : null,
         id_codigo_operativo: Number(codigoId),
@@ -477,6 +496,7 @@ export default function ReservasApprovalGuard() {
             observacion: selected.observacion ?? null,
           });
           await replaceReservaAdicionales(selected.id_reserva, reservaAdicionalesOriginales);
+          await replaceAbonoPagos(selected.id_reserva, []);
         } catch (rollbackError) {
           console.error("No se pudo revertir la configuración temporal de la reserva:", rollbackError);
         }
@@ -730,54 +750,125 @@ export default function ReservasApprovalGuard() {
               )}
             </div>
 
-            <div className="rv-approval-grid">
-              <div className="rv-form-group">
-                <label>Valor abonado *</label>
-                <div className="rv-money-input-wrap">
-                  <span>$</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoFocus
-                    value={valorAbonado}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, "");
-                      setValorAbonado(digits ? Number(digits).toLocaleString("es-CO") : "");
-                      setError(null);
-                    }}
-                    placeholder="0"
-                    disabled={saving}
-                  />
+            <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div>
+                  <strong style={{ display: "block", color: "#3b3127", fontSize: 14 }}>Abono de la reserva</strong>
+                  <small style={{ color: "#877967" }}>Puedes dividir el abono entre varios métodos de pago, cada uno con su propia referencia.</small>
                 </div>
-              </div>
-
-              <div className="rv-form-group">
-                <label>Método de pago del abono *</label>
-                <select value={metodoPago} onChange={(e) => { setMetodoPago(e.target.value); setError(null); }} disabled={saving}>
-                  <option value="">Seleccionar método de pago</option>
-                  {metodosPago.map((m) => <option key={m} value={m}>{labelMetodo(m)}</option>)}
-                </select>
-              </div>
-
-              <div className="rv-form-group" style={{ gridColumn: "1 / -1" }}>
-                <label>Referencia pago abono *</label>
-                <input
-                  type="text"
-                  value={referenciaPagoAbono}
-                  maxLength={4}
-                  autoComplete="off"
-                  onChange={(e) => {
-                    const clean = e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
-                    setReferenciaPagoAbono(clean);
-                    setError(null);
-                  }}
-                  placeholder="Últimos 4 caracteres · Ej. A7F3"
+                <button
+                  type="button"
+                  className="rv-btn-cancel"
                   disabled={saving}
-                  style={{ textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}
-                />
-                <small style={{ color: "#877967", lineHeight: 1.4 }}>
-                  Ingresa únicamente los últimos 4 caracteres de la referencia o comprobante del abono.
-                </small>
+                  onClick={() => setAbonos((current) => [...current, { monto: "", metodoPago: "", referencia: "" }])}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <Plus size={15}/> Añadir método
+                </button>
+              </div>
+
+              {abonos.map((pago, index) => (
+                <div
+                  key={index}
+                  className="rv-approval-grid"
+                  style={{
+                    padding: 12,
+                    border: "1px solid #e7dac6",
+                    borderRadius: 12,
+                    background: "#fff",
+                    alignItems: "end",
+                  }}
+                >
+                  <div className="rv-form-group">
+                    <label>Valor abonado *</label>
+                    <div className="rv-money-input-wrap">
+                      <span>$</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoFocus={index === 0}
+                        value={pago.monto}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, "");
+                          setAbonos((current) => current.map((item, i) =>
+                            i === index
+                              ? { ...item, monto: digits ? Number(digits).toLocaleString("es-CO") : "" }
+                              : item
+                          ));
+                          setError(null);
+                        }}
+                        placeholder="0"
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rv-form-group">
+                    <label>Método de pago *</label>
+                    <select
+                      value={pago.metodoPago}
+                      onChange={(e) => {
+                        setAbonos((current) => current.map((item, i) =>
+                          i === index ? { ...item, metodoPago: e.target.value } : item
+                        ));
+                        setError(null);
+                      }}
+                      disabled={saving}
+                    >
+                      <option value="">Seleccionar método de pago</option>
+                      {metodosPago.map((m) => <option key={m} value={m}>{labelMetodo(m)}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="rv-form-group">
+                    <label>Referencia *</label>
+                    <input
+                      type="text"
+                      value={pago.referencia}
+                      maxLength={4}
+                      autoComplete="off"
+                      onChange={(e) => {
+                        const clean = e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
+                        setAbonos((current) => current.map((item, i) =>
+                          i === index ? { ...item, referencia: clean } : item
+                        ));
+                        setError(null);
+                      }}
+                      placeholder="Ej. A7F3"
+                      disabled={saving}
+                      style={{ textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}
+                    />
+                  </div>
+
+                  {abonos.length > 1 && (
+                    <button
+                      type="button"
+                      className="rv-btn-cancel"
+                      onClick={() => setAbonos((current) => current.filter((_, i) => i !== index))}
+                      disabled={saving}
+                      title="Quitar método"
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 42 }}
+                    >
+                      <Trash2 size={16}/>
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "#fff8ec",
+                border: "1px solid #ead9bf",
+                fontSize: 13,
+              }}>
+                <span style={{ color: "#6f665d", fontWeight: 700 }}>Total abonado</span>
+                <strong style={{ color: "#2d241a" }}>
+                  ${formatMoney(abonos.reduce((total, item) => total + parseMoney(item.monto), 0))}
+                </strong>
               </div>
             </div>
 
