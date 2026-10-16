@@ -23,6 +23,7 @@ const formatDate = (value?: string | null) => {
 
 export default function UserManagementPanel() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ManagedUserRole>("guia");
   const [password, setPassword] = useState("");
@@ -53,7 +54,14 @@ export default function UserManagementPanel() {
   useEffect(() => { void load(); }, [load]);
 
   const createUser = async () => {
+    const cleanUsername = username.trim().toLowerCase();
     const cleanEmail = email.trim().toLowerCase();
+
+    if (!/^[a-z0-9._-]{3,30}$/.test(cleanUsername)) {
+      setError("El nombre de usuario debe tener entre 3 y 30 caracteres y solo usar letras minúsculas, números, punto, guion o guion bajo.");
+      return;
+    }
+
     if (!cleanEmail || !cleanEmail.includes("@")) {
       setError("Ingresa un correo electrónico válido.");
       return;
@@ -67,8 +75,9 @@ export default function UserManagementPanel() {
     setError("");
     setSuccess("");
     try {
-      await createManagedUser(cleanEmail, password, role);
-      setSuccess(`Usuario ${cleanEmail} creado como ${role === "guia" ? "Guía" : "Coordinador"}. La contraseña fue establecida correctamente.`);
+      await createManagedUser(cleanUsername, cleanEmail, password, role);
+      setSuccess(`Usuario ${cleanUsername} (${cleanEmail}) creado como ${role === "guia" ? "Guía" : "Coordinador"}. La contraseña fue establecida correctamente.`);
+      setUsername("");
       setEmail("");
       setPassword("");
       setRole("guia");
@@ -117,6 +126,18 @@ export default function UserManagementPanel() {
         </p>
 
         <div className="snack-user-form">
+          <label>
+            Nombre de usuario *
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 30))}
+              placeholder="ej. juan.perez"
+              autoComplete="off"
+            />
+            <small>3 a 30 caracteres. Letras minúsculas, números, punto, guion o guion bajo.</small>
+          </label>
+
           <label>
             Correo electrónico *
             <input
@@ -172,6 +193,7 @@ export default function UserManagementPanel() {
           <table className="snack-table">
             <thead>
               <tr>
+                <th>Usuario</th>
                 <th>Correo</th>
                 <th>Rol</th>
                 <th>Creado</th>
@@ -181,12 +203,13 @@ export default function UserManagementPanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="snack-empty">Cargando usuarios…</td></tr>
+                <tr><td colSpan={6} className="snack-empty">Cargando usuarios…</td></tr>
               ) : users.length === 0 ? (
-                <tr><td colSpan={5} className="snack-empty">Todavía no hay guías o coordinadores registrados.</td></tr>
+                <tr><td colSpan={6} className="snack-empty">Todavía no hay guías o coordinadores registrados.</td></tr>
               ) : users.map((user) => (
                 <tr key={user.user_id}>
-                  <td><strong>{user.email}</strong></td>
+                  <td><strong>@{user.username || "sin-usuario"}</strong></td>
+                  <td>{user.email}</td>
                   <td>{user.role === "guia" ? "Guía" : user.role === "coordinador" ? "Coordinador" : user.role || "—"}</td>
                   <td>{formatDate(user.created_at)}</td>
                   <td>{formatDate(user.last_sign_in_at)}</td>

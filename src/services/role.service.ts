@@ -4,6 +4,7 @@ export type AppRole = "administrador" | "atencion" | "coordinador" | "guia";
 
 export type CurrentRole = {
   role: AppRole;
+  username: string;
   email: string;
   userId: string;
 };
@@ -21,6 +22,7 @@ export async function getCurrentRole(): Promise<CurrentRole | null> {
     .from("usuario_roles")
     .select(`
       user_id,
+      username,
       role:roles (
         nombre
       )
@@ -35,6 +37,7 @@ export async function getCurrentRole(): Promise<CurrentRole | null> {
 
   return {
     role: roleName as AppRole,
+    username: String((data as any)?.username ?? ""),
     email,
     userId: user.id,
   };

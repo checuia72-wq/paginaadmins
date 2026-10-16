@@ -9,6 +9,7 @@ export type ManagedUserRole = "guia" | "coordinador";
 
 export type ManagedUser = {
   user_id: string;
+  username: string;
   email: string;
   role: string;
   created_at: string;
@@ -26,6 +27,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const data = await invokeAdminUsers({ action: "list" });
   return (data?.users ?? []).map((row: any) => ({
     user_id: String(row.user_id ?? ""),
+    username: String(row.username ?? ""),
     email: String(row.email ?? ""),
     role: String(row.role ?? ""),
     created_at: String(row.created_at ?? ""),
@@ -33,9 +35,10 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   }));
 }
 
-export async function createManagedUser(email: string, password: string, role: ManagedUserRole) {
+export async function createManagedUser(username: string, email: string, password: string, role: ManagedUserRole) {
   return invokeAdminUsers({
     action: "create",
+    username: username.trim().toLowerCase(),
     email: email.trim().toLowerCase(),
     password,
     role,

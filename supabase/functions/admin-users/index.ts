@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: assignments, error: assignmentsError } = await admin
         .from("usuario_roles")
-        .select("user_id,role_id");
+        .select("user_id,role_id,username");
       if (assignmentsError) throw assignmentsError;
 
       const { data: roles, error: rolesError } = await admin
@@ -111,16 +111,20 @@ Deno.serve(async (req: Request) => {
         (roles ?? []).map((row: any) => [Number(row.id_rol), String(row.nombre ?? "")]),
       );
 
-      const assignmentMap = new Map<string, string>();
+      const assignmentMap = new Map<string, { role: string; username: string }>();
       for (const row of assignments ?? []) {
-        assignmentMap.set(String((row as any).user_id), roleMap.get(Number((row as any).role_id)) ?? "");
+        assignmentMap.set(String((row as any).user_id), {
+          role: roleMap.get(Number((row as any).role_id)) ?? "",
+          username: String((row as any).username ?? ""),
+        });
       }
 
       const users = (usersData?.users ?? [])
         .map((user) => ({
           user_id: user.id,
+          username: assignmentMap.get(user.id)?.username ?? "",
           email: user.email ?? "",
-          role: assignmentMap.get(user.id) ?? "",
+          role: assignmentMap.get(user.id)?.role ?? "",
           created_at: user.created_at ?? "",
           last_sign_in_at: user.last_sign_in_at ?? null,
         }))
@@ -131,9 +135,24 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "create") {
+      const username = String(body?.username ?? "").trim().toLowerCase();
       const email = String(body?.email ?? "").trim().toLowerCase();
       const password = String(body?.password ?? "");
       const role = String(body?.role ?? "");
+
+      if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
+        return json({ error: "El nombre de usuario debe tener entre 3 y 30 caracteres y solo usar letras minúsculas, números, punto, guion o guion bajo." }, 400);
+      }
+
+      const { data: usernameTaken, error: usernameLookupError } = await admin
+        .from("usuario_roles")
+        .select("user_id")
+        .eq("username", username)
+        .maybeSingle();
+      if (usernameLookupError) throw usernameLookupError;
+      if (usernameTaken?.user_id) {
+        return json({ error: "Ese nombre de usuario ya está en uso." }, 400);
+      }
 
       if (!email || !email.includes("@")) {
         return json({ error: "Ingresa un correo electrónico válido." }, 400);
@@ -179,6 +198,7 @@ Deno.serve(async (req: Request) => {
           {
             user_id: user.id,
             role_id: targetRole.id_rol,
+            username,
           },
           {
             onConflict: "user_id",
@@ -193,6 +213,7 @@ Deno.serve(async (req: Request) => {
       return json({
         user: {
           user_id: user.id,
+          username,
           email: user.email ?? email,
           role,
           created_at: user.created_at ?? "",
