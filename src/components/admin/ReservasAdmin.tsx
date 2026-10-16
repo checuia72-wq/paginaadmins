@@ -47,6 +47,9 @@ interface Reserva {
   nombre_plan?: string;
   cantidad_personas?: number | null;
   aprobado?: boolean | null;
+  aprobado_por_user_id?: string | null;
+  aprobado_por_username?: string | null;
+  aprobado_por_email?: string | null;
   fecha_reserva?: string | null;
   hora_reserva?: string | null;
   precio_unitario?: number | null;
@@ -775,7 +778,7 @@ export default function ReservasAdmin() {
         const q = search.trim().toLowerCase();
         return (
           (!q ||
-            [r.codigo_reserva, r.id_reserva, r.telefono_cliente, r.nombre_plan].some((v) =>
+            [r.codigo_reserva, r.id_reserva, r.telefono_cliente, r.nombre_plan, r.aprobado_por_username, r.aprobado_por_email].some((v) =>
               String(v ?? "").toLowerCase().includes(q),
             )) &&
           (estadoFilter === "todos" ||
@@ -1006,20 +1009,37 @@ export default function ReservasAdmin() {
         <table className="rv-table">
           <thead>
             <tr>
-              <th>Código</th><th>Fecha solicitud</th><th>Fecha aprobación</th><th>Fecha visita</th><th>Teléfono</th><th>Plan</th><th>Personas</th><th>Estado</th><th>Aprobar</th><th>Acciones</th>
+              <th>Código</th><th>Fecha solicitud</th><th>Fecha aprobación</th><th>Aprobó</th><th>Fecha visita</th><th>Teléfono</th><th>Plan</th><th>Personas</th><th>Estado</th><th>Aprobar</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="rv-empty">Cargando...</td></tr>
+              <tr><td colSpan={11} className="rv-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={10} className="rv-empty">Sin resultados</td></tr>
+              <tr><td colSpan={11} className="rv-empty">Sin resultados</td></tr>
             ) : (
               paginated.map((r) => (
                 <tr key={r.id_reserva}>
                   <td><strong>{r.codigo_reserva || `#${r.id_reserva}`}</strong></td>
                   <td>{fmt(r.fecha_solicitud) ?? "—"}</td>
                   <td>{fmt(r.fecha_aprobacion) ?? "—"}</td>
+                  <td>
+                    {r.aprobado ? (
+                      <span
+                        title={r.aprobado_por_email || "Sin correo registrado"}
+                        style={{ display: "inline-flex", flexDirection: "column", gap: 2, minWidth: 110 }}
+                      >
+                        <strong style={{ color: "#315346", fontSize: 12 }}>
+                          {r.aprobado_por_username ? `@${r.aprobado_por_username}` : "Sin registro"}
+                        </strong>
+                        {r.aprobado_por_email && (
+                          <small style={{ color: "#7b857f", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {r.aprobado_por_email}
+                          </small>
+                        )}
+                      </span>
+                    ) : "—"}
+                  </td>
                   <td>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", fontWeight: 600, color: "#334155" }}>
                       <Calendar size={13} />{fmtReserva(r.fecha_reserva)}{r.hora_reserva ? ` · ${fmtHora(r.hora_reserva)}` : ""}
@@ -1070,6 +1090,16 @@ export default function ReservasAdmin() {
                 <div className="rv-detail-field"><label>Fecha que quiere reservar</label><span>{fmtReserva(viewing.fecha_reserva)}{viewing.hora_reserva ? ` · ${fmtHora(viewing.hora_reserva)}` : ""}</span></div>
                 <div className="rv-detail-field"><label>Personas</label><span>{viewing.cantidad_personas}</span></div>
                 <div className="rv-detail-field"><label>Estado</label><span><EstadoBadge aprobado={viewing.aprobado} /></span></div>
+                <div className="rv-detail-field">
+                  <label>Aprobó</label>
+                  <span>
+                    {viewing.aprobado
+                      ? viewing.aprobado_por_username
+                        ? `@${viewing.aprobado_por_username}${viewing.aprobado_por_email ? ` · ${viewing.aprobado_por_email}` : ""}`
+                        : "Sin registro histórico"
+                      : "—"}
+                  </span>
+                </div>
               </div>
               <div className="rv-parts">
                 <div className="rv-parts-head">

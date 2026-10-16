@@ -212,6 +212,7 @@ export async function getReservas() {
   const { data: reservas, error } = await db.from("reserva").select(`
     id_reserva, codigo_reserva, fecha_solicitud, fecha_aprobacion, fecha_reserva, telefono_cliente,
     id_plan, id_fecha, id_hora, cantidad_personas, aprobado,
+    aprobado_por_user_id, aprobado_por_username, aprobado_por_email,
     precio_unitario, valor_total, valor_abonado, valor_saldo_pagado,
     mina, refrigerio, restaurante, observacion, metodo_pago_abono, metodo_pago_saldo,
     id_codigo_operativo, incluye_almuerzo, estado_operativo, motivo_estado_operativo, estado_operativo_at

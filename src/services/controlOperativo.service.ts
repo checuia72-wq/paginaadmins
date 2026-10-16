@@ -33,7 +33,9 @@ export type ReservaOperacionHistorial = {
 
 export type ControlOperativoRow = {
   id_reserva:number; id_participante:number|null; reserva_codigo:string; id_codigo_operativo:number|null; incluye_almuerzo:boolean;
-  id_plan:number|null; id_fecha:number|null; id_hora:number|null; plan:string; fecha:string; hora:string; aprobado:boolean|null; nombre:string; edad:number|null; nacionalidad:string;
+  id_plan:number|null; id_fecha:number|null; id_hora:number|null; plan:string; fecha:string; hora:string; aprobado:boolean|null;
+  aprobado_por_user_id:string|null; aprobado_por_username:string; aprobado_por_email:string;
+  nombre:string; edad:number|null; nacionalidad:string;
   tipo_documento:string; documento:string; contacto:string; contacto_cliente:string; cantidad:number|null; mina:boolean|null; refrigerio:boolean|null;
   restaurante:string; almuerzo:string; total:number; abono:number; medio_abono:string; referencia_pago_abono:string; pago_saldo:number; medio_saldo:string; saldo_pendiente:number; observacion:string;
   estado_operativo: EstadoOperativo; motivo_estado_operativo:string; estado_operativo_at:string;
@@ -129,6 +131,9 @@ function buildControlOperativoRows(
         fecha:fechaReserva,
         hora:horaReserva,
         aprobado:r.aprobado??null,
+        aprobado_por_user_id:r.aprobado_por_user_id==null?null:text(r.aprobado_por_user_id),
+        aprobado_por_username:text(r.aprobado_por_username),
+        aprobado_por_email:text(r.aprobado_por_email),
         nombre:text(p?.nombre),
         edad:p?.edad==null?null:Number(p.edad),
         nacionalidad:text(p?.nacionalidad),
@@ -184,12 +189,25 @@ export async function getControlOperativoCoordinador():Promise<ControlOperativoR
   const current=await getCurrentRole();
   if(current?.role!=="coordinador") return getControlOperativo();
 
-  const {data,error}=await client().rpc("control_operativo_coordinador_data");
+  const db=client();
+  const [{data,error},{data:approvers,error:approverError}]=await Promise.all([
+    db.rpc("control_operativo_coordinador_data"),
+    db.rpc("aprobadores_control_operativo"),
+  ]);
   if(error) throw error;
+  if(approverError) throw approverError;
 
   const raw:any=data??{};
+  const approverMap=new Map<number,any>(
+    (Array.isArray(approvers)?approvers:[]).map((row:any)=>[Number(row.id_reserva),row])
+  );
+  const reservas=(Array.isArray(raw.reservas)?raw.reservas:[]).map((reserva:any)=>{
+    const approval=approverMap.get(Number(reserva.id_reserva));
+    return approval?{...reserva,...approval}:reserva;
+  });
+
   return buildControlOperativoRows(
-    Array.isArray(raw.reservas)?raw.reservas:[],
+    reservas,
     Array.isArray(raw.participantes)?raw.participantes:[],
     Array.isArray(raw.planes)?raw.planes:[],
     Array.isArray(raw.fechas)?raw.fechas:[],

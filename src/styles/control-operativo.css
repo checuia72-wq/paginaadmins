@@ -289,3 +289,17 @@
 @media(max-width:700px){
   .op-table-coordinator-full{min-width:2570px!important}
 }
+
+
+.op-approved-by{
+  display:block;
+  margin-top:4px;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#6f7b74;
+  font-size:10px;
+  font-weight:700;
+  line-height:1.2;
+}
