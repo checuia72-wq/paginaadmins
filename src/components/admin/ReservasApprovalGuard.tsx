@@ -25,6 +25,14 @@ import {
   type ReservaAdicional,
   type ReservaAdicionalInput,
 } from "../../services/adicional.service";
+import {
+  agregarPlanAdicionalReserva,
+  calcularImpactoPlanAdicional,
+  getOpcionesPlanesAdicionales,
+  getReservaPlanesAdicionales,
+  retirarPlanAdicionalReserva,
+  type OpcionPlanAdicional,
+} from "../../services/reservaPlanAdicional.service";
 
 type ReservaLite = {
   id_reserva: number;
@@ -40,6 +48,7 @@ type ReservaLite = {
   referencia_pago_abono?: string | null;
   observacion?: string | null;
   nombre_plan?: string | null;
+  fecha_reserva?: string | null;
 };
 
 type AdvancedOption = "" | "refrigerio" | "adicionales" | "valor_total" | "valor_unitario";
@@ -72,6 +81,8 @@ export default function ReservasApprovalGuard() {
   const [adicionalCantidad, setAdicionalCantidad] = useState<Record<number, number>>({});
   const [incluirAdicionales, setIncluirAdicionales] = useState(false);
   const [reservaAdicionalesOriginales, setReservaAdicionalesOriginales] = useState<ReservaAdicional[]>([]);
+  const [planesAdicionalesDisponibles, setPlanesAdicionalesDisponibles] = useState<OpcionPlanAdicional[]>([]);
+  const [planAdicionalCantidad, setPlanAdicionalCantidad] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<ReservaLite | null>(null);
   const [abonos, setAbonos] = useState<AbonoSplit[]>([
     { monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() },
@@ -182,7 +193,22 @@ export default function ReservasApprovalGuard() {
     const unitario = Number(reserva.precio_unitario || (total > 0 ? total / cantidad : 0));
 
     const adicionalesPlan = planAdicionales.filter((item) => Number(item.id_plan) === Number(reserva.id_plan) && item.activo && item.adicional.activo);
-    const existentes = await getReservaAdicionales(reserva.id_reserva).catch(() => [] as ReservaAdicional[]);
+    const [existentes, opcionesPlanExtra, planesExtraExistentes] = await Promise.all([
+      getReservaAdicionales(reserva.id_reserva).catch(() => [] as ReservaAdicional[]),
+      getOpcionesPlanesAdicionales(reserva.id_plan).catch(() => [] as OpcionPlanAdicional[]),
+      getReservaPlanesAdicionales(reserva.id_reserva).catch(() => []),
+    ]);
+    const planesYaAgregados = new Set(
+      planesExtraExistentes
+        .filter((item) => item.origen === "plan" && item.id_plan_adicional != null)
+        .map((item) => Number(item.id_plan_adicional)),
+    );
+    const planesDisponibles = opcionesPlanExtra.filter(
+      (opcion) =>
+        opcion.origen === "plan" &&
+        opcion.id_plan != null &&
+        !planesYaAgregados.has(Number(opcion.id_plan)),
+    );
     const cantidades = Object.fromEntries(adicionalesPlan.map((item) => {
       const max = maxCantidadPlanAdicional(item, cantidad);
       const existing = existentes.find((row) => Number(row.id_adicional) === Number(item.id_adicional));
@@ -205,6 +231,8 @@ export default function ReservasApprovalGuard() {
     setSelected(reserva);
     setAbonos([{ monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() }]);
     setReservaAdicionalesOriginales(existentes);
+    setPlanesAdicionalesDisponibles(planesDisponibles);
+    setPlanAdicionalCantidad({});
     setAdicionalCantidad(cantidades);
     setIncluirAdicionales(existentes.some((row) => row.tipo_movimiento === "agregado" && Number(row.cantidad_aplicada || 0) > 0));
     setIncluyeAlmuerzo(lunch ? Number(cantidades[lunch.id_adicional] || 0) > 0 : false);
@@ -224,6 +252,8 @@ export default function ReservasApprovalGuard() {
       setSelected(null);
       setAdicionalCantidad({});
       setReservaAdicionalesOriginales([]);
+      setPlanesAdicionalesDisponibles([]);
+      setPlanAdicionalCantidad({});
       setIncluirAdicionales(false);
     }
   };
@@ -403,16 +433,39 @@ export default function ReservasApprovalGuard() {
 
     const movimientosAdicionalesFinales = [...movimientosAdicionales, ...movimientosAdicionalesLibres];
     const impactoAdicionales = movimientosAdicionalesFinales.reduce((total, item) => total + Number(item.impacto_total || 0), 0);
-    const totalNuevo = advancedOption === "valor_total"
+
+    const planesParaAgregar = planesAdicionalesDisponibles.flatMap((opcion) => {
+      const personas = Math.min(
+        cantidad,
+        Math.max(0, Math.floor(Number(planAdicionalCantidad[opcion.key] || 0))),
+      );
+      if (personas <= 0) return [];
+      const calculo = calcularImpactoPlanAdicional(
+        opcion,
+        personas,
+        String(selected.fecha_reserva ?? "").slice(0, 10),
+      );
+      if (!Number.isFinite(calculo.impacto_total) || calculo.impacto_total <= 0) return [];
+      return [{ opcion, personas, calculo }];
+    });
+
+    const impactoPlanesAdicionales = planesParaAgregar.reduce(
+      (total, item) => total + Number(item.calculo.impacto_total || 0),
+      0,
+    );
+
+    const totalSinPlanesAdicionales = advancedOption === "valor_total"
       ? parseMoney(valorTotal)
       : advancedOption === "valor_unitario"
         ? parseMoney(valorUnitario) * cantidad
         : totalBaseOriginal + impactoAdicionales;
+    const totalNuevo = totalSinPlanesAdicionales + impactoPlanesAdicionales;
+    const unitarioSinPlanesAdicionales = totalSinPlanesAdicionales / cantidad;
     const unitarioNuevo = totalNuevo / cantidad;
     const ajusteMonetario = advancedOption === "valor_total"
-      ? Math.abs(totalNuevo - totalOriginal) > 0.01
+      ? Math.abs(totalSinPlanesAdicionales - totalOriginal) > 0.01
       : advancedOption === "valor_unitario"
-        ? Math.abs(unitarioNuevo - unitarioOriginal) > 0.01
+        ? Math.abs(unitarioSinPlanesAdicionales - unitarioOriginal) > 0.01
         : false;
 
     if (!Number.isFinite(valor) || valor <= 0) {
@@ -468,6 +521,7 @@ export default function ReservasApprovalGuard() {
     setError(null);
 
     let reservaActualizada = false;
+    const planesAgregadosEnIntento: number[] = [];
     try {
       const patch: Record<string, unknown> = {
         refrigerio: incluyeRefrigerio,
@@ -475,14 +529,29 @@ export default function ReservasApprovalGuard() {
       };
 
       if (ajusteMonetario || Math.abs(impactoAdicionales - impactoOriginal) > 0.01) {
-        patch.valor_total = totalNuevo;
-        patch.precio_unitario = unitarioNuevo;
+        patch.valor_total = totalSinPlanesAdicionales;
+        patch.precio_unitario = unitarioSinPlanesAdicionales;
         if (ajusteMonetario) patch.observacion = observacion.trim();
       }
 
       await updateReserva(selected.id_reserva, patch);
       reservaActualizada = true;
       await replaceReservaAdicionales(selected.id_reserva, movimientosAdicionalesFinales);
+
+      for (const item of planesParaAgregar) {
+        const result = await agregarPlanAdicionalReserva({
+          id_reserva: selected.id_reserva,
+          opcion: item.opcion,
+          cantidad_personas: item.personas,
+          aplica_todos: item.personas === cantidad,
+          precio_unitario: item.calculo.precio_unitario,
+          impacto_total: item.calculo.impacto_total,
+        });
+        if (result.id_reserva_plan_adicional) {
+          planesAgregadosEnIntento.push(result.id_reserva_plan_adicional);
+        }
+      }
+
       await replaceAbonoPagos(selected.id_reserva, pagosAbono);
 
       await aprobarReservaOperativa({
@@ -498,6 +567,16 @@ export default function ReservasApprovalGuard() {
       window.location.reload();
     } catch (e: any) {
       console.error(e);
+
+      if (planesAgregadosEnIntento.length) {
+        for (const id of [...planesAgregadosEnIntento].reverse()) {
+          try {
+            await retirarPlanAdicionalReserva(id);
+          } catch (rollbackPlanError) {
+            console.error("No se pudo retirar un plan adicional durante la reversión:", rollbackPlanError);
+          }
+        }
+      }
 
       if (reservaActualizada) {
         try {
@@ -546,12 +625,30 @@ export default function ReservasApprovalGuard() {
       }, 0)
     : 0;
   const impactoAdicionalesTotalVista = impactoAdicionalesVista + impactoAdicionalesLibresVista;
+  const planesAdicionalesSeleccionadosVista = planesAdicionalesDisponibles.flatMap((opcion) => {
+    const personas = Math.min(
+      cantidadSeleccionada,
+      Math.max(0, Math.floor(Number(planAdicionalCantidad[opcion.key] || 0))),
+    );
+    if (personas <= 0) return [];
+    const calculo = calcularImpactoPlanAdicional(
+      opcion,
+      personas,
+      String(selected?.fecha_reserva ?? "").slice(0, 10),
+    );
+    return [{ opcion, personas, calculo }];
+  });
+  const impactoPlanesAdicionalesVista = planesAdicionalesSeleccionadosVista.reduce(
+    (total, item) => total + Number(item.calculo.impacto_total || 0),
+    0,
+  );
 
-  const totalVista = advancedOption === "valor_unitario"
+  const totalBaseVista = advancedOption === "valor_unitario"
     ? parseMoney(valorUnitario) * cantidadSeleccionada
     : advancedOption === "valor_total"
       ? parseMoney(valorTotal)
       : totalBaseOriginalVista + impactoAdicionalesTotalVista;
+  const totalVista = totalBaseVista + impactoPlanesAdicionalesVista;
   const unitarioVista = totalVista / cantidadSeleccionada;
 
   return <>
@@ -902,17 +999,17 @@ export default function ReservasApprovalGuard() {
 
             {advancedOption === "adicionales" && (
               <div style={{ display: "grid", gap: 10 }}>
-                {adicionalesDelPlan.length > 0 ? (
+                {(adicionalesDelPlan.length > 0 || adicionalesLibres.length > 0 || planesAdicionalesDisponibles.length > 0) ? (
                   <div style={{ border: "1px solid #e4ddd4", borderRadius: 14, padding: 14, background: "#fff" }}>
                     <div style={{ marginBottom: 12 }}>
-                      <strong style={{ display: "block", fontSize: 15 }}>Adicionales de la reserva</strong>
+                      <strong style={{ display: "block", fontSize: 15 }}>Adicionales y planes adicionales</strong>
                       <small style={{ color: "#81776c" }}>
-                        Los adicionales opcionales que selecciones se sumarán automáticamente al valor total antes de aprobar.
+                        Puedes agregar servicios del catálogo o incluso otro plan. Todo lo seleccionado se suma automáticamente al valor total antes de aprobar.
                       </small>
                     </div>
 
                     <div className="rv-form-group" style={{ marginBottom: 12 }}>
-                      <label>¿Deseas incluir adicionales?</label>
+                      <label>¿Deseas incluir adicionales del catálogo?</label>
                       <select
                         value={incluirAdicionales ? "si" : "no"}
                         onChange={(e) => {
@@ -957,6 +1054,17 @@ export default function ReservasApprovalGuard() {
                     </div>
 
                     <div style={{ display: "grid", gap: 9 }}>
+                  {adicionalesDelPlan.length > 0 && (
+                    <div style={{ margin: "2px 0 4px" }}>
+                      <strong style={{ display: "block", fontSize: 13, color: "#5b5147" }}>
+                        Adicionales configurados para este plan
+                      </strong>
+                      <small style={{ color: "#82786d" }}>
+                        Aquí aparecen los servicios incluidos u opcionales vinculados directamente al plan.
+                      </small>
+                    </div>
+                  )}
+
                   {adicionalesDelPlan.map((item) => {
                     const max = maxCantidadPlanAdicional(item, cantidadSeleccionada);
                     const quantity = normalizarCantidadPlanAdicional(
@@ -1000,33 +1108,45 @@ export default function ReservasApprovalGuard() {
                     );
                   })}
 
-                  {incluirAdicionales && adicionalesLibres.length > 0 && (
+                  {adicionalesLibres.length > 0 && (
                     <>
-                      <div style={{ margin: "5px 0 2px", paddingTop: 8, borderTop: "1px solid #eee7de" }}>
+                      <div style={{ margin: "5px 0 2px", paddingTop: 8, borderTop: adicionalesDelPlan.length ? "1px solid #eee7de" : "none" }}>
                         <strong style={{ display: "block", fontSize: 13, color: "#5b5147" }}>
-                          Otros adicionales disponibles
+                          Todos los demás adicionales disponibles
                         </strong>
                         <small style={{ color: "#82786d" }}>
-                          Puedes agregar cualquiera de estos servicios aunque no venga incluido originalmente en el plan.
+                          Esta lista muestra todos los adicionales activos del catálogo, aunque no estén vinculados originalmente al plan.
                         </small>
                       </div>
 
                       {adicionalesLibres.map((item) => {
                         const perPerson = item.tipo_cobro === "por_persona";
                         const max = perPerson ? cantidadSeleccionada : 1;
-                        const quantity = Math.min(
-                          max,
-                          Math.max(0, Math.floor(Number(adicionalCantidad[item.id_adicional] || 0))),
-                        );
+                        const quantity = incluirAdicionales
+                          ? Math.min(
+                              max,
+                              Math.max(0, Math.floor(Number(adicionalCantidad[item.id_adicional] || 0))),
+                            )
+                          : 0;
                         const impacto = Number(item.precio || 0) * quantity;
 
                         return (
-                          <div key={`libre-${item.id_adicional}`} style={{ display: "grid", gap: 8, padding: "10px 11px", border: "1px solid #eee7de", borderRadius: 10 }}>
+                          <div
+                            key={`libre-${item.id_adicional}`}
+                            style={{
+                              display: "grid",
+                              gap: 8,
+                              padding: "10px 11px",
+                              border: "1px solid #eee7de",
+                              borderRadius: 10,
+                              opacity: incluirAdicionales ? 1 : 0.72,
+                            }}
+                          >
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                               <span>
                                 <strong style={{ display: "block" }}>{item.nombre}</strong>
                                 <small style={{ color: "#82786d" }}>
-                                  Opcional · ${formatMoney(item.precio)} {perPerson ? "por persona" : "por reserva"}
+                                  Catálogo general · Opcional · ${formatMoney(item.precio)} {perPerson ? "por persona" : "por reserva"}
                                 </small>
                               </span>
                               <strong style={{ color: impacto > 0 ? "#2f765b" : "#82786d", whiteSpace: "nowrap" }}>
@@ -1037,7 +1157,11 @@ export default function ReservasApprovalGuard() {
                             {perPerson ? (
                               <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                                 <small style={{ color: "#6f665d", fontWeight: 700 }}>Personas que lo quieren</small>
-                                <select value={quantity} disabled={saving} onChange={(e) => setCantidadAdicionalLibre(item, Number(e.target.value))}>
+                                <select
+                                  value={quantity}
+                                  disabled={saving || !incluirAdicionales}
+                                  onChange={(e) => setCantidadAdicionalLibre(item, Number(e.target.value))}
+                                >
                                   {Array.from({ length: max + 1 }, (_, value) => (
                                     <option key={value} value={value}>{value} / {max}</option>
                                   ))}
@@ -1049,10 +1173,100 @@ export default function ReservasApprovalGuard() {
                                 <input
                                   type="checkbox"
                                   checked={quantity > 0}
-                                  disabled={saving}
+                                  disabled={saving || !incluirAdicionales}
                                   onChange={(e) => setCantidadAdicionalLibre(item, e.target.checked ? 1 : 0)}
                                 />
                               </label>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {planesAdicionalesDisponibles.length > 0 && (
+                    <>
+                      <div style={{ margin: "8px 0 2px", paddingTop: 10, borderTop: "1px solid #e4ddd4" }}>
+                        <strong style={{ display: "block", fontSize: 13, color: "#5b5147" }}>
+                          Planes adicionales disponibles
+                        </strong>
+                        <small style={{ color: "#82786d" }}>
+                          Selecciona cuántas personas tomarán cada plan adicional. Puedes agregar más de uno en la misma reserva.
+                        </small>
+                      </div>
+
+                      {planesAdicionalesDisponibles.map((opcion) => {
+                        const personas = Math.min(
+                          cantidadSeleccionada,
+                          Math.max(0, Math.floor(Number(planAdicionalCantidad[opcion.key] || 0))),
+                        );
+                        const calculo = personas > 0
+                          ? calcularImpactoPlanAdicional(
+                              opcion,
+                              personas,
+                              String(selected?.fecha_reserva ?? "").slice(0, 10),
+                            )
+                          : null;
+
+                        return (
+                          <div
+                            key={opcion.key}
+                            style={{
+                              display: "grid",
+                              gap: 8,
+                              padding: "10px 11px",
+                              border: "1px solid #dfe8e2",
+                              borderRadius: 10,
+                              background: personas > 0 ? "#f6fbf8" : "#fff",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                              <span style={{ minWidth: 0 }}>
+                                <strong style={{ display: "block" }}>{opcion.nombre}</strong>
+                                <small style={{ color: "#82786d", display: "block" }}>
+                                  Plan adicional · {opcion.tipo_cobro === "por_persona" ? "cobro por persona" : "cobro por reserva"}
+                                </small>
+                                {opcion.descripcion && (
+                                  <small style={{ color: "#9a8f82", display: "block", marginTop: 2 }}>
+                                    {opcion.descripcion}
+                                  </small>
+                                )}
+                              </span>
+                              <strong style={{ color: calculo && calculo.impacto_total > 0 ? "#2f765b" : "#82786d", whiteSpace: "nowrap" }}>
+                                {calculo && calculo.impacto_total > 0 ? "+" : ""}${formatMoney(calculo?.impacto_total ?? 0)}
+                              </strong>
+                            </div>
+
+                            <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <small style={{ color: "#6f665d", fontWeight: 700 }}>Personas que tomarán este plan</small>
+                              <select
+                                value={personas}
+                                disabled={saving}
+                                onChange={(e) => {
+                                  const value = Math.min(
+                                    cantidadSeleccionada,
+                                    Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                                  );
+                                  setPlanAdicionalCantidad((current) => ({
+                                    ...current,
+                                    [opcion.key]: value,
+                                  }));
+                                  setError(null);
+                                }}
+                              >
+                                <option value={0}>No agregar</option>
+                                {Array.from({ length: cantidadSeleccionada }, (_, index) => index + 1).map((value) => (
+                                  <option key={value} value={value}>
+                                    {value} / {cantidadSeleccionada}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            {calculo && (
+                              <small style={{ color: "#6f665d" }}>
+                                {calculo.detalle}
+                              </small>
                             )}
                           </div>
                         );
@@ -1070,7 +1284,7 @@ export default function ReservasApprovalGuard() {
                     color: "#81776c",
                     fontSize: 13,
                   }}>
-                    Este plan no tiene adicionales configurados.
+                    No hay adicionales ni planes adicionales activos disponibles para esta reserva.
                   </div>
                 )}
               </div>
