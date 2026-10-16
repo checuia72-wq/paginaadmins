@@ -8,10 +8,13 @@
 /* Mapa definitivo de columnas del Control Operativo.
    La tabla tiene un ancho exacto igual a la suma de sus 28 columnas para evitar
    zonas blancas internas al desplazarse horizontalmente. */
+.op-table-wrap{
+  --op-observation-width:clamp(320px,34vw,520px);
+}
 .op-table-inner{
-  width:3091px;
-  min-width:3091px;
-  max-width:3091px;
+  width:calc(2861px + var(--op-observation-width));
+  min-width:calc(2861px + var(--op-observation-width));
+  max-width:calc(2861px + var(--op-observation-width));
   overflow:hidden;
 }
 .op-table-operational{
@@ -84,11 +87,65 @@
 .op-table-operational th:nth-child(25),
 .op-table-operational td:nth-child(25){width:125px!important}
 .op-table-operational th:nth-child(27),
-.op-table-operational td:nth-child(27){width:230px!important;max-width:230px!important}
+.op-table-operational td:nth-child(27){
+  width:var(--op-observation-width)!important;
+  min-width:var(--op-observation-width)!important;
+  max-width:var(--op-observation-width)!important;
+}
 .op-table-operational th:nth-child(28),
 .op-table-operational td:nth-child(28){width:76px!important;text-align:center}
 .op-table-operational .op-reference-cell{font-weight:800;letter-spacing:.06em;text-align:center;color:#5d4a2f}
-.op-table-operational .op-observation-cell{max-width:230px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.op-table-operational .op-observation-cell{
+  width:var(--op-observation-width)!important;
+  min-width:var(--op-observation-width)!important;
+  max-width:var(--op-observation-width)!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+  line-height:1.45;
+  text-align:left!important;
+  vertical-align:top!important;
+  overflow:hidden!important;
+  text-overflow:clip!important;
+  height:auto!important;
+  padding-top:10px!important;
+  padding-bottom:10px!important;
+}
+
+/* Mantener Observación y Acciones visibles al final del Control Operativo. */
+.op-table-operational th:nth-child(27),
+.op-table-operational td:nth-child(27){
+  position:sticky!important;
+  right:76px!important;
+  z-index:6!important;
+  background:#fff!important;
+  box-shadow:-5px 0 12px -12px rgba(31,25,18,.55);
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+}
+.op-table-operational th:nth-child(28),
+.op-table-operational td:nth-child(28){
+  position:sticky!important;
+  right:0!important;
+  z-index:7!important;
+  background:#fff!important;
+}
+.op-table-operational th:nth-child(27),
+.op-table-operational th:nth-child(28){
+  background:#2f6958!important;
+  color:#fff!important;
+  z-index:12!important;
+}
+.op-table-operational tbody tr:nth-child(even) td:nth-child(27),
+.op-table-operational tbody tr:nth-child(even) td:nth-child(28){
+  background:#fdfbf8!important;
+}
+.op-table-operational tbody tr:hover td:nth-child(27),
+.op-table-operational tbody tr:hover td:nth-child(28){
+  background:#fff7e9!important;
+}
+
 .op-table-operational td[title]{cursor:help}
 @media(max-width:700px){
   .op-table-operational{

@@ -30,7 +30,7 @@ import {
   Calendar,
   UserCheck,
 } from "lucide-react";
-import { calcularTotalPlan } from "../../services/planTarifa.service";
+import { calcularPrecioPlan, calcularTotalPlan } from "../../services/planTarifa.service";
 import ReservationApprovalModal from "../common/ReservationApprovalModal";
 import LargeGroupExcelImport, { type ImportedGroupParticipant } from "./LargeGroupExcelImport";
 import "../../styles/reservas.css";
@@ -184,6 +184,7 @@ export default function ReservasAdmin() {
   const [editing, setEditing] = useState<Reserva | null>(null);
   const [formData, setFormData] = useState(emptyForm);
   const [newParticipants, setNewParticipants] = useState<NuevoParticipante[]>([emptyParticipant()]);
+  const [deletedParticipantIds, setDeletedParticipantIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loadingEditParticipants, setLoadingEditParticipants] = useState(false);
@@ -381,6 +382,7 @@ export default function ReservasAdmin() {
     setGroupImportDirty(false);
     setFormData(emptyForm);
     setNewParticipants([emptyParticipant()]);
+    setDeletedParticipantIds([]);
     setBuggyCount(1);
     setBuggyPricing(null);
     setFormError(null);
@@ -405,6 +407,7 @@ export default function ReservasAdmin() {
       aprobado: !!r.aprobado,
     });
     setNewParticipants([]);
+    setDeletedParticipantIds([]);
     let savedBuggyCount = defaultBuggyCount(Number(r.cantidad_personas ?? 1));
     try {
       const parsed = r.observacion ? JSON.parse(r.observacion) : null;
@@ -482,10 +485,53 @@ export default function ReservasAdmin() {
     }
   };
 
+  const removeParticipantFromEdit = (index: number) => {
+    if (!editing) return;
+    if (newParticipants.length <= 1) {
+      setFormError("La reserva debe conservar al menos un participante.");
+      return;
+    }
+
+    const participant = newParticipants[index];
+    if (!participant) return;
+
+    const label = participant.nombre.trim() || `Participante ${index + 1}`;
+    if (!window.confirm(`¿Eliminar a ${label} de esta reserva? Al guardar se recalcularán la cantidad de personas, el valor total y el saldo pendiente.`)) {
+      return;
+    }
+
+    if (participant.id_participante) {
+      setDeletedParticipantIds((current) =>
+        current.includes(participant.id_participante!)
+          ? current
+          : [...current, participant.id_participante!],
+      );
+    }
+
+    const nextParticipants = newParticipants.filter((_, i) => i !== index);
+    const nextCount = Math.max(1, nextParticipants.length);
+
+    setNewParticipants(nextParticipants);
+    setFormData((current) => ({
+      ...current,
+      cantidad_personas: nextCount,
+      telefono_cliente: index === 0
+        ? (nextParticipants[0]?.telefono || current.telefono_cliente)
+        : current.telefono_cliente,
+    }));
+
+    if (isBuggyPlan) {
+      setBuggyCount((current) => buggyShape(nextCount, current).buggyCount);
+      setBuggyPricing(null);
+    }
+
+    setFormError(null);
+  };
+
   const validateParticipants = () => {
     if (formData.id_plan === "") return "Selecciona un plan.";
     if (!formData.fecha_visita) return "Selecciona la fecha de la visita.";
-    if (!formData.hora_visita) return "Selecciona la hora de la visita.";
+    if (selectedPlan?.tipo_hora !== "sin_hora" && !formData.hora_visita) return "Selecciona la hora de la visita.";
     if (isLargeGroup && Number(formData.cantidad_personas) < 31) {
       return "Para usar Grupo grande registra al menos 31 personas.";
     }
@@ -559,21 +605,38 @@ export default function ReservasAdmin() {
         return;
       }
 
-      const idFecha = await getOrCreatePlanFecha(Number(formData.id_plan), formData.fecha_visita);
-      const idHora = await getOrCreatePlanHora(Number(formData.id_plan), formData.hora_visita);
-      const fechaReserva = `${formData.fecha_visita}T${formData.hora_visita}:00`;
-      const buggyReservationFields = isBuggyPlan && buggyPricing
+      const selectedPlanId = Number(formData.id_plan);
+      const participantCount = Math.max(1, Number(formData.cantidad_personas) || 1);
+      const idFecha = await getOrCreatePlanFecha(selectedPlanId, formData.fecha_visita);
+      const idHora = selectedPlan?.tipo_hora === "sin_hora"
+        ? null
+        : await getOrCreatePlanHora(selectedPlanId, formData.hora_visita);
+      const fechaReserva = selectedPlan?.tipo_hora === "sin_hora"
+        ? `${formData.fecha_visita}T00:00:00`
+        : `${formData.fecha_visita}T${formData.hora_visita}:00`;
+
+      const [standardUnitPrice, standardTotal] = isBuggyPlan
+        ? [0, 0]
+        : await Promise.all([
+            calcularPrecioPlan(selectedPlanId, participantCount, formData.fecha_visita),
+            calcularTotalPlan(selectedPlanId, participantCount, formData.fecha_visita),
+          ]);
+
+      if (!isBuggyPlan && (!Number.isFinite(standardUnitPrice) || standardUnitPrice <= 0 || !Number.isFinite(standardTotal) || standardTotal <= 0)) {
+        throw new Error("No fue posible calcular el valor del plan seleccionado para esta cantidad de personas.");
+      }
+
+      const pricingFields = isBuggyPlan && buggyPricing
         ? {
             precio_unitario: buggyPricing.averageUnitPrice,
             valor_total: buggyPricing.totalPrice,
-            valor_abonado: Math.round(buggyPricing.totalPrice * 0.3),
             observacion: JSON.stringify({
               tipo: "configuracion_buggy",
               version: 1,
               ruta: selectedPlan?.nombre_plan ?? null,
               grupo: selectedParentPlan?.nombre_plan ?? "Buggys",
               cantidad_buggies: buggyCount,
-              cantidad_personas: Number(formData.cantidad_personas),
+              cantidad_personas: participantCount,
               buggies_individuales: buggyPricing.singleBuggies,
               buggies_dobles: buggyPricing.doubleBuggies,
               tarifa_buggy_individual: buggyPricing.singlePrice,
@@ -581,20 +644,36 @@ export default function ReservasAdmin() {
               total_aplicado: buggyPricing.totalPrice,
             }),
           }
-        : {};
+        : {
+            precio_unitario: standardUnitPrice,
+            valor_total: standardTotal,
+          };
 
       if (editing) {
-        await updateReserva(editing.id_reserva, {
+        if (!clientes.some((c) => c.telefono === clientPhone)) {
+          await createCliente({
+            telefono: clientPhone,
+            atencion_humana: true,
+            etapaconversacion: "saludo",
+            id_plan: selectedPlanId,
+          });
+        }
+
+        const updatedReserva = await updateReserva(editing.id_reserva, {
           telefono_cliente: clientPhone,
-          id_plan: Number(formData.id_plan),
+          id_plan: selectedPlanId,
           id_fecha: idFecha,
           id_hora: idHora,
           fecha_reserva: fechaReserva,
-          cantidad_personas: Number(formData.cantidad_personas),
+          cantidad_personas: participantCount,
           aprobado: formData.aprobado,
           fecha_aprobacion,
-          ...buggyReservationFields,
+          ...pricingFields,
         });
+
+        if (Number(updatedReserva?.id_plan) !== selectedPlanId) {
+          throw new Error("El cambio de plan no quedó guardado. Intenta nuevamente.");
+        }
 
         if (isLargeGroup && groupImportDirty) {
           const currentParticipants: Participante[] = await getParticipantesPorReserva(editing.id_reserva);
@@ -603,6 +682,10 @@ export default function ReservasAdmin() {
             await createParticipante(participantPayload(participantsToSave[i], editing.id_reserva, clientPhone, i));
           }
         } else {
+          for (const participantId of deletedParticipantIds) {
+            await deleteParticipante(participantId);
+          }
+
           for (let i = 0; i < participantsToSave.length; i++) {
             const p = participantsToSave[i];
             const payload = participantPayload(p, editing.id_reserva, clientPhone, i);
@@ -622,14 +705,17 @@ export default function ReservasAdmin() {
 
         const created = await createReserva({
           telefono_cliente: clientPhone,
-          id_plan: Number(formData.id_plan),
+          id_plan: selectedPlanId,
           id_fecha: idFecha,
           id_hora: idHora,
           fecha_reserva: fechaReserva,
-          cantidad_personas: Number(formData.cantidad_personas),
+          cantidad_personas: participantCount,
           aprobado: formData.aprobado,
           fecha_aprobacion,
-          ...buggyReservationFields,
+          ...pricingFields,
+          ...(isBuggyPlan && buggyPricing
+            ? { valor_abonado: Math.round(buggyPricing.totalPrice * 0.3) }
+            : {}),
         });
 
         for (let i = 0; i < participantsToSave.length; i++) {
@@ -638,6 +724,7 @@ export default function ReservasAdmin() {
       }
 
       setShowForm(false);
+      setDeletedParticipantIds([]);
       setHasFullGroupList(false);
       setGroupImportFile("");
       setGroupImportDirty(false);
@@ -746,11 +833,38 @@ export default function ReservasAdmin() {
                 background: "#fffbeb",
               }}
             >
-              <strong>
-                {isLargeGroup
-                  ? "Encargado del grupo"
-                  : `Participante ${index + 1}${index === 0 ? " · Cliente" : ""}${!p.id_participante && editing ? " · Nuevo" : ""}`}
-              </strong>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <strong>
+                  {isLargeGroup
+                    ? "Encargado del grupo"
+                    : `Participante ${index + 1}${index === 0 ? " · Cliente" : ""}${!p.id_participante && editing ? " · Nuevo" : ""}`}
+                </strong>
+
+                {editing && !isLargeGroup && (
+                  <button
+                    type="button"
+                    onClick={() => removeParticipantFromEdit(index)}
+                    disabled={saving || newParticipants.length <= 1}
+                    title={newParticipants.length <= 1 ? "La reserva debe conservar al menos un participante" : "Eliminar participante"}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      border: "1px solid #fecaca",
+                      borderRadius: 8,
+                      padding: "7px 10px",
+                      background: "#fff",
+                      color: "#b42318",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: newParticipants.length <= 1 ? "not-allowed" : "pointer",
+                      opacity: newParticipants.length <= 1 ? 0.5 : 1,
+                    }}
+                  >
+                    <Trash2 size={14} /> Eliminar participante
+                  </button>
+                )}
+              </div>
               <div className="pt-form-row pt-form-row-2" style={{ marginTop: 10 }}>
                 <div className="pt-form-group">
                   <label>Nombre completo *</label>
