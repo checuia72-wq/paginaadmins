@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+const MANAGED_ROLES = ["administrador", "atencion", "coordinador", "guia"] as const;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -128,7 +130,7 @@ Deno.serve(async (req: Request) => {
           created_at: user.created_at ?? "",
           last_sign_in_at: user.last_sign_in_at ?? null,
         }))
-        .filter((user) => user.role === "guia" || user.role === "coordinador")
+        .filter((user) => MANAGED_ROLES.includes(user.role as (typeof MANAGED_ROLES)[number]))
         .sort((a, b) => a.email.localeCompare(b.email, "es"));
 
       return json({ users });
@@ -162,8 +164,8 @@ Deno.serve(async (req: Request) => {
         return json({ error: "La contraseña debe tener mínimo 8 caracteres." }, 400);
       }
 
-      if (!["guia", "coordinador"].includes(role)) {
-        return json({ error: "Solo se pueden crear usuarios con rol Guía o Coordinador." }, 400);
+      if (!MANAGED_ROLES.includes(role as (typeof MANAGED_ROLES)[number])) {
+        return json({ error: "Selecciona un rol válido para el usuario." }, 400);
       }
 
       const { data: targetRole, error: targetRoleError } = await admin
@@ -221,6 +223,80 @@ Deno.serve(async (req: Request) => {
       }, 201);
     }
 
+    if (action === "update_profile") {
+      const userId = String(body?.user_id ?? "").trim();
+      const username = String(body?.username ?? "").trim().toLowerCase();
+      const email = String(body?.email ?? "").trim().toLowerCase();
+
+      if (!userId) {
+        return json({ error: "Usuario inválido." }, 400);
+      }
+
+      if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
+        return json({ error: "El nombre de usuario debe tener entre 3 y 30 caracteres y solo usar letras minúsculas, números, punto, guion o guion bajo." }, 400);
+      }
+
+      if (!email || !email.includes("@")) {
+        return json({ error: "Ingresa un correo electrónico válido." }, 400);
+      }
+
+      const { data: usernameTaken, error: usernameLookupError } = await admin
+        .from("usuario_roles")
+        .select("user_id")
+        .eq("username", username)
+        .neq("user_id", userId)
+        .maybeSingle();
+      if (usernameLookupError) throw usernameLookupError;
+      if (usernameTaken?.user_id) {
+        return json({ error: "Ese nombre de usuario ya está en uso." }, 400);
+      }
+
+      const { data: assignment, error: assignmentError } = await admin
+        .from("usuario_roles")
+        .select("role_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (assignmentError) throw assignmentError;
+      if (!assignment?.role_id) return json({ error: "El usuario no tiene rol asignado." }, 400);
+
+      const { data: assignedRole, error: assignedRoleError } = await admin
+        .from("roles")
+        .select("nombre")
+        .eq("id_rol", assignment.role_id)
+        .maybeSingle();
+
+      if (assignedRoleError) throw assignedRoleError;
+      if (!MANAGED_ROLES.includes(String(assignedRole?.nombre ?? "") as (typeof MANAGED_ROLES)[number])) {
+        return json({ error: "El usuario no tiene un rol válido de la aplicación." }, 400);
+      }
+
+      const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, {
+        email,
+        email_confirm: true,
+      });
+
+      if (authUpdateError) {
+        return json({ error: authUpdateError.message }, 400);
+      }
+
+      const { error: profileUpdateError } = await admin
+        .from("usuario_roles")
+        .update({ username, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+
+      if (profileUpdateError) throw profileUpdateError;
+
+      return json({
+        success: true,
+        user: {
+          user_id: userId,
+          username,
+          email,
+        },
+      });
+    }
+
     if (action === "reset_password") {
       const userId = String(body?.user_id ?? "").trim();
       const password = String(body?.password ?? "");
@@ -249,8 +325,8 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (assignedRoleError) throw assignedRoleError;
-      if (!["guia", "coordinador"].includes(String(assignedRole?.nombre ?? ""))) {
-        return json({ error: "Esta pantalla solo administra contraseñas de guías y coordinadores." }, 400);
+      if (!MANAGED_ROLES.includes(String(assignedRole?.nombre ?? "") as (typeof MANAGED_ROLES)[number])) {
+        return json({ error: "El usuario no tiene un rol válido de la aplicación." }, 400);
       }
 
       const { error: updateError } = await admin.auth.admin.updateUserById(userId, {

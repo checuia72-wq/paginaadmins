@@ -5,7 +5,7 @@ function client() {
   return supabase;
 }
 
-export type ManagedUserRole = "guia" | "coordinador";
+export type ManagedUserRole = "administrador" | "atencion" | "coordinador" | "guia";
 
 export type ManagedUser = {
   user_id: string;
@@ -42,6 +42,15 @@ export async function createManagedUser(username: string, email: string, passwor
     email: email.trim().toLowerCase(),
     password,
     role,
+  });
+}
+
+export async function updateManagedUserProfile(userId: string, username: string, email: string) {
+  return invokeAdminUsers({
+    action: "update_profile",
+    user_id: userId,
+    username: username.trim().toLowerCase(),
+    email: email.trim().toLowerCase(),
   });
 }
 
