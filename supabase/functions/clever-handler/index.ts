@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: roleRow, error: roleError } = await admin
       .from("usuario_roles")
-      .select("role_id")
+      .select("role_id,username")
       .eq("user_id", requester.id)
       .maybeSingle();
 
@@ -91,6 +91,38 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action ?? "");
+
+    const logAdminActivity = async (
+      actionCode: string,
+      operation: "INSERT" | "UPDATE" | "DELETE",
+      targetUserId: string,
+      reference: string,
+      beforeData: Record<string, unknown> | null,
+      afterData: Record<string, unknown> | null,
+      changes: Record<string, unknown> = {},
+    ) => {
+      const { error: auditError } = await admin
+        .from("actividad_sistema")
+        .insert({
+          actor_user_id: requester.id,
+          actor_username: String((roleRow as any)?.username ?? ""),
+          actor_email: requester.email ?? null,
+          actor_role: "administrador",
+          actor_source: "edge_function",
+          accion: actionCode,
+          operacion: operation,
+          tabla: "usuario_roles",
+          registro_id: targetUserId,
+          referencia: reference || targetUserId,
+          datos_antes: beforeData,
+          datos_despues: afterData,
+          cambios: changes,
+        });
+
+      if (auditError) {
+        console.error("[admin-users:audit]", auditError);
+      }
+    };
 
     if (action === "list") {
       const { data: usersData, error: usersError } = await admin.auth.admin.listUsers({
@@ -212,6 +244,25 @@ Deno.serve(async (req: Request) => {
         throw assignmentError;
       }
 
+      await logAdminActivity(
+        "crear_usuario",
+        "INSERT",
+        user.id,
+        username || email,
+        null,
+        {
+          user_id: user.id,
+          username,
+          email: user.email ?? email,
+          role,
+        },
+        {
+          username,
+          email: user.email ?? email,
+          role,
+        },
+      );
+
       return json({
         user: {
           user_id: user.id,
@@ -253,7 +304,7 @@ Deno.serve(async (req: Request) => {
 
       const { data: assignment, error: assignmentError } = await admin
         .from("usuario_roles")
-        .select("role_id")
+        .select("role_id,username")
         .eq("user_id", userId)
         .maybeSingle();
 
@@ -271,6 +322,10 @@ Deno.serve(async (req: Request) => {
         return json({ error: "El usuario no tiene un rol válido de la aplicación." }, 400);
       }
 
+      const { data: targetUserBefore } = await admin.auth.admin.getUserById(userId);
+      const previousUsername = String((assignment as any)?.username ?? "");
+      const previousEmail = targetUserBefore?.user?.email ?? "";
+
       const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, {
         email,
         email_confirm: true,
@@ -286,6 +341,35 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", userId);
 
       if (profileUpdateError) throw profileUpdateError;
+
+      await logAdminActivity(
+        "editar_usuario",
+        "UPDATE",
+        userId,
+        username || email,
+        {
+          user_id: userId,
+          username: previousUsername,
+          email: previousEmail,
+          role: String(assignedRole?.nombre ?? ""),
+        },
+        {
+          user_id: userId,
+          username,
+          email,
+          role: String(assignedRole?.nombre ?? ""),
+        },
+        {
+          username: {
+            antes: previousUsername,
+            despues: username,
+          },
+          email: {
+            antes: previousEmail,
+            despues: email,
+          },
+        },
+      );
 
       return json({
         success: true,
@@ -329,6 +413,8 @@ Deno.serve(async (req: Request) => {
         return json({ error: "El usuario no tiene un rol válido de la aplicación." }, 400);
       }
 
+      const { data: targetUserForPassword } = await admin.auth.admin.getUserById(userId);
+
       const { error: updateError } = await admin.auth.admin.updateUserById(userId, {
         password,
       });
@@ -336,6 +422,31 @@ Deno.serve(async (req: Request) => {
       if (updateError) {
         return json({ error: updateError.message }, 400);
       }
+
+      await logAdminActivity(
+        "cambiar_contrasena_usuario",
+        "UPDATE",
+        userId,
+        String((assignment as any)?.username ?? targetUserForPassword?.user?.email ?? userId),
+        {
+          user_id: userId,
+          username: String((assignment as any)?.username ?? ""),
+          email: targetUserForPassword?.user?.email ?? "",
+          password: "••••••",
+        },
+        {
+          user_id: userId,
+          username: String((assignment as any)?.username ?? ""),
+          email: targetUserForPassword?.user?.email ?? "",
+          password: "••••••",
+        },
+        {
+          password: {
+            antes: "••••••",
+            despues: "••••••",
+          },
+        },
+      );
 
       return json({ success: true });
     }

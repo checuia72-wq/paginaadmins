@@ -8,7 +8,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../services/auth.service";
 import { appRoleLabel, getCurrentRole, type AppRole } from "../services/role.service";
 import { getMyGuideSalesPermissions, type GuideSalesPermissions } from "../services/guideSalesAccess.service";
-import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus, Store, ArrowRightLeft, ShieldCheck, HandCoins, PackageMinus } from "lucide-react";
+import { CalendarDays, Package, Users, UserCheck, LogOut, Menu, X, LayoutDashboard, ClipboardList, ChevronLeft, ChevronRight, Settings2, Tags, ShoppingCart, Boxes, CirclePlus, Store, ArrowRightLeft, ShieldCheck, HandCoins, PackageMinus, History } from "lucide-react";
 
 const SIDEBAR_KEY = "checua:sidebar_collapsed";
 const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
@@ -30,6 +30,7 @@ const ALL_NAV_LINKS = [
   { to: "/app/crear", label: "Crear", icon: <Settings2 size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/codigos-operativos", label: "Códigos operativos", icon: <Tags size={16} />, roles: ["administrador"] as AppRole[] },
   { to: "/app/adicionales", label: "Adicionales", icon: <CirclePlus size={16} />, roles: ["administrador"] as AppRole[] },
+  { to: "/app/actividad", label: "Actividad", icon: <History size={16} />, roles: ["administrador"] as AppRole[] },
 ];
 
 function Dashboard() {

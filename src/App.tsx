@@ -13,6 +13,7 @@ import ControlOperativoAccessPage from "./pages/ControlOperativoAccessPage";
 import CrearPage from "./pages/CrearPage";
 import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import AdicionalesPage from "./pages/AdicionalesPage";
+import ActivityPage from "./pages/ActivityPage";
 import InventarioSnacksPage from "./pages/InventarioSnacksPage";
 import VentasSnacksPage from "./pages/VentasSnacksPage";
 import ConsumoOperativoSnacksPage from "./pages/ConsumoOperativoSnacksPage";
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="crear" element={<RoleRoute allow={["administrador"]}><CrearPage /></RoleRoute>} />
           <Route path="codigos-operativos" element={<RoleRoute allow={["administrador"]}><CodigosOperativosPage /></RoleRoute>} />
           <Route path="adicionales" element={<RoleRoute allow={["administrador"]}><AdicionalesPage /></RoleRoute>} />
+          <Route path="actividad" element={<RoleRoute allow={["administrador"]}><ActivityPage /></RoleRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
