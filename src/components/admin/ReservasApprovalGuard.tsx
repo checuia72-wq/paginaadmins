@@ -47,12 +47,20 @@ type AbonoSplit = {
   monto: string;
   metodoPago: string;
   referencia: string;
+  fechaAbono: string;
 };
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
 const parseMoney = (value: string) => Number(value.replace(/\./g, "").replace(/,/g, ".").replace(/[^\d.]/g, "") || 0);
 const formatMoney = (value: number | null | undefined) => Number(value || 0).toLocaleString("es-CO");
 const labelMetodo = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+const todayLocal = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 export default function ReservasApprovalGuard() {
   const [reservas, setReservas] = useState<ReservaLite[]>([]);
@@ -66,7 +74,7 @@ export default function ReservasApprovalGuard() {
   const [reservaAdicionalesOriginales, setReservaAdicionalesOriginales] = useState<ReservaAdicional[]>([]);
   const [selected, setSelected] = useState<ReservaLite | null>(null);
   const [abonos, setAbonos] = useState<AbonoSplit[]>([
-    { monto: "", metodoPago: "", referencia: "" },
+    { monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() },
   ]);
   const [incluyeAlmuerzo, setIncluyeAlmuerzo] = useState(false);
   const [restaurante, setRestaurante] = useState("");
@@ -195,7 +203,7 @@ export default function ReservasApprovalGuard() {
     const lunch = adicionalesPlan.find((item) => item.adicional.codigo === "almuerzo");
 
     setSelected(reserva);
-    setAbonos([{ monto: "", metodoPago: "", referencia: "" }]);
+    setAbonos([{ monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() }]);
     setReservaAdicionalesOriginales(existentes);
     setAdicionalCantidad(cantidades);
     setIncluirAdicionales(existentes.some((row) => row.tipo_movimiento === "agregado" && Number(row.cantidad_aplicada || 0) > 0));
@@ -314,6 +322,7 @@ export default function ReservasApprovalGuard() {
         monto: parseMoney(p.monto),
         medio_pago: p.metodoPago.trim(),
         referencia: p.referencia.trim().toUpperCase(),
+        fecha_abono: p.fechaAbono.trim(),
       }))
       .filter((p) => p.monto > 0 || p.medio_pago || p.referencia);
     const valor = pagosAbono.reduce((total, p) => total + p.monto, 0);
@@ -424,6 +433,10 @@ export default function ReservasApprovalGuard() {
     }
     if (pagosAbono.some((p) => !/^[A-Z0-9]{4}$/.test(p.referencia))) {
       setError("Cada abono debe tener los últimos 4 caracteres de su referencia.");
+      return;
+    }
+    if (pagosAbono.some((p) => !/^\d{4}-\d{2}-\d{2}$/.test(p.fecha_abono))) {
+      setError("Selecciona la fecha de cada abono.");
       return;
     }
     if (!Number.isFinite(totalNuevo) || totalNuevo <= 0) {
@@ -760,7 +773,7 @@ export default function ReservasApprovalGuard() {
                   type="button"
                   className="rv-btn-cancel"
                   disabled={saving}
-                  onClick={() => setAbonos((current) => [...current, { monto: "", metodoPago: "", referencia: "" }])}
+                  onClick={() => setAbonos((current) => [...current, { monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() }])}
                   style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
                   <Plus size={15}/> Añadir método
@@ -837,6 +850,21 @@ export default function ReservasApprovalGuard() {
                       placeholder="Ej. A7F3"
                       disabled={saving}
                       style={{ textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}
+                    />
+                  </div>
+
+                  <div className="rv-form-group">
+                    <label>Fecha de abono *</label>
+                    <input
+                      type="date"
+                      value={pago.fechaAbono}
+                      onChange={(e) => {
+                        setAbonos((current) => current.map((item, i) =>
+                          i === index ? { ...item, fechaAbono: e.target.value } : item
+                        ));
+                        setError(null);
+                      }}
+                      disabled={saving}
                     />
                   </div>
 

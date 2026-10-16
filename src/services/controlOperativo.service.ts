@@ -4,7 +4,7 @@ import { getCurrentRole } from "./role.service";
 function client() { if (!supabase) throw new Error("Supabase no está configurado"); return supabase; }
 
 export type EstadoOperativo = "programada" | "asistio" | "no_asistio" | "reprogramada" | "cancelada";
-export type ReservaPago = { id_pago?: number; id_reserva: number; tipo_pago: "abono" | "saldo"; monto: number; medio_pago: string; fecha_pago?: string; observacion?: string | null; };
+export type ReservaPago = { id_pago?: number; id_reserva: number; tipo_pago: "abono" | "saldo"; monto: number; medio_pago: string; fecha_pago?: string; fecha_abono?: string | null; observacion?: string | null; };
 export type RecaudoDiario = { fecha: string; medio_pago: string; tipo_pago: "abono" | "saldo"; total: number; cantidad_movimientos: number; };
 export type ReservaDevolucion = {
   id_devolucion: number;
@@ -197,12 +197,12 @@ export async function getControlOperativoCoordinador():Promise<ControlOperativoR
   );
 }
 
-export async function getReservaPagos(idReserva:number):Promise<ReservaPago[]>{const{data,error}=await client().from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,observacion").eq("id_reserva",idReserva).order("fecha_pago",{ascending:true});if(error)throw error;return(data??[]).map((p:any)=>({...p,monto:num(p.monto)})) as ReservaPago[];}
+export async function getReservaPagos(idReserva:number):Promise<ReservaPago[]>{const{data,error}=await client().from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,fecha_abono,observacion").eq("id_reserva",idReserva).order("fecha_pago",{ascending:true});if(error)throw error;return(data??[]).map((p:any)=>({...p,monto:num(p.monto)})) as ReservaPago[];}
 
 export async function getPagosControlOperativo():Promise<ReservaPago[]>{
   const db=client();
   const [pagosRes,reservasRes]=await Promise.all([
-    db.from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,observacion").order("fecha_pago",{ascending:false}),
+    db.from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,fecha_abono,observacion").order("fecha_pago",{ascending:false}),
     db.from("reserva").select("id_reserva,valor_abonado,metodo_pago_abono,fecha_aprobacion,fecha_solicitud").eq("aprobado",true)
   ]);
   if(pagosRes.error)throw pagosRes.error;
@@ -305,13 +305,14 @@ export async function registrarDevolucionReserva(args:{id_reserva:number;monto:n
 
 export async function replaceAbonoPagos(
   idReserva:number,
-  pagos:Array<{monto:number;medio_pago:string;referencia?:string|null}>
+  pagos:Array<{monto:number;medio_pago:string;referencia?:string|null;fecha_abono?:string|null}>
 ){
   const validos=pagos
     .map((p)=>({
       monto:num(p.monto),
       medio_pago:text(p.medio_pago).trim(),
       referencia:text(p.referencia).trim().toUpperCase(),
+      fecha_abono:text(p.fecha_abono).trim(),
     }))
     .filter((p)=>p.monto>0&&p.medio_pago);
 
@@ -331,6 +332,7 @@ export async function replaceAbonoPagos(
         tipo_pago:"abono",
         monto:p.monto,
         medio_pago:p.medio_pago,
+        fecha_abono:p.fecha_abono||null,
         observacion:p.referencia?("Referencia abono: "+p.referencia):null,
       })));
     if(insertError)throw insertError;
