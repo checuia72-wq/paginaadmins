@@ -303,3 +303,26 @@
   font-weight:700;
   line-height:1.2;
 }
+
+
+/* Abonos divididos: mantener todos los medios y referencias dentro de su celda. */
+.op-table-operational .op-deposit-method-cell,
+.op-table-operational .op-reference-cell{
+  white-space:normal!important;
+  overflow:hidden!important;
+  text-overflow:clip!important;
+  vertical-align:top!important;
+  line-height:1.28;
+}
+.op-table-operational .op-deposit-method-cell{
+  text-align:left!important;
+}
+.op-table-operational .op-multiline-cell{
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  white-space:pre-line;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
