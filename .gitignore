@@ -15,7 +15,7 @@ dist-ssr
 # Environment variables
 .env
 .env.*
-.env.example
+!.env.example
 
 # Editor / OS
 .vscode/*
@@ -27,4 +27,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env.example

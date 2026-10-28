@@ -31,8 +31,12 @@ interface Participante {
   id_reserva: number;
   nombre: string;
   edad: number | null;
-  estatura: number | null;
-  peso: number | null;
+  tipo_documento?: string | null;
+  numero_documento?: string | null;
+  correo?: string | null;
+  nacionalidad?: string | null;
+  tipo_almuerzo?: string | null;
+  id_menu_almuerzo?: number | null;
   telefono_cliente?: string | null;
   telefono_participante?: string | null;
   nombre_plan?: string | null;
@@ -49,8 +53,10 @@ const emptyForm = {
   nombre: "",
   fecha_nacimiento: "",
   edad: "",
-  estatura: "",
-  peso: "",
+  tipo_documento: "",
+  numero_documento: "",
+  correo: "",
+  nacionalidad: "",
   telefono_cliente: "",
   telefono_participante: "",
 };
@@ -124,8 +130,10 @@ export default function ParticipantesAdmin() {
       nombre: p.nombre,
       fecha_nacimiento: "",
       edad: p.edad?.toString() ?? "",
-      estatura: p.estatura?.toString() ?? "",
-      peso: p.peso?.toString() ?? "",
+      tipo_documento: p.tipo_documento ?? "",
+      numero_documento: p.numero_documento ?? "",
+      correo: p.correo ?? "",
+      nacionalidad: p.nacionalidad ?? "",
       telefono_cliente: p.telefono_cliente ?? "",
       telefono_participante: p.telefono_participante ?? "",
     });
@@ -156,8 +164,10 @@ export default function ParticipantesAdmin() {
         id_reserva: Number(formData.id_reserva),
         nombre: formData.nombre,
         edad: edadCalculada,
-        estatura: formData.estatura ? Number(formData.estatura) : null,
-        peso: formData.peso ? Number(formData.peso) : null,
+        tipo_documento: formData.tipo_documento.trim() || null,
+        numero_documento: formData.numero_documento.trim() || null,
+        correo: formData.correo.trim() || null,
+        nacionalidad: formData.nacionalidad.trim() || null,
         telefono_cliente: formData.telefono_cliente || null,
         telefono_participante: formData.telefono_participante || null,
       };
@@ -193,7 +203,8 @@ export default function ParticipantesAdmin() {
     const q = search.toLowerCase();
     const matchSearch =
       String(p.id_participante).includes(q) ||
-      p.nombre.toLowerCase().includes(q) ||
+      (p.nombre ?? "").toLowerCase().includes(q) ||
+      [p.numero_documento, p.tipo_documento, p.correo, p.nacionalidad].some((value) => (value ?? "").toLowerCase().includes(q)) ||
       String(p.id_reserva).includes(q) ||
       (p.telefono_cliente ?? "").toLowerCase().includes(q) ||
       (p.telefono_participante ?? "").toLowerCase().includes(q) ||
@@ -248,9 +259,6 @@ export default function ParticipantesAdmin() {
     </div>
   );
 
-  const fmtEstatura = (v: number | null) => (v != null ? `${v} m` : "—");
-  const fmtPeso = (v: number | null) => (v != null ? `${Number(v).toFixed(2)} kg` : "—");
-
   // Nombre del plan asociado al participante: usa el que ya trae la API y,
   // si no viene, lo busca en la lista de reservas cargada.
   const planDeReserva = (p: Participante) =>
@@ -297,7 +305,7 @@ export default function ParticipantesAdmin() {
           <Search size={15} className="pt-search-icon" />
           <input
             className="pt-search-input"
-            placeholder="Buscar por ID, nombre o reserva..."
+            placeholder="Buscar por nombre, documento, correo o reserva..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
@@ -347,8 +355,11 @@ export default function ParticipantesAdmin() {
               <th>N° RESERVA</th>
               <th>NOMBRE</th>
               <th>EDAD</th>
-              <th>ESTATURA</th>
-              <th>PESO</th>
+              <th>TIPO DE DOCUMENTO</th>
+              <th>NÚMERO DE DOCUMENTO</th>
+              <th>CORREO</th>
+              <th>NACIONALIDAD</th>
+              <th>ALMUERZO</th>
               <th>CLIENTE</th>
               <th>TEL. PARTICIPANTE</th>
               <th>ACCIONES</th>
@@ -356,9 +367,9 @@ export default function ParticipantesAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="pt-empty">Cargando...</td></tr>
+              <tr><td colSpan={11} className="pt-empty">Cargando...</td></tr>
             ) : paginated.length === 0 ? (
-              <tr><td colSpan={8} className="pt-empty">Sin resultados</td></tr>
+              <tr><td colSpan={11} className="pt-empty">Sin resultados</td></tr>
             ) : paginated.map((p) => (
               <tr key={p.id_participante}>
                 <td>
@@ -369,8 +380,11 @@ export default function ParticipantesAdmin() {
                 </td>
                 <td className="pt-nombre">{p.nombre}</td>
                 <td>{p.edad ?? <span className="rv-null">—</span>}</td>
-                <td>{fmtEstatura(p.estatura)}</td>
-                <td>{fmtPeso(p.peso)}</td>
+                <td>{p.tipo_documento || "—"}</td>
+                <td>{p.numero_documento || "—"}</td>
+                <td>{p.correo || "—"}</td>
+                <td>{p.nacionalidad || "—"}</td>
+                <td>{p.tipo_almuerzo || "—"}</td>
                 <td>
                   {p.telefono_cliente ? (
                     <span className="pt-phone"><Phone size={13} /> {p.telefono_cliente}</span>
@@ -445,14 +459,7 @@ export default function ParticipantesAdmin() {
                 <span className="pt-card-meta-label">Edad</span>
                 <span className="pt-card-meta-value">{p.edad ?? "—"}</span>
               </div>
-              <div className="pt-card-meta-item">
-                <span className="pt-card-meta-label">Estatura</span>
-                <span className="pt-card-meta-value">{fmtEstatura(p.estatura)}</span>
-              </div>
-              <div className="pt-card-meta-item">
-                <span className="pt-card-meta-label">Peso</span>
-                <span className="pt-card-meta-value">{fmtPeso(p.peso)}</span>
-              </div>
+<div className="pt-card-meta-item"><span className="pt-card-meta-label">Tipo de documento</span><span className="pt-card-meta-value">{p.tipo_documento || "—"}</span></div><div className="pt-card-meta-item"><span className="pt-card-meta-label">Número de documento</span><span className="pt-card-meta-value">{p.numero_documento || "—"}</span></div><div className="pt-card-meta-item"><span className="pt-card-meta-label">Correo</span><span className="pt-card-meta-value">{p.correo || "—"}</span></div><div className="pt-card-meta-item"><span className="pt-card-meta-label">Nacionalidad</span><span className="pt-card-meta-value">{p.nacionalidad || "—"}</span></div><div className="pt-card-meta-item"><span className="pt-card-meta-label">Almuerzo</span><span className="pt-card-meta-value">{p.tipo_almuerzo || "—"}</span></div>
             </div>
           </div>
         ))}
@@ -488,8 +495,12 @@ export default function ParticipantesAdmin() {
                 <div className="pt-detail-field"><label>N° Reserva</label><span>#{viewing.id_reserva} — {planDeReserva(viewing)}</span></div>
                 <div className="pt-detail-field"><label>Nombre</label><span>{viewing.nombre}</span></div>
                 <div className="pt-detail-field"><label>Edad</label><span>{viewing.edad ?? "—"}</span></div>
-                <div className="pt-detail-field"><label>Estatura</label><span>{fmtEstatura(viewing.estatura)}</span></div>
-                <div className="pt-detail-field"><label>Peso</label><span>{fmtPeso(viewing.peso)}</span></div>
+<div className="pt-detail-field"><label>Tipo de documento</label><span>{viewing.tipo_documento ?? "—"}</span></div>
+<div className="pt-detail-field"><label>Número de documento</label><span>{viewing.numero_documento ?? "—"}</span></div>
+<div className="pt-detail-field"><label>Correo</label><span>{viewing.correo ?? "—"}</span></div>
+<div className="pt-detail-field"><label>Nacionalidad</label><span>{viewing.nacionalidad ?? "—"}</span></div>
+<div className="pt-detail-field"><label>Almuerzo</label><span>{viewing.tipo_almuerzo ?? "—"}</span></div>
+<div className="pt-detail-field"><label>ID menú de almuerzo</label><span>{viewing.id_menu_almuerzo ?? "—"}</span></div>
                 <div className="pt-detail-field"><label>Tel. cliente</label><span>{viewing.telefono_cliente || "—"}</span></div>
                 <div className="pt-detail-field"><label>Tel. participante</label><span>{viewing.telefono_participante || "—"}</span></div>
               </div>
@@ -561,28 +572,11 @@ export default function ParticipantesAdmin() {
                   />
                 </div>
               </div>
-              <div className="pt-form-row">
-                <div className="pt-form-group">
-                  <label>Estatura (m)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.estatura}
-                    onChange={(e) => setFormData({ ...formData, estatura: e.target.value })}
-                    placeholder="Ej. 1.72"
-                  />
-                </div>
-                <div className="pt-form-group">
-                  <label>Peso (kg)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.peso}
-                    onChange={(e) => setFormData({ ...formData, peso: e.target.value })}
-                    placeholder="Ej. 70.5"
-                  />
-                </div>
-              </div>
+<div className="pt-form-group"><label>Tipo de documento</label><input type="text" value={formData.tipo_documento} onChange={(e) => setFormData({ ...formData, tipo_documento: e.target.value })} /></div>
+<div className="pt-form-group"><label>Número de documento</label><input type="text" value={formData.numero_documento} onChange={(e) => setFormData({ ...formData, numero_documento: e.target.value })} /></div>
+<div className="pt-form-group"><label>Correo</label><input type="email" value={formData.correo} onChange={(e) => setFormData({ ...formData, correo: e.target.value })} /></div>
+<div className="pt-form-group"><label>Nacionalidad</label><input type="text" value={formData.nacionalidad} onChange={(e) => setFormData({ ...formData, nacionalidad: e.target.value })} /></div>
+{editing && <div className="pt-form-group"><label>Almuerzo registrado</label><span>{editing.tipo_almuerzo || "—"} · Menú: {editing.id_menu_almuerzo ?? "—"}</span></div>}
               <div className="pt-form-row pt-form-row-2">
                 <div className="pt-form-group">
                   <label>Tel. cliente</label>
