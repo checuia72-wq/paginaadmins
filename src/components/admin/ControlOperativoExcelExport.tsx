@@ -352,8 +352,8 @@ export default function ControlOperativoExcelExport() {
   );
 
   const asistentesCount = useMemo(
-    () => mode === "excel" ? 0 : participantesActivosPorFecha(selectedDate, rows, mode === "mines").length,
-    [rows, selectedDate, mode]
+    () => mode === "excel" ? 0 : participantesActivosPorFecha(selectedDate, mode === "policies" ? rows.filter((row) => rowMatchesFilters(row, filters)) : rows, mode === "mines").length,
+    [rows, selectedDate, mode, filters]
   );
 
   const reservasRangoCount = useMemo(() => {
@@ -442,6 +442,8 @@ export default function ControlOperativoExcelExport() {
         setAdvancedOpen(Object.values(pageState.filters).some(Boolean));
       } else {
         setSelectedDate(pageDate || hoy());
+        setFilters(pageState.filters);
+        setAdvancedOpen(nextMode === "policies" && Object.values(pageState.filters).some(Boolean));
       }
 
       setOpen(true);
@@ -477,7 +479,7 @@ export default function ControlOperativoExcelExport() {
       } else {
         const latest = await getControlOperativo();
         setRows(latest);
-        exportarListadoSimple(selectedDate, latest, mode === "mines");
+        exportarListadoSimple(selectedDate, mode === "policies" ? latest.filter((row) => rowMatchesFilters(row, filters)) : latest, mode === "mines");
       }
       setOpen(false);
     } catch (e: any) {
@@ -501,7 +503,7 @@ export default function ControlOperativoExcelExport() {
 
   return (
     <div style={{ position:"fixed", inset:0, zIndex:99999, background:"rgba(16,13,10,.58)", backdropFilter:"blur(4px)", display:"grid", placeItems:"center", padding:20 }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="daily-export-title" style={{ width:"min(560px,100%)", background:"#fffdf9", border:"1px solid #e8d7bd", borderRadius:20, boxShadow:"0 28px 80px rgba(40,27,9,.28)", overflow:"hidden" }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="daily-export-title" style={{ width:"min(560px,100%)", background:"#fffdf9", border:"1px solid #e8d7bd", borderRadius:20, boxShadow:"0 28px 80px rgba(40,27,9,.28)", overflow:"hidden", maxHeight:"calc(100dvh - 40px)", display:"flex", flexDirection:"column" }}>
         <div style={{ padding:"24px 26px 18px", borderBottom:"1px solid #eee2d2", display:"flex", justifyContent:"space-between", gap:16 }}>
           <div>
             <div style={{ color:"#b67b24", fontSize:12, fontWeight:800, letterSpacing:1, textTransform:"uppercase" }}>Control operativo</div>
@@ -511,13 +513,13 @@ export default function ControlOperativoExcelExport() {
                 ? "Selecciona el rango de fechas y, si lo necesitas, usa las opciones avanzadas para exportar únicamente las reservas o personas que coincidan con tus filtros."
                 : isMines
                   ? "Selecciona la fecha de visita. El Excel incluirá nombre, cédula, edad y nacionalidad de los asistentes de ese día que tienen Mina."
-                  : "Selecciona la fecha de visita. El Excel incluirá únicamente nombre y cédula de los asistentes activos de ese día."}
+                  : "Selecciona la fecha de visita y usa las opciones avanzadas para filtrar los asistentes. El Excel incluirá nombre y cédula. Se excluyen reservas canceladas y personas que no asistieron."}
             </p>
           </div>
           <button type="button" onClick={() => !exporting && setOpen(false)} disabled={exporting} aria-label="Cerrar" style={{ width:36, height:36, borderRadius:10, border:"1px solid #e5d5be", background:"white", cursor:"pointer", fontSize:22, lineHeight:1 }}>×</button>
         </div>
 
-        <div style={{ padding:"24px 26px" }}>
+        <div style={{ padding:"24px 26px", overflowY:"auto", minHeight:0 }}>
           {isExcel ? (
             <div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:14 }}>
@@ -531,9 +533,20 @@ export default function ControlOperativoExcelExport() {
                 </label>
               </div>
 
+
+            </div>
+          ) : (
+            <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
+              Fecha de visita
+              <input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
+            </label>
+          )}
+
+          {(isExcel || mode === "policies") && <div>
               <button
                 type="button"
                 onClick={() => setAdvancedOpen((value) => !value)}
+                aria-expanded={advancedOpen}
                 style={{ marginTop:16, width:"100%", minHeight:44, border:"1px solid #e2cfb2", borderRadius:12, background:"#fffaf2", color:"#6b5130", fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 14px" }}
               >
                 <span>Opciones avanzadas de exportación</span>
@@ -600,13 +613,7 @@ export default function ControlOperativoExcelExport() {
                   </button>
                 </div>
               )}
-            </div>
-          ) : (
-            <label style={{ display:"grid", gap:8, color:"#4f4438", fontSize:13, fontWeight:700 }}>
-              Fecha de visita
-              <input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setError(""); }} style={{ width:"100%", boxSizing:"border-box", height:48, border:"1px solid #d9c4a6", borderRadius:12, padding:"0 14px", fontSize:16, color:"#2f271e", background:"#fff" }} />
-            </label>
-          )}
+          </div>}
 
           {invalidRange && <div style={{ marginTop:14, padding:"12px 14px", borderRadius:10, background:"#fff1f0", border:"1px solid #f0c7c3", color:"#a33a31", fontSize:13 }}>La fecha inicial debe ser igual o anterior a la fecha final.</div>}
 
