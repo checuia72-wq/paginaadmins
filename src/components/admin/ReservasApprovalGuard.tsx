@@ -4,6 +4,7 @@ import ReservasAdmin from "./ReservasAdmin";
 import { getReservas, updateReserva } from "../../services/api.service";
 import { getMetodosPagoActivos } from "../../services/medioPago.service";
 import { getRestaurantesActivos } from "../../services/restaurante.service";
+import { getMenusActivosPorRestaurante, type RestauranteMenuItem } from "../../services/restauranteMenu.service";
 import { replaceAbonoPagos } from "../../services/controlOperativo.service";
 import {
   aprobarReservaOperativa,
@@ -49,6 +50,8 @@ type ReservaLite = {
   observacion?: string | null;
   nombre_plan?: string | null;
   fecha_reserva?: string | null;
+  incluye_almuerzo?: boolean | null;
+  id_codigo_operativo?: number | null;
 };
 
 type AdvancedOption = "" | "refrigerio" | "adicionales" | "valor_total" | "valor_unitario";
@@ -89,6 +92,8 @@ export default function ReservasApprovalGuard() {
   ]);
   const [incluyeAlmuerzo, setIncluyeAlmuerzo] = useState(false);
   const [restaurante, setRestaurante] = useState("");
+  const [menuAlmuerzoId, setMenuAlmuerzoId] = useState<number | "">("");
+  const [menusRestaurante, setMenusRestaurante] = useState<RestauranteMenuItem[]>([]);
   const [codigoId, setCodigoId] = useState<number | "">("");
   const [advancedOption, setAdvancedOption] = useState<AdvancedOption>("");
   const [incluyeRefrigerio, setIncluyeRefrigerio] = useState(true);
@@ -133,10 +138,34 @@ export default function ReservasApprovalGuard() {
     [adicionalesDelPlan],
   );
 
-  const opcionesCH = useMemo(
-    () => selected ? codigosCompatibles(codigos, selected.id_plan, incluyeAlmuerzo, restaurante) : [],
-    [codigos, selected, incluyeAlmuerzo, restaurante],
+  // El almuerzo opcional no debe modificar el tipo de CH del plan contratado.
+  const almuerzoAdicionalActivo = incluirAdicionales && (
+    adicionalesDelPlan.some((item) =>
+      item.adicional.codigo === "almuerzo" && item.modalidad === "opcional" &&
+      Number(adicionalCantidad[item.id_adicional] || 0) > 0
+    ) ||
+    adicionalesLibres.some((item) =>
+      item.codigo === "almuerzo" && Number(adicionalCantidad[item.id_adicional] || 0) > 0
+    )
   );
+  const almuerzoParaCH = almuerzoAdicionalActivo ? false : incluyeAlmuerzo;
+  const restauranteParaCH = almuerzoParaCH ? restaurante : "";
+
+  const opcionesCH = useMemo(
+    () => selected ? codigosCompatibles(codigos, selected.id_plan, almuerzoParaCH, restauranteParaCH) : [],
+    [codigos, selected, almuerzoParaCH, restauranteParaCH],
+  );
+
+  useEffect(() => {
+    setMenuAlmuerzoId("");
+    setMenusRestaurante([]);
+    if (!selected || !restaurante || !incluyeAlmuerzo) return;
+    let active = true;
+    getMenusActivosPorRestaurante(restaurante).then((items) => {
+      if (active) setMenusRestaurante(items);
+    }).catch((e) => console.warn("No se pudo consultar el menú del restaurante", e));
+    return () => { active = false; };
+  }, [selected, restaurante, incluyeAlmuerzo]);
 
   useEffect(() => {
     if (!selected) return;
@@ -235,8 +264,9 @@ export default function ReservasApprovalGuard() {
     setPlanAdicionalCantidad({});
     setAdicionalCantidad(cantidades);
     setIncluirAdicionales(existentes.some((row) => row.tipo_movimiento === "agregado" && Number(row.cantidad_aplicada || 0) > 0));
-    setIncluyeAlmuerzo(lunch ? Number(cantidades[lunch.id_adicional] || 0) > 0 : false);
+    setIncluyeAlmuerzo(lunch ? Number(cantidades[lunch.id_adicional] || 0) > 0 : Boolean(reserva.incluye_almuerzo));
     setRestaurante("");
+    setMenuAlmuerzoId("");
     setCodigoId("");
     setAdvancedOption("");
     setIncluyeRefrigerio(true);
@@ -508,7 +538,7 @@ export default function ReservasApprovalGuard() {
       setError("Debes registrar una observación explicando el cambio de valor de la reserva.");
       return;
     }
-    if (incluyeAlmuerzo && !restaurante) {
+    if ((incluyeAlmuerzo || almuerzoAdicionalActivo) && !restaurante) {
       setError("Selecciona el restaurante para la reserva con almuerzo.");
       return;
     }
@@ -558,10 +588,29 @@ export default function ReservasApprovalGuard() {
         id_reserva: selected.id_reserva,
         valor_abonado: valor,
         metodo_pago: pagosAbono[0].medio_pago,
-        incluye_almuerzo: incluyeAlmuerzo,
-        restaurante: incluyeAlmuerzo ? restaurante : null,
+        incluye_almuerzo: almuerzoParaCH,
+        restaurante: restauranteParaCH || null,
         id_codigo_operativo: Number(codigoId),
       });
+
+      // Datos del adicional en columnas independientes: no volver a generar el CH.
+      if (almuerzoAdicionalActivo) {
+        await updateReserva(selected.id_reserva, {
+          almuerzo_adicional: true,
+          restaurante_almuerzo_adicional: restaurante,
+          id_menu_almuerzo_adicional: menuAlmuerzoId || null,
+          // Mantiene compatibilidad con el control operativo de almuerzos.
+          // El CH ya fue emitido para el plan base y no se vuelve a generar.
+          incluye_almuerzo: true,
+          restaurante,
+        });
+      } else {
+        await updateReserva(selected.id_reserva, {
+          almuerzo_adicional: false,
+          restaurante_almuerzo_adicional: null,
+          id_menu_almuerzo_adicional: null,
+        });
+      }
 
       setSelected(null);
       window.location.reload();
@@ -1016,6 +1065,10 @@ export default function ReservasApprovalGuard() {
                           const enabled = e.target.value === "si";
                           setIncluirAdicionales(enabled);
                           if (!enabled) {
+                            if (!almuerzoConfigurado || almuerzoConfigurado.modalidad === "opcional") {
+                              setIncluyeAlmuerzo(false);
+                              setRestaurante("");
+                            }
                             setAdicionalCantidad((current) => {
                               const next = { ...current };
                               for (const item of adicionalesDelPlan) {
@@ -1292,15 +1345,15 @@ export default function ReservasApprovalGuard() {
 
             <div className="rv-approval-note" style={{ marginTop: 14 }}>
               <div className="rv-approval-note-icon"><Tag size={18}/></div>
-              <span>El CH se calcula según el plan, si incluye almuerzo y el restaurante seleccionado. Puedes cambiar el CH entre las opciones válidas.</span>
+              <span>El CH se calcula según el plan base. Comprar almuerzo como adicional no cambia el CH del plan original.</span>
             </div>
 
             <div className="rv-approval-grid" style={{ marginTop: 14 }}>
               <div className="rv-form-group">
-                <label>¿Incluye almuerzo?</label>
+                <label>¿Incluye almuerzo? {almuerzoAdicionalActivo ? "(adicional)" : "(plan base)"}</label>
                 <select
                   value={incluyeAlmuerzo ? "si" : "no"}
-                  disabled={!!almuerzoConfigurado}
+                  disabled={!!almuerzoConfigurado || almuerzoAdicionalActivo}
                   onChange={(e) => {
                     const value = e.target.value === "si";
                     setIncluyeAlmuerzo(value);
@@ -1320,6 +1373,18 @@ export default function ReservasApprovalGuard() {
                   {restaurantes.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
+
+              {incluyeAlmuerzo && (
+                <div className="rv-form-group" style={{ gridColumn: "1 / -1" }}>
+                  <label>Tipo de almuerzo (opcional)</label>
+                  <select value={menuAlmuerzoId} disabled={!restaurante || saving} onChange={(e) => setMenuAlmuerzoId(e.target.value ? Number(e.target.value) : "")}>
+                    <option value="">Sin seleccionar</option>
+                    {menusRestaurante.map((item) => (
+                      <option key={item.id_menu} value={item.id_menu}>{item.nombre_plato}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="rv-form-group" style={{ gridColumn: "1 / -1" }}>
                 <label>Código CH *</label>
