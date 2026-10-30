@@ -58,8 +58,10 @@ function buildControlOperativoRows(
   planes: any[],
   fechas: any[],
   horas: any[],
+  menus: any[],
 ): ControlOperativoRow[] {
   const planMap=new Map(planes.map((p:any)=>[Number(p.id_plan),p]));
+  const menuMap=new Map<number,string>(menus.map((m:any)=>[Number(m.id_menu),text(m.nombre_plato)]));
   const fechaMap=new Map<number,any>();
   const horaMap=new Map<number,any>();
   const horasPorPlan=new Map<number,any[]>();
@@ -105,6 +107,17 @@ function buildControlOperativoRows(
     }
 
     const personas=participantesPorReserva.get(Number(r.id_reserva))??[null];
+    // La aprobación guarda las elecciones por posición en reserva.seleccion_almuerzos.
+    // Control Operativo muestra el plato correspondiente a cada participante.
+    const seleccion=Array.isArray(r.seleccion_almuerzos)?r.seleccion_almuerzos:[];
+    const platosPorPosicion=new Map<number,string>();
+    for(const item of seleccion){
+      const numero=Number(item?.numero);
+      const idMenu=Number(item?.id_menu);
+      if(Number.isInteger(numero)&&numero>0&&Number.isInteger(idMenu)&&menuMap.has(idMenu)){
+        platosPorPosicion.set(numero,menuMap.get(idMenu)!);
+      }
+    }
     const fechaReserva=dateOnly(r.fecha_reserva??r.fecha??fechaRelacionada?.fecha_reserva??fechaRelacionada?.fecha);
     const horaReserva=hourOnly(r.hora_reserva??r.hora??horaRelacionada?.hora_reserva??horaRelacionada?.hora)||horaDesdeFechaReserva;
     const cantidadPersonas=r.cantidad_personas==null?personas.filter(Boolean).length:num(r.cantidad_personas);
@@ -116,7 +129,7 @@ function buildControlOperativoRows(
     const pagoSaldo=num(r.valor_saldo_pagado);
     const saldo=Math.max(0,total-abono-pagoSaldo);
 
-    for(const p of personas){
+    for(const [posicion,p] of personas.entries()){
       const contactoCliente=text(p?.telefono_cliente||r.telefono_cliente);
       rows.push({
         id_reserva:Number(r.id_reserva),
@@ -145,7 +158,7 @@ function buildControlOperativoRows(
         mina:r.mina??null,
         refrigerio:r.refrigerio??null,
         restaurante:text(r.restaurante),
-        almuerzo:text(p?.tipo_almuerzo),
+        almuerzo:text(p?.tipo_almuerzo)||platosPorPosicion.get(posicion+1)||"",
         total,
         abono,
         medio_abono:text(r.metodo_pago_abono),
@@ -165,15 +178,16 @@ function buildControlOperativoRows(
 }
 
 export async function getControlOperativo():Promise<ControlOperativoRow[]>{
-  const [reservasRes,participantesRes,planesRes,fechasRes,horasRes]=await Promise.all([
+  const [reservasRes,participantesRes,planesRes,fechasRes,horasRes,menusRes]=await Promise.all([
     client().from("reserva").select("*").eq("aprobado",true).order("id_reserva",{ascending:false}),
     client().from("participante").select("*").order("id_participante",{ascending:true}),
     client().from("plan").select("*"),
     client().from("plan_fechas").select("*"),
     client().from("plan_horas").select("*"),
+    client().from("restaurante_menu").select("id_menu,nombre_plato"),
   ]);
 
-  const errors=[reservasRes.error,participantesRes.error,planesRes.error,fechasRes.error,horasRes.error].filter(Boolean);
+  const errors=[reservasRes.error,participantesRes.error,planesRes.error,fechasRes.error,horasRes.error,menusRes.error].filter(Boolean);
   if(errors.length) throw errors[0];
 
   return buildControlOperativoRows(
@@ -182,6 +196,7 @@ export async function getControlOperativo():Promise<ControlOperativoRow[]>{
     planesRes.data??[],
     fechasRes.data??[],
     horasRes.data??[],
+    menusRes.data??[],
   );
 }
 
@@ -190,20 +205,30 @@ export async function getControlOperativoCoordinador():Promise<ControlOperativoR
   if(current?.role!=="coordinador") return getControlOperativo();
 
   const db=client();
-  const [{data,error},{data:approvers,error:approverError}]=await Promise.all([
+  const [{data,error},{data:approvers,error:approverError},{data:menus,error:menusError}]=await Promise.all([
     db.rpc("control_operativo_coordinador_data"),
     db.rpc("aprobadores_control_operativo"),
+    db.from("restaurante_menu").select("id_menu,nombre_plato"),
   ]);
   if(error) throw error;
   if(approverError) throw approverError;
+  if(menusError) throw menusError;
 
   const raw:any=data??{};
   const approverMap=new Map<number,any>(
     (Array.isArray(approvers)?approvers:[]).map((row:any)=>[Number(row.id_reserva),row])
   );
-  const reservas=(Array.isArray(raw.reservas)?raw.reservas:[]).map((reserva:any)=>{
-    const approval=approverMap.get(Number(reserva.id_reserva));
-    return approval?{...reserva,...approval}:reserva;
+  const rawReservas=Array.isArray(raw.reservas)?raw.reservas:[];
+  const ids=rawReservas.map((r:any)=>Number(r.id_reserva)).filter(Number.isFinite);
+  const {data:selecciones,error:seleccionesError}=ids.length
+    ?await db.from("reserva").select("id_reserva,seleccion_almuerzos").in("id_reserva",ids)
+    :{data:[],error:null};
+  if(seleccionesError) throw seleccionesError;
+  const seleccionMap=new Map<number,any>((selecciones??[]).map((r:any)=>[Number(r.id_reserva),r.seleccion_almuerzos]));
+  const reservas=rawReservas.map((reserva:any)=>{
+    const id=Number(reserva.id_reserva);
+    const approval=approverMap.get(id);
+    return {...reserva,...(approval??{}),seleccion_almuerzos:seleccionMap.get(id)??reserva.seleccion_almuerzos??[]};
   });
 
   return buildControlOperativoRows(
@@ -212,6 +237,7 @@ export async function getControlOperativoCoordinador():Promise<ControlOperativoR
     Array.isArray(raw.planes)?raw.planes:[],
     Array.isArray(raw.fechas)?raw.fechas:[],
     Array.isArray(raw.horas)?raw.horas:[],
+    menus??[],
   );
 }
 
