@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import ReservasApprovalGuard from "./ReservasApprovalGuard";
 import { getReservas } from "../../services/api.service";
+import { rehacerYReenviarPdfReserva } from "../../services/reservaPdf.service";
 
 type ReservaPdf = {
   id_reserva: number;
@@ -107,6 +108,27 @@ export default function ReservasPdfGuard() {
             button.addEventListener("click", onClick);
             cleanups.push(() => button.removeEventListener("click", onClick));
             actions.insertBefore(button, actions.firstChild);
+            if (reserva.aprobado && !actions.querySelector('[data-rehacer-pdf]')) {
+              const regen = document.createElement("button");
+              regen.type = "button";
+              regen.className = "action-btn action-ver";
+              regen.dataset.rehacerPdf = String(reserva.id_reserva);
+              regen.textContent = "Rehacer y reenviar PDF";
+              regen.title = "Generar un PDF actualizado y enviarlo nuevamente al cliente por WhatsApp";
+              regen.addEventListener("click", async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!window.confirm(`Se regenerará el PDF de ${reserva.codigo_reserva || reserva.id_reserva} y se reenviará por WhatsApp al cliente. ¿Continuar?`)) return;
+                regen.disabled = true;
+                try {
+                  await rehacerYReenviarPdfReserva(reserva.id_reserva);
+                  window.alert("Solicitud enviada a n8n. La generación y el envío aún deben finalizar.");
+                } catch (error) {
+                  window.alert(error instanceof Error ? error.message : "No se pudo solicitar el PDF.");
+                } finally { regen.disabled = false; }
+              });
+              actions.insertBefore(regen, button);
+            }
           });
         };
 
