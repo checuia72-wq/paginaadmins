@@ -83,6 +83,8 @@ export default function ReservasApprovalGuard() {
   const [adicionalesCatalogo, setAdicionalesCatalogo] = useState<Adicional[]>([]);
   const [adicionalCantidad, setAdicionalCantidad] = useState<Record<number, number>>({});
   const [incluirAdicionales, setIncluirAdicionales] = useState(false);
+  const [crearTemporal, setCrearTemporal] = useState(false);
+  const [temporal, setTemporal] = useState({nombre:"",descripcion:"",precio:"",tipo:"por_persona" as "por_persona"|"por_reserva",cantidad:1});
   const [reservaAdicionalesOriginales, setReservaAdicionalesOriginales] = useState<ReservaAdicional[]>([]);
   const [planesAdicionalesDisponibles, setPlanesAdicionalesDisponibles] = useState<OpcionPlanAdicional[]>([]);
   const [planAdicionalCantidad, setPlanAdicionalCantidad] = useState<Record<string, number>>({});
@@ -287,6 +289,8 @@ export default function ReservasApprovalGuard() {
     setReservaAdicionalesOriginales(existentes);
     setPlanesAdicionalesDisponibles(planesDisponibles);
     setPlanAdicionalCantidad({});
+    setCrearTemporal(false);
+    setTemporal({nombre:"",descripcion:"",precio:"",tipo:"por_persona",cantidad:1});
     setAdicionalCantidad(cantidades);
     setIncluirAdicionales(existentes.some((row) => row.tipo_movimiento === "agregado" && Number(row.cantidad_aplicada || 0) > 0));
     setRestaurante("");
@@ -483,7 +487,18 @@ export default function ReservasApprovalGuard() {
         })
       : [];
 
-    const movimientosAdicionalesFinales = [...movimientosAdicionales, ...movimientosAdicionalesLibres];
+    const precioTemporal = parseMoney(temporal.precio);
+    const cantidadTemporal = temporal.tipo === "por_reserva" ? 1 : Math.min(cantidad, Math.max(1, Math.floor(temporal.cantidad)));
+    if (crearTemporal && (!temporal.nombre.trim() || !temporal.descripcion.trim() || precioTemporal <= 0)) {
+      setError("Completa nombre, observaciones (qué incluye) y precio positivo del adicional temporal.");
+      return;
+    }
+    const movimientosTemporales: ReservaAdicionalInput[] = crearTemporal ? [{
+      id_adicional:null, codigo_adicional:"temporal_reserva", nombre_adicional:temporal.nombre.trim(),
+      descripcion_temporal:temporal.descripcion.trim(), tipo_cobro:temporal.tipo, tipo_movimiento:"agregado",
+      precio_unitario:precioTemporal,cantidad_aplicada:cantidadTemporal,impacto_total:precioTemporal*cantidadTemporal,
+    }] : [];
+    const movimientosAdicionalesFinales = [...movimientosAdicionales, ...movimientosAdicionalesLibres, ...movimientosTemporales];
     const impactoAdicionales = movimientosAdicionalesFinales.reduce((total, item) => total + Number(item.impacto_total || 0), 0);
 
     const planesParaAgregar = planesAdicionalesDisponibles.flatMap((opcion) => {
@@ -601,7 +616,10 @@ export default function ReservasApprovalGuard() {
       if (ajusteMonetario || Math.abs(impactoAdicionales - impactoOriginal) > 0.01) {
         patch.valor_total = totalSinPlanesAdicionales;
         patch.precio_unitario = unitarioSinPlanesAdicionales;
-        if (ajusteMonetario) patch.observacion = observacion.trim();
+        if (ajusteMonetario || crearTemporal) patch.observacion = [
+          observacion.trim(),
+          crearTemporal ? `Adicional temporal: ${temporal.nombre.trim()} (Qué incluye: ${temporal.descripcion.trim()}). ${cantidadTemporal} x ${formatMoney(precioTemporal)} = ${formatMoney(precioTemporal*cantidadTemporal)}.` : "",
+        ].filter(Boolean).join("\n");
       }
 
       await updateReserva(selected.id_reserva, patch);
@@ -715,7 +733,10 @@ export default function ReservasApprovalGuard() {
         return total + Number(item.precio || 0) * quantity;
       }, 0)
     : 0;
-  const impactoAdicionalesTotalVista = impactoAdicionalesVista + impactoAdicionalesLibresVista;
+  const precioTemporalVista = parseMoney(temporal.precio);
+  const cantidadTemporalVista = temporal.tipo === "por_reserva" ? 1 : Math.min(cantidadSeleccionada,Math.max(1,Math.floor(temporal.cantidad)));
+  const impactoTemporalVista = crearTemporal ? precioTemporalVista * cantidadTemporalVista : 0;
+  const impactoAdicionalesTotalVista = impactoAdicionalesVista + impactoAdicionalesLibresVista + impactoTemporalVista;
   const planesAdicionalesSeleccionadosVista = planesAdicionalesDisponibles.flatMap((opcion) => {
     const personas = Math.min(
       cantidadSeleccionada,
@@ -1090,7 +1111,7 @@ export default function ReservasApprovalGuard() {
 
             {advancedOption === "adicionales" && (
               <div style={{ display: "grid", gap: 10 }}>
-                {(adicionalesDelPlan.length > 0 || adicionalesLibres.length > 0 || planesAdicionalesDisponibles.length > 0) ? (
+                {true ? (
                   <div style={{ border: "1px solid #e4ddd4", borderRadius: 14, padding: 14, background: "#fff" }}>
                     <div style={{ marginBottom: 12 }}>
                       <strong style={{ display: "block", fontSize: 15 }}>Adicionales y planes adicionales</strong>
@@ -1148,6 +1169,25 @@ export default function ReservasApprovalGuard() {
                     </div>
 
                     <div style={{ display: "grid", gap: 9 }}>
+                      <div style={{display:"grid",gap:12,padding:16,border:"1px solid #ead9bf",borderRadius:12,background:"#fffaf3"}}>
+                        <label style={{display:"flex",gap:10,alignItems:"center",cursor:"pointer",fontWeight:700,color:"#4a3929"}}>
+                          <input type="checkbox" checked={crearTemporal} onChange={e=>setCrearTemporal(e.target.checked)} disabled={saving}/>
+                          Crear adicional temporal para esta reserva
+                        </label>
+                        {crearTemporal && <div style={{display:"grid",gap:12}}>
+                          <div className="rv-form-group"><label>Nombre del adicional *</label><input style={{width:"100%",minHeight:40,padding:"9px 12px",border:"1px solid #dcd4ca",borderRadius:8,background:"#fff",color:"#2d241a",boxSizing:"border-box"}} placeholder="Ej. Servicio de fotografía" value={temporal.nombre} onChange={e=>setTemporal(v=>({...v,nombre:e.target.value}))}/></div>
+                          <div className="rv-form-group"><label>Observaciones (qué incluye) *</label><textarea rows={3} style={{width:"100%",minHeight:90,padding:"10px 12px",border:"1px solid #dcd4ca",borderRadius:8,background:"#fff",color:"#2d241a",boxSizing:"border-box",resize:"vertical"}} placeholder="Describe detalladamente qué incluye el adicional" value={temporal.descripcion} onChange={e=>setTemporal(v=>({...v,descripcion:e.target.value}))}/></div>
+                          <div className="rv-form-group"><label>Precio unitario (COP) *</label><input style={{width:"100%",minHeight:40,padding:"9px 12px",border:"1px solid #dcd4ca",borderRadius:8,background:"#fff",color:"#2d241a",boxSizing:"border-box"}} placeholder="Ej. 25000" value={temporal.precio} onChange={e=>setTemporal(v=>({...v,precio:e.target.value}))} inputMode="numeric"/></div>
+                          <div className="rv-form-group"><label>Tipo de cobro</label><select style={{width:"100%",minHeight:40,padding:"8px 12px",border:"1px solid #dcd4ca",borderRadius:8,background:"#fff",color:"#2d241a"}} value={temporal.tipo} onChange={e=>setTemporal(v=>({...v,tipo:e.target.value as "por_persona"|"por_reserva",cantidad:1}))}><option value="por_persona">Por persona</option><option value="por_reserva">Por reserva</option></select></div>
+                          {temporal.tipo==="por_persona" && <div className="rv-form-group"><label>Cantidad de personas</label><select style={{width:"100%",minHeight:40,padding:"8px 12px",border:"1px solid #dcd4ca",borderRadius:8,background:"#fff",color:"#2d241a"}} value={temporal.cantidad} onChange={e=>setTemporal(v=>({...v,cantidad:Number(e.target.value)}))}>{Array.from({length:cantidadSeleccionada},(_,i)=><option key={i+1} value={i+1}>{i+1} / {cantidadSeleccionada}</option>)}</select></div>}
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 12px",borderRadius:10,background:"#fff3df",border:"1px solid #ead9bf"}}><span style={{fontSize:13,fontWeight:700,color:"#6f665d"}}>Total del adicional</span><strong style={{fontSize:18,color:"#2d241a"}}>$${formatMoney(impactoTemporalVista)}</strong></div>
+                          <small style={{color:"#81776c"}}>Solo se agregará a esta reserva; no aparecerá en el catálogo general.</small>
+                        </div>}
+                      </div>
+
+                  <details style={{border:"1px solid #e4ddd4",borderRadius:12,padding:12,background:"#fff"}}>
+                    <summary style={{cursor:"pointer",fontWeight:700,color:"#5b5147",padding:"5px 0"}}>Desplegar / plegar adicionales ({adicionalesDelPlan.length + adicionalesLibres.length})</summary>
+                    <div style={{display:"grid",gap:10,marginTop:12}}>
                   {adicionalesDelPlan.length > 0 && (
                     <div style={{ margin: "2px 0 4px" }}>
                       <strong style={{ display: "block", fontSize: 13, color: "#5b5147" }}>
@@ -1278,8 +1318,13 @@ export default function ReservasApprovalGuard() {
                     </>
                   )}
 
+                    </div>
+                  </details>
+
                   {planesAdicionalesDisponibles.length > 0 && (
-                    <>
+                    <details style={{border:"1px solid #e4ddd4",borderRadius:12,padding:12,background:"#fff"}}>
+                      <summary style={{cursor:"pointer",fontWeight:700,color:"#5b5147",padding:"5px 0"}}>Desplegar / plegar planes adicionales ({planesAdicionalesDisponibles.length})</summary>
+                      <div style={{display:"grid",gap:10,marginTop:12}}>
                       <div style={{ margin: "8px 0 2px", paddingTop: 10, borderTop: "1px solid #e4ddd4" }}>
                         <strong style={{ display: "block", fontSize: 13, color: "#5b5147" }}>
                           Planes adicionales disponibles
@@ -1365,7 +1410,8 @@ export default function ReservasApprovalGuard() {
                           </div>
                         );
                       })}
-                    </>
+                      </div>
+                    </details>
                   )}
                   </div>
                   </div>

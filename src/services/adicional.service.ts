@@ -32,7 +32,8 @@ export type PlanAdicional = {
 };
 
 export type ReservaAdicionalInput = {
-  id_adicional: number;
+  id_adicional: number | null;
+  descripcion_temporal?: string | null;
   codigo_adicional: string;
   nombre_adicional: string;
   tipo_cobro: TipoCobroAdicional;
@@ -170,7 +171,7 @@ export async function replacePlanAdicionales(
 export async function getReservaAdicionales(idReserva: number): Promise<ReservaAdicional[]> {
   const { data, error } = await client()
     .from("reserva_adicional")
-    .select("id_reserva_adicional,id_reserva,id_adicional,codigo_adicional,nombre_adicional,tipo_cobro,tipo_movimiento,precio_unitario,cantidad_aplicada,impacto_total,created_at")
+    .select("id_reserva_adicional,id_reserva,id_adicional,descripcion_temporal,codigo_adicional,nombre_adicional,tipo_cobro,tipo_movimiento,precio_unitario,cantidad_aplicada,impacto_total,created_at")
     .eq("id_reserva", Number(idReserva))
     .order("id_reserva_adicional", { ascending: true });
 
@@ -180,7 +181,7 @@ export async function getReservaAdicionales(idReserva: number): Promise<ReservaA
     ...row,
     id_reserva_adicional: Number(row.id_reserva_adicional),
     id_reserva: Number(row.id_reserva),
-    id_adicional: Number(row.id_adicional),
+    id_adicional: row.id_adicional == null ? null : Number(row.id_adicional),
     precio_unitario: Number(row.precio_unitario ?? 0),
     cantidad_aplicada: Number(row.cantidad_aplicada ?? 0),
     impacto_total: Number(row.impacto_total ?? 0),
@@ -195,7 +196,8 @@ export async function replaceReservaAdicionales(idReserva: number, items: Reserv
 
   const payload = items.map((item) => ({
     id_reserva: Number(idReserva),
-    id_adicional: Number(item.id_adicional),
+    id_adicional: item.id_adicional == null ? null : Number(item.id_adicional),
+    descripcion_temporal: item.descripcion_temporal || null,
     codigo_adicional: item.codigo_adicional,
     nombre_adicional: item.nombre_adicional,
     tipo_cobro: item.tipo_cobro,
