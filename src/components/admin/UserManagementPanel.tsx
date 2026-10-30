@@ -34,12 +34,14 @@ export default function UserManagementPanel() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [telefono,setTelefono] = useState("");
   const [role, setRole] = useState<ManagedUserRole>("guia");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [editUser, setEditUser] = useState<ManagedUser | null>(null);
   const [editUsername, setEditUsername] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editTelefono,setEditTelefono] = useState("");
   const [resetUser, setResetUser] = useState<ManagedUser | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -79,6 +81,7 @@ export default function UserManagementPanel() {
       setError("Ingresa un correo electrónico válido.");
       return;
     }
+    if (!/^\+?[0-9]{7,15}$/.test(telefono.trim())) { setError("Ingresa un teléfono válido."); return; }
     if (password.length < 8) {
       setError("La contraseña debe tener mínimo 8 caracteres.");
       return;
@@ -88,10 +91,11 @@ export default function UserManagementPanel() {
     setError("");
     setSuccess("");
     try {
-      await createManagedUser(cleanUsername, cleanEmail, password, role);
+      await createManagedUser(cleanUsername, cleanEmail, password, role, telefono.trim());
       setSuccess(`Usuario ${cleanUsername} (${cleanEmail}) creado como ${roleLabel(role)}. La contraseña fue establecida correctamente.`);
       setUsername("");
       setEmail("");
+      setTelefono("");
       setPassword("");
       setRole("guia");
       await load(true);
@@ -118,11 +122,12 @@ export default function UserManagementPanel() {
       return;
     }
 
+    if (editTelefono.trim() && !/^\+?[0-9]{7,15}$/.test(editTelefono.trim())) { setError("Teléfono inválido."); return; }
     setEditingProfile(true);
     setError("");
     setSuccess("");
     try {
-      await updateManagedUserProfile(editUser.user_id, cleanUsername, cleanEmail);
+      await updateManagedUserProfile(editUser.user_id, cleanUsername, cleanEmail, editTelefono);
       setSuccess(`Perfil de @${cleanUsername} actualizado correctamente.`);
       setEditUser(null);
       setEditUsername("");
@@ -195,6 +200,7 @@ export default function UserManagementPanel() {
             />
           </label>
 
+          <label>Teléfono *<input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} placeholder="+573001234567"/></label>
           <label>
             Rol *
             <select value={role} onChange={(e) => setRole(e.target.value as ManagedUserRole)}>
@@ -244,6 +250,7 @@ export default function UserManagementPanel() {
                 <th>Usuario</th>
                 <th>Correo</th>
                 <th>Rol</th>
+                <th>Teléfono</th>
                 <th>Creado</th>
                 <th>Último ingreso</th>
                 <th>Acciones</th>
@@ -251,7 +258,7 @@ export default function UserManagementPanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="snack-empty">Cargando usuarios…</td></tr>
+                <tr><td colSpan={7} className="snack-empty">Cargando usuarios…</td></tr>
               ) : users.length === 0 ? (
                 <tr><td colSpan={6} className="snack-empty">Todavía no hay usuarios registrados.</td></tr>
               ) : users.map((user) => (
@@ -259,6 +266,7 @@ export default function UserManagementPanel() {
                   <td><strong>@{user.username || "sin-usuario"}</strong></td>
                   <td>{user.email}</td>
                   <td>{roleLabel(user.role)}</td>
+                  <td>{user.telefono || "Sin registrar"}</td>
                   <td>{formatDate(user.created_at)}</td>
                   <td>{formatDate(user.last_sign_in_at)}</td>
                   <td>
@@ -269,6 +277,7 @@ export default function UserManagementPanel() {
                           setEditUser(user);
                           setEditUsername(user.username || "");
                           setEditEmail(user.email || "");
+                          setEditTelefono(user.telefono || "");
                           setError("");
                           setSuccess("");
                         }}
@@ -330,6 +339,7 @@ export default function UserManagementPanel() {
               />
             </label>
 
+            <label className="snack-payment-label">Teléfono<input type="tel" value={editTelefono} onChange={e=>setEditTelefono(e.target.value)} placeholder="+573001234567" disabled={editingProfile}/></label>
             <div className="snack-modal-actions">
               <button
                 className="snack-btn secondary"

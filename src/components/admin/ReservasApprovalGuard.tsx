@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, CreditCard, Plus, Settings2, Tag, Trash2, X } from "lucide-react";
 import ReservasAdmin from "./ReservasAdmin";
 import { getReservas, updateReserva } from "../../services/api.service";
+import { listAvailableGuides, type ManagedUser } from "../../services/adminUsers.service";
 import { getMetodosPagoActivos } from "../../services/medioPago.service";
 import { getRestaurantesActivos } from "../../services/restaurante.service";
 import { getMenusActivosPorRestaurante, type RestauranteMenuItem } from "../../services/restauranteMenu.service";
@@ -89,6 +90,8 @@ export default function ReservasApprovalGuard() {
   const [planesAdicionalesDisponibles, setPlanesAdicionalesDisponibles] = useState<OpcionPlanAdicional[]>([]);
   const [planAdicionalCantidad, setPlanAdicionalCantidad] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<ReservaLite | null>(null);
+  const [guias,setGuias] = useState<ManagedUser[]>([]);
+  const [guiaId,setGuiaId] = useState("");
   const [abonos, setAbonos] = useState<AbonoSplit[]>([
     { monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() },
   ]);
@@ -106,6 +109,7 @@ export default function ReservasApprovalGuard() {
   const [advancedSaved, setAdvancedSaved] = useState("");
 
   useEffect(() => {
+    listAvailableGuides().then(setGuias).catch((error)=>console.error("No se pudieron cargar los guías",error));
     Promise.all([
       getReservas(),
       getMetodosPagoActivos(),
@@ -279,12 +283,13 @@ export default function ReservasApprovalGuard() {
     })) as Record<number, number>;
 
     for (const existing of existentes) {
-      if (existing.tipo_movimiento !== "agregado") continue;
+      if (existing.tipo_movimiento !== "agregado" || existing.id_adicional == null) continue;
       if (Object.prototype.hasOwnProperty.call(cantidades, existing.id_adicional)) continue;
       cantidades[Number(existing.id_adicional)] = Math.max(0, Number(existing.cantidad_aplicada || 0));
     }
 
     setSelected(reserva);
+    setGuiaId("");
     setAbonos([{ monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() }]);
     setReservaAdicionalesOriginales(existentes);
     setPlanesAdicionalesDisponibles(planesDisponibles);
@@ -403,6 +408,8 @@ export default function ReservasApprovalGuard() {
   const aprobarReserva = async () => {
     if (!selected) return;
 
+    const guiaElegido = guias.find(g=>g.user_id===guiaId);
+    if (!guiaElegido || !guiaElegido.telefono) { setError("Selecciona un guía con teléfono registrado antes de aprobar."); return; }
     const pagosAbono = abonos
       .map((p) => ({
         monto: parseMoney(p.monto),
@@ -611,6 +618,9 @@ export default function ReservasApprovalGuard() {
       const patch: Record<string, unknown> = {
         refrigerio: incluyeRefrigerio,
         referencia_pago_abono: pagosAbono.length === 1 ? pagosAbono[0].referencia : null,
+        guia_user_id: guiaElegido.user_id,
+        guia_username: guiaElegido.username,
+        guia_telefono: guiaElegido.telefono,
       };
 
       if (ajusteMonetario || Math.abs(impactoAdicionales - impactoOriginal) > 0.01) {
@@ -1109,6 +1119,17 @@ export default function ReservasApprovalGuard() {
               </div>
             </div>
 
+            <div style={{padding:16,border:"1px solid #dbe7dc",background:"#f7fbf7",borderRadius:12,marginTop:12,display:"grid",gap:10}}>
+              <strong style={{color:"#245238"}}>Guía acompañante de la reserva</strong>
+              <div className="rv-form-group">
+                <label>Asignar guía *</label>
+                <select value={guiaId} onChange={e=>setGuiaId(e.target.value)} disabled={saving}>
+                  <option value="">Selecciona el guía que acompañará esta reserva</option>
+                  {guias.map(g=><option key={g.user_id} value={g.user_id}>@{g.username}{g.telefono ? ` · ${g.telefono}` : " · Sin teléfono"}</option>)}
+                </select>
+              </div>
+              {guiaId && <small style={{color:"#526e5a"}}>Teléfono del guía: {guias.find(g=>g.user_id===guiaId)?.telefono || "Pendiente de registrar en Usuarios"}</small>}
+            </div>
             {advancedOption === "adicionales" && (
               <div style={{ display: "grid", gap: 10 }}>
                 {true ? (
