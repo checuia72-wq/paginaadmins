@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { supabase } from "../../lib/supabase";
 import {
   getControlOperativo,
   getDevolucionesControlOperativo,
@@ -107,14 +108,6 @@ function readCurrentPageFilters(): { date: string; filters: ExportFilters } {
   return { date, filters };
 }
 
-const estadoLabel = (value: string) => ({
-  programada: "Programada",
-  asistio: "Asistió",
-  no_asistio: "No asistió",
-  reprogramada: "Reprogramada",
-  cancelada: "Cancelada",
-}[value] ?? value);
-
 const fechaISO = (value?: string | null) => String(value ?? "").slice(0, 10);
 
 function fechaEnRango(value: string | null | undefined, desde: string, hasta: string) {
@@ -133,22 +126,8 @@ function agruparPorReserva(rows: ControlOperativoRow[]) {
 }
 
 function pagosPorReserva(pagos: ReservaPago[]) {
-  const map = new Map<number, ReservaPago[]>();
-  for (const pago of pagos) {
-    const current = map.get(pago.id_reserva) ?? [];
-    current.push(pago);
-    map.set(pago.id_reserva, current);
-  }
-  return map;
-}
-
-function devolucionesPorReserva(devoluciones: ReservaDevolucion[]) {
-  const map = new Map<number, ReservaDevolucion[]>();
-  for (const devolucion of devoluciones) {
-    const current = map.get(devolucion.id_reserva) ?? [];
-    current.push(devolucion);
-    map.set(devolucion.id_reserva, current);
-  }
+  const map=new Map<number,ReservaPago[]>();
+  for(const pago of pagos) map.set(pago.id_reserva,[...(map.get(pago.id_reserva)??[]),pago]);
   return map;
 }
 
@@ -156,96 +135,83 @@ async function exportarControlOperativoExcel(desde: string, hasta: string, filte
   if (!desde || !hasta) throw new Error("Selecciona la fecha inicial y la fecha final.");
   if (desde > hasta) throw new Error("La fecha inicial no puede ser posterior a la fecha final.");
 
-  const [allRows, allPagos, allDevoluciones] = await Promise.all([
+  if (!supabase) throw new Error("Supabase no está configurado");
+  const [allRows, allPagos, allDevoluciones, codigosResult] = await Promise.all([
     getControlOperativo(),
     getPagosControlOperativo(),
     getDevolucionesControlOperativo(),
+    supabase.from("codigo_operativo").select("id_codigo_operativo,codigo_ch"),
   ]);
+  if (codigosResult.error) throw codigosResult.error;
+  const chPorId = new Map((codigosResult.data ?? []).map((c) => [
+    Number(c.id_codigo_operativo), texto(c.codigo_ch),
+  ]));
+  const chCorto = (value: string) => {
+    const match = value.match(/CH[\\s-]*\\d+/i);
+    return match ? match[0].replace(/[\\s-]/g, "").toUpperCase() : value;
+  };
 
   const rows = allRows.filter((row) =>
     fechaEnRango(row.fecha, desde, hasta) && rowMatchesFilters(row, filters)
   );
   if (!rows.length) throw new Error("No hay registros que coincidan con el rango y los filtros seleccionados.");
-
   const reservationIds = new Set(rows.map((row) => row.id_reserva));
   const pagos = allPagos.filter((pago) => reservationIds.has(pago.id_reserva));
   const devoluciones = allDevoluciones.filter((item) => reservationIds.has(item.id_reserva));
 
+  const headers = [
+    "Código operativo (CH)", "Nombre del plan", "Código de reserva",
+    "Fecha de realización de la reserva", "Tipo de documento", "Número de documento",
+    "Nombres y apellidos", "Correo electrónico", "Teléfono", "Fecha de la visita",
+    "Horario de la ruta", "Observación", "Tipo de almuerzo", "Valor de la reserva",
+    "Número de personas", "Valor unitario", "Total abonado", "Abonos (detalle)",
+    "Fechas de abono", "Códigos de abono (4 dígitos)",
+  ];
   const grupos = agruparPorReserva(rows);
   const pagosMap = pagosPorReserva(pagos);
-  const devolucionesMap = devolucionesPorReserva(devoluciones);
-
-  const headers = [
-    "Código", "Estado operativo", "Motivo estado", "Plan", "Fecha reserva", "Hora",
-    "Cantidad personas", "Nombre", "Edad", "Nacionalidad", "Tipo documento",
-    "Documento", "Contacto participante", "Contacto cliente", "Mina", "Refrigerio",
-    "Restaurante", "Incluye almuerzo", "Tipo de almuerzo", "Valor total", "Abono",
-    "Medio abono", "Pago saldo", "Medio saldo", "Total recaudado", "Devuelto",
-    "Neto caja", "Saldo pendiente", "Observación",
-  ];
-
+  const codigo4 = (value: unknown) => {
+    const digits = texto(value).replace(/\\D/g, "");
+    return digits.length >= 4 ? digits.slice(-4) : "";
+  };
   const data = grupos.flatMap((grupo) => {
     const principal = grupo[0];
-    const pagosReserva = pagosMap.get(principal.id_reserva) ?? [];
-    const devolucionesReserva = devolucionesMap.get(principal.id_reserva) ?? [];
-    const recaudado = pagosReserva.reduce((sum, pago) => sum + Number(pago.monto || 0), 0);
-    const devuelto = devolucionesReserva.reduce((sum, item) => sum + Number(item.monto || 0), 0);
-    const mediosSaldo = pagosReserva
-      .filter((pago) => pago.tipo_pago === "saldo")
-      .map((pago) => pago.medio_pago)
-      .filter(Boolean);
-    const medioSaldo = [...new Set(mediosSaldo)].join(" | ") || principal.medio_saldo || "";
-
-    return grupo.map((row, index) => {
-      const primeraFila = index === 0;
-      return [
-        principal.reserva_codigo,
-        primeraFila ? estadoLabel(principal.estado_operativo) : "",
-        primeraFila ? principal.motivo_estado_operativo : "",
-        principal.plan,
-        fecha(principal.fecha),
-        hora(principal.hora),
-        primeraFila ? Number(principal.cantidad || grupo.length || 0) : "",
-        texto(row.nombre),
-        texto(row.edad),
-        texto(row.nacionalidad),
-        texto(row.tipo_documento),
-        texto(row.documento),
-        texto(row.contacto),
-        principal.contacto_cliente,
-        principal.mina ? "Sí" : "No",
-        principal.refrigerio ? "Sí" : "No",
-        principal.restaurante || "",
-        principal.incluye_almuerzo ? "Sí" : "No",
-        texto(row.almuerzo),
-        primeraFila ? Number(principal.total || 0) : "",
-        primeraFila ? Number(principal.abono || 0) : "",
-        primeraFila ? principal.medio_abono || "" : "",
-        primeraFila ? Number(principal.pago_saldo || 0) : "",
-        primeraFila ? medioSaldo : "",
-        primeraFila ? recaudado : "",
-        primeraFila ? devuelto : "",
-        primeraFila ? Math.max(0, recaudado - devuelto) : "",
-        primeraFila ? Number(principal.saldo_pendiente || 0) : "",
-        primeraFila ? principal.observacion || "" : "",
-      ];
-    });
+    const ch = principal.id_codigo_operativo == null ? "" :
+      chCorto(chPorId.get(principal.id_codigo_operativo) ?? "");
+    const abonos = (pagosMap.get(principal.id_reserva) ?? [])
+      .filter(p => p.tipo_pago === "abono")
+      .sort((x,y) => texto(x.fecha_abono || x.fecha_pago).localeCompare(texto(y.fecha_abono || y.fecha_pago)));
+    const totalAbonos = abonos.length
+      ? abonos.reduce((sum,p) => sum + Number(p.monto || 0),0)
+      : Number(principal.abono || 0);
+    const desglose = abonos.map((p,i) => `Abono ${i+1}: $${Number(p.monto || 0).toLocaleString("es-CO")} (${texto(p.medio_pago)})`).join(" | ");
+    const fechasAbonos = abonos.map((p,i) => `Abono ${i+1}: ${fecha(p.fecha_abono || p.fecha_pago)}`).join(" | ");
+    // El identificador de 4 dígitos se obtiene solo de una referencia real.
+    const codigosAbonos = abonos.map((p,i) =>
+      `Abono ${i+1}: ${codigo4(p.referencia_pago) || (p.observacion === "Abono registrado en la reserva" ? codigo4(principal.referencia_pago_abono) : "")}`
+    ).join(" | ");
+    return grupo.map((row) => [
+      ch, principal.plan, principal.reserva_codigo, fecha(principal.fecha_solicitud),
+      texto(row.tipo_documento), texto(row.documento), texto(row.nombre),
+      texto(row.correo), texto(row.contacto || principal.contacto_cliente),
+      fecha(principal.fecha), hora(principal.hora), texto(principal.observacion),
+      texto(row.almuerzo), Number(principal.total || 0),
+      Number(principal.cantidad || grupo.length || 0),
+      Number(principal.precio_unitario || 0),
+      totalAbonos, desglose, fechasAbonos, codigosAbonos,
+    ]);
   });
 
   const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
-  worksheet["!autofilter"] = { ref: `A1:AC${Math.max(1, data.length + 1)}` };
-  worksheet["!cols"] = [18,18,28,42,15,10,15,32,12,22,24,24,24,20,10,12,20,18,24,16,16,20,16,24,18,16,16,18,40].map((wch) => ({ wch }));
-
-  const moneyColumns = new Set([19, 20, 22, 24, 25, 26, 27]);
-  for (let row = 1; row <= data.length; row += 1) {
-    for (const col of moneyColumns) {
-      const ref = XLSX.utils.encode_cell({ r: row, c: col });
-      if (worksheet[ref]) worksheet[ref].z = "$#,##0";
+  worksheet["!autofilter"] = {ref: `A1:T${Math.max(1,data.length+1)}`};
+  worksheet["!cols"] = [20,42,25,24,22,25,37,36,22,20,20,48,30,22,20,20,20,55,44,44].map(wch=>({wch}));
+  for (let row=1;row<=data.length;row++) {
+    for(const col of [13,15,16]) {
+      const cell=XLSX.utils.encode_cell({r:row,c:col});
+      if(worksheet[cell]) worksheet[cell].z="$#,##0";
     }
   }
-
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Reservas");
+  const workbook=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook,worksheet,"Reservas");
 
   const pagosSheet = XLSX.utils.json_to_sheet(pagos.map((pago) => ({
     Reserva: rows.find((row) => row.id_reserva === pago.id_reserva)?.reserva_codigo ?? `#${pago.id_reserva}`,

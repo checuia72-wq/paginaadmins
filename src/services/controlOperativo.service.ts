@@ -4,7 +4,7 @@ import { getCurrentRole } from "./role.service";
 function client() { if (!supabase) throw new Error("Supabase no está configurado"); return supabase; }
 
 export type EstadoOperativo = "programada" | "asistio" | "no_asistio" | "reprogramada" | "cancelada";
-export type ReservaPago = { id_pago?: number; id_reserva: number; tipo_pago: "abono" | "saldo"; monto: number; medio_pago: string; fecha_pago?: string; fecha_abono?: string | null; observacion?: string | null; };
+export type ReservaPago = { id_pago?: number; id_reserva: number; tipo_pago: "abono" | "saldo"; monto: number; medio_pago: string; fecha_pago?: string; fecha_abono?: string | null; referencia_pago?: string | null; observacion?: string | null; };
 export type RecaudoDiario = { fecha: string; medio_pago: string; tipo_pago: "abono" | "saldo"; total: number; cantidad_movimientos: number; };
 export type ReservaDevolucion = {
   id_devolucion: number;
@@ -37,7 +37,7 @@ export type ControlOperativoRow = {
   aprobado_por_user_id:string|null; aprobado_por_username:string; aprobado_por_email:string;
   nombre:string; edad:number|null; nacionalidad:string;
   tipo_documento:string; documento:string; contacto:string; contacto_cliente:string; cantidad:number|null; mina:boolean|null; refrigerio:boolean|null;
-  restaurante:string; almuerzo:string; total:number; abono:number; medio_abono:string; referencia_pago_abono:string; pago_saldo:number; medio_saldo:string; saldo_pendiente:number; observacion:string;
+  restaurante:string; almuerzo:string; correo:string; fecha_solicitud:string; precio_unitario:number; total:number; abono:number; medio_abono:string; referencia_pago_abono:string; pago_saldo:number; medio_saldo:string; saldo_pendiente:number; observacion:string;
   estado_operativo: EstadoOperativo; motivo_estado_operativo:string; estado_operativo_at:string;
 };
 
@@ -158,7 +158,10 @@ function buildControlOperativoRows(
         mina:r.mina??null,
         refrigerio:r.refrigerio??null,
         restaurante:text(r.restaurante),
+        correo:text(p?.correo),
+        fecha_solicitud:dateOnly(r.fecha_solicitud),
         almuerzo:text(p?.tipo_almuerzo)||platosPorPosicion.get(posicion+1)||"",
+        precio_unitario:num(r.precio_unitario),
         total,
         abono,
         medio_abono:text(r.metodo_pago_abono),
@@ -247,7 +250,7 @@ export async function getPagosControlOperativo():Promise<ReservaPago[]>{
   const db=client();
   const [pagosRes,reservasRes]=await Promise.all([
     db.from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago,fecha_abono,observacion").order("fecha_pago",{ascending:false}),
-    db.from("reserva").select("id_reserva,valor_abonado,metodo_pago_abono,fecha_aprobacion,fecha_solicitud").eq("aprobado",true)
+    db.from("reserva").select("id_reserva,valor_abonado,metodo_pago_abono,referencia_pago_abono,fecha_aprobacion,fecha_solicitud").eq("aprobado",true)
   ]);
   if(pagosRes.error)throw pagosRes.error;
   if(reservasRes.error)throw reservasRes.error;
@@ -262,6 +265,7 @@ export async function getPagosControlOperativo():Promise<ReservaPago[]>{
       monto:num(r.valor_abonado),
       medio_pago:text(r.metodo_pago_abono).trim(),
       fecha_pago:text(r.fecha_aprobacion||r.fecha_solicitud)||undefined,
+      referencia_pago: text(r.referencia_pago_abono) || null,
       observacion:"Abono registrado en la reserva"
     }));
 
