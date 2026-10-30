@@ -92,6 +92,7 @@ export default function ReservasApprovalGuard() {
   const [selected, setSelected] = useState<ReservaLite | null>(null);
   const [guias,setGuias] = useState<ManagedUser[]>([]);
   const [guiaId,setGuiaId] = useState("");
+  const [buscarGuia,setBuscarGuia] = useState("");
   const [abonos, setAbonos] = useState<AbonoSplit[]>([
     { monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() },
   ]);
@@ -290,6 +291,7 @@ export default function ReservasApprovalGuard() {
 
     setSelected(reserva);
     setGuiaId("");
+    setBuscarGuia("");
     setAbonos([{ monto: "", metodoPago: "", referencia: "", fechaAbono: todayLocal() }]);
     setReservaAdicionalesOriginales(existentes);
     setPlanesAdicionalesDisponibles(planesDisponibles);
@@ -1121,12 +1123,21 @@ export default function ReservasApprovalGuard() {
 
             <div style={{padding:16,border:"1px solid #dbe7dc",background:"#f7fbf7",borderRadius:12,marginTop:12,display:"grid",gap:10}}>
               <strong style={{color:"#245238"}}>Guía acompañante de la reserva</strong>
-              <div className="rv-form-group">
-                <label>Asignar guía *</label>
-                <select value={guiaId} onChange={e=>setGuiaId(e.target.value)} disabled={saving}>
-                  <option value="">Selecciona el guía que acompañará esta reserva</option>
-                  {guias.map(g=><option key={g.user_id} value={g.user_id}>@{g.username}{g.telefono ? ` · ${g.telefono}` : " · Sin teléfono"}</option>)}
+              <div className="rv-form-group" style={{display:"grid",gap:8}}>
+                <label htmlFor="buscar-acompanante">Buscar acompañante por usuario *</label>
+                <input id="buscar-acompanante" type="search" value={buscarGuia} disabled={saving}
+                  onChange={e=>setBuscarGuia(e.target.value)} placeholder="Escribe el nombre de usuario..."
+                  style={{width:"100%",minHeight:42,padding:"10px 12px",border:"1px solid #cdded0",borderRadius:9,background:"#fff",color:"#284634",boxSizing:"border-box"}} />
+                <label htmlFor="seleccionar-acompanante">Usuario acompañante *</label>
+                <select id="seleccionar-acompanante" value={guiaId} disabled={saving}
+                  onChange={e=>setGuiaId(e.target.value)}
+                  style={{width:"100%",minHeight:44,padding:"10px 12px",border:"1px solid #cdded0",borderRadius:9,background:"#fff",color:"#284634"}}>
+                  <option value="">Selecciona el usuario que acompañará esta reserva</option>
+                  {guias.filter(g=>g.user_id===guiaId || g.username.toLowerCase().includes(buscarGuia.trim().toLowerCase())).map(g=>
+                    <option key={g.user_id} value={g.user_id}>@{g.username}{g.telefono ? ` · ${g.telefono}` : " · Sin teléfono"}</option>
+                  )}
                 </select>
+                <small style={{color:"#6b796e"}}>Se muestran todos los usuarios del sistema, independientemente de su rol.</small>
               </div>
               {guiaId && <small style={{color:"#526e5a"}}>Teléfono del guía: {guias.find(g=>g.user_id===guiaId)?.telefono || "Pendiente de registrar en Usuarios"}</small>}
             </div>
