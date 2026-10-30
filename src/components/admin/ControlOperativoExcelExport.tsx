@@ -6,7 +6,6 @@ import {
   getDevolucionesControlOperativo,
   getPagosControlOperativo,
   type ControlOperativoRow,
-  type ReservaDevolucion,
   type ReservaPago,
 } from "../../services/controlOperativo.service";
 
