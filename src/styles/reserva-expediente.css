@@ -61,3 +61,9 @@
 .rv-xp-edit-field select{width:100%;min-width:0;border:1px solid #d7caba;border-radius:8px;background:white;color:#3d3325;padding:9px;font:inherit;font-size:12px}
 .rv-xp-checkbox{display:flex;align-items:center;gap:8px;padding:9px 0;cursor:pointer}
 .rv-xp-checkbox input{accent-color:#8eaa55;width:16px;height:16px}
+
+.rv-xp-buggy-summary{margin:0 0 12px;padding:14px;background:#f6f9f1;border:1px solid #d9e3cf;color:#415139}
+.rv-xp-buggy-summary strong{display:block;margin-bottom:8px;color:#40512f;font-size:12px}
+.rv-xp-buggy-summary span{display:block;margin-top:8px;font-size:11px;color:#60705b}
+.rv-xp-buggy-summary .rv-xp-observation{color:#34472d}
+.rv-xp-observation-label{font-size:12px;color:#796445;font-weight:700}

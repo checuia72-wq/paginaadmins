@@ -39,6 +39,7 @@ import {
   type DetalleCompletoReserva,
 } from "../../services/reservaDetalleCompleto.service";
 import { replaceReservaAdicionales, type ReservaAdicionalInput } from "../../services/adicional.service";
+import { notaEditableReserva, guardarNotaReserva } from "../../utils/reservaObservacion";
 import { listAvailableGuides, type ManagedUser } from "../../services/adminUsers.service";
 import LargeGroupExcelImport, { type ImportedGroupParticipant } from "./LargeGroupExcelImport";
 import "../../styles/reservas.css";
@@ -424,7 +425,7 @@ export default function ReservasAdmin() {
     setCargandoDetalleEditing(true);
     setExtrasEdit([]);
     setExtrasDirty(false);
-    setObservacionEdit(String(r.observacion ?? ""));
+    setObservacionEdit(notaEditableReserva(r.observacion));
     setPdfAlGuardar(solicitarPdf);
     setGuiasPdf([]);
     void listAvailableGuides().then(setGuiasPdf)
@@ -469,7 +470,7 @@ export default function ReservasAdmin() {
       ]);
       setDetalleEditing(detalle);
       setExtrasEdit(detalle.adicionales.map(item => ({ ...item })));
-      setObservacionEdit(String(detalle.reserva.observacion ?? ""));
+      setObservacionEdit(notaEditableReserva(detalle.reserva.observacion));
       setGuiaPdfId(String(detalle.reserva.guia_user_id ?? ""));
       setRefrigerioPdf(Boolean(detalle.reserva.refrigerio));
       const mapped: NuevoParticipante[] = existentes.map((p) => ({
@@ -721,7 +722,7 @@ export default function ReservasAdmin() {
       // Si solo se editan datos de contacto, hora u otros campos, conservar el
       // precio contratado, incluidas las modificaciones comerciales anteriores.
       const conservarPrecioExistente = Boolean(
-        editing && !isBuggyPlan &&
+        editing &&
         Number(editing.id_plan) === selectedPlanId &&
         Math.max(1, Number(editing.cantidad_personas || 1)) === participantCount &&
         String(editing.fecha_reserva || "").slice(0, 10) === formData.fecha_visita &&
@@ -829,8 +830,11 @@ export default function ReservasAdmin() {
           aprobado: formData.aprobado,
           fecha_aprobacion,
           ...precioFinal,
-          ...(observacionEdit !== String(detalleEditing?.reserva.observacion ?? "")
-            ? { observacion: observacionEdit.trim() || null } : {}),
+          ...(detalleEditing && observacionEdit !== notaEditableReserva(detalleEditing.reserva.observacion)
+            ? { observacion: guardarNotaReserva(
+                "observacion" in precioFinal ? String(precioFinal.observacion || "") : String(detalleEditing.reserva.observacion ?? ""),
+                observacionEdit,
+              ) } : {}),
           ...(guiaNuevo ? {
             guia_user_id: guiaNuevo.user_id,
             guia_username: guiaNuevo.username,

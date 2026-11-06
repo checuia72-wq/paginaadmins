@@ -4,6 +4,7 @@ import { getAdicionales, type Adicional, type ReservaAdicionalInput } from "../.
 import type { ManagedUser } from "../../services/adminUsers.service";
 import { desgloseEdicionReserva, impactoAdicionalesGuardados, type DetalleCompletoReserva } from "../../services/reservaDetalleCompleto.service";
 import "../../styles/reserva-expediente.css";
+import { observacionLegibleReserva, parsearConfiguracionBuggy } from "../../utils/reservaObservacion";
 
 const money = (amount: number | null | undefined) => "$" + Number(amount || 0).toLocaleString("es-CO");
 const when = (v?: string | null) => v ? String(v).replace("T", " ").slice(0, 16) : "Sin registrar";
@@ -255,9 +256,22 @@ export default function ReservaExpediente({
       </section>}
       <section className="rv-xp-section">
         <h3><UserRound size={17}/> Observaciones de la reserva</h3>
-        {editing ? <textarea className="rv-xp-notes" value={observacion || ""} onChange={e=>onObservacionChange?.(e.target.value)}
-          rows={3} placeholder="Observaciones que debe conservar el PDF y Control Operativo"/> :
-          <p className="rv-xp-observation">{txt(reserva.observacion)}</p>}
+        {editing ? (
+          <>
+            {parsearConfiguracionBuggy(reserva.observacion) && (
+              <div className="rv-xp-hint rv-xp-buggy-summary">
+                <strong>Configuración registrada de los Buggies</strong>
+                <p className="rv-xp-observation">{observacionLegibleReserva(reserva.observacion)}</p>
+                <span>Esta información de vehículos y ocupantes se conserva automáticamente.</span>
+              </div>
+            )}
+            <label className="rv-xp-observation-label" htmlFor="rv-nota-adicional">Comentario para el equipo (opcional)</label>
+            <textarea id="rv-nota-adicional" className="rv-xp-notes" value={observacion || ""} onChange={e=>onObservacionChange?.(e.target.value)}
+              rows={3} placeholder="Escribe aquí un comentario claro para el equipo; no necesitas editar códigos técnicos."/>
+          </>
+        ) : (
+          <p className="rv-xp-observation">{observacionLegibleReserva(reserva.observacion) || "Sin observaciones registradas."}</p>
+        )}
       </section>
     </div>
   );

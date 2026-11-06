@@ -1,3 +1,4 @@
+import { observacionLegibleReserva } from "../../utils/reservaObservacion";
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabase";
@@ -68,7 +69,7 @@ function rowMatchesFilters(row: ControlOperativoRow, filters: ExportFilters) {
     row.nombre,
     row.documento,
     row.contacto,
-    row.observacion,
+    observacionLegibleReserva(row.observacion),
     row.almuerzo,
     row.medio_abono,
     row.referencia_pago_abono,
@@ -192,7 +193,7 @@ async function exportarControlOperativoExcel(desde: string, hasta: string, filte
       ch, principal.plan, principal.reserva_codigo, fecha(principal.fecha_solicitud),
       texto(row.tipo_documento), texto(row.documento), texto(row.nombre),
       texto(row.correo), texto(row.contacto || principal.contacto_cliente),
-      fecha(principal.fecha), hora(principal.hora), texto(principal.observacion),
+      fecha(principal.fecha), hora(principal.hora), observacionLegibleReserva(texto(principal.observacion)),
       texto(row.almuerzo), Number(principal.total || 0),
       Number(principal.cantidad || grupo.length || 0),
       Number(principal.precio_unitario || 0),
