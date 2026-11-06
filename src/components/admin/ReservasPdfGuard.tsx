@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import ReservasApprovalGuard from "./ReservasApprovalGuard";
 import { getReservas } from "../../services/api.service";
-import { rehacerYReenviarPdfReserva } from "../../services/reservaPdf.service";
 
 type ReservaPdf = {
   id_reserva: number;
@@ -60,7 +59,7 @@ async function downloadReservaPdf(reserva: ReservaPdf) {
   } catch (error) {
     console.warn("No se encontró el PDF de la reserva", reserva.id_reserva, error);
     alert(
-      "El PDF de esta reserva ya no está disponible. Para volver a generarlo, desaprueba la reserva y vuelve a aprobarla.",
+      "El PDF de esta reserva no está disponible. Pulsa «Editar / rehacer PDF» para revisar la reserva y solicitar un nuevo documento.",
     );
   }
 }
@@ -113,19 +112,15 @@ export default function ReservasPdfGuard() {
               regen.type = "button";
               regen.className = "action-btn action-ver";
               regen.dataset.rehacerPdf = String(reserva.id_reserva);
-              regen.textContent = "Rehacer y reenviar PDF";
-              regen.title = "Generar un PDF actualizado y enviarlo nuevamente al cliente por WhatsApp";
-              regen.addEventListener("click", async (event) => {
+              regen.textContent = "Editar / rehacer PDF";
+              regen.title = "Abrir la reserva aprobada, revisar sus datos y solicitar un nuevo PDF al guardar";
+              regen.addEventListener("click", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (!window.confirm(`Se regenerará el PDF de ${reserva.codigo_reserva || reserva.id_reserva} y se reenviará por WhatsApp al cliente. ¿Continuar?`)) return;
-                regen.disabled = true;
-                try {
-                  await rehacerYReenviarPdfReserva(reserva.id_reserva);
-                  window.alert("Solicitud enviada a n8n. La generación y el envío aún deben finalizar.");
-                } catch (error) {
-                  window.alert(error instanceof Error ? error.message : "No se pudo solicitar el PDF.");
-                } finally { regen.disabled = false; }
+                // Nunca solicitar el PDF antes de guardar las correcciones.
+                window.dispatchEvent(new CustomEvent("checua:editar-reserva-para-pdf", {
+                  detail: { idReserva: reserva.id_reserva },
+                }));
               });
               actions.insertBefore(regen, button);
             }

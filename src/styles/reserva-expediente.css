@@ -1,0 +1,63 @@
+/* Expediente completo de reservas · paleta y tipografía Checua Admin */
+.rv-xp{display:grid;gap:14px;color:#352e24;font-family:inherit}
+.rv-xp-section{border:1px solid #e7dccb;border-radius:13px;padding:16px;background:#fffdf9}
+.rv-xp-section h3{display:flex;align-items:center;gap:8px;margin:0 0 14px;color:#63502e;font-size:13px;letter-spacing:.015em;font-weight:800}
+.rv-xp-section h3 svg{color:#b78639}
+.rv-xp-finance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.rv-xp-finance-grid>div{padding:11px;border:1px solid #eee5d8;background:#fff;border-radius:9px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.rv-xp-finance-grid span,.rv-xp-info-grid span{font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.045em;color:#90816d}
+.rv-xp-finance-grid strong{font-size:16px;color:#3b3328}
+.rv-xp-total{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0;padding:15px;border-radius:11px;background:linear-gradient(100deg,#3d4c39,#526346);color:#fff}
+.rv-xp-total span{font-size:12px;font-weight:700}
+.rv-xp-total strong{font-size:24px;white-space:nowrap}
+.rv-xp-finance-grid-small strong{font-size:14px}
+.rv-xp-muted{font-size:12px;color:#857664;line-height:1.6;margin:0}
+.rv-xp-extra-list{display:grid;gap:8px}
+.rv-xp-extra-row{display:flex;align-items:center;gap:10px;justify-content:space-between;min-width:0;padding:12px;border:1px solid #ebe1d2;border-radius:11px;background:white}
+.rv-xp-extra-info{display:grid;gap:5px;min-width:0;flex:1}
+.rv-xp-extra-info strong{font-size:13px;color:#44382a;overflow-wrap:anywhere}
+.rv-xp-extra-info small,.rv-xp-payment small{font-size:11px;color:#7d7468;line-height:1.5}
+.rv-xp-extra-pill{border:1px solid #d7b77a;border-radius:999px;padding:5px 9px;background:#fff8e9;color:#846022;font-size:12px;font-weight:800;white-space:nowrap}
+.rv-xp-extra-pill.rv-xp-included{background:#f0f8ec;border-color:#cfdfc3;color:#46683c}
+.rv-xp-add-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:12px;border-top:1px dashed #dfd4c4;margin-top:12px}
+.rv-xp-add-actions select{flex:1;min-width:155px}
+.rv-xp-add-actions select,.rv-xp-add-actions button,.rv-xp-extra-numbers input,.rv-xp-extra-numbers select,.rv-xp-extra-edit-main input,.rv-xp-notes{border:1px solid #d7caba;border-radius:8px;padding:9px 10px;background:#fff;color:#3b332a;font:inherit;font-size:12px}
+.rv-xp-add-actions button{display:flex;align-items:center;gap:5px;border-color:#d7b981;background:#f9f0df;color:#6c4d20;font-weight:800;cursor:pointer}
+.rv-xp-add-actions button:disabled{opacity:.45;cursor:default}
+.rv-xp-extra-edit-main{display:grid;gap:5px;flex:1;min-width:145px}
+.rv-xp-extra-numbers{display:grid;grid-template-columns:repeat(3,minmax(60px,1fr));gap:4px 6px;min-width:0;flex:1}
+.rv-xp-extra-numbers label{grid-row:1;font-weight:700;text-align:left}
+.rv-xp-extra-numbers label,.rv-xp-extra-edit-main label{font-size:10px;color:#85745c}
+.rv-xp-extra-numbers input,.rv-xp-extra-numbers select{min-width:0;width:100%;box-sizing:border-box;padding:7px}
+.rv-xp-extra-amount{color:#526b3b;font-size:13px;white-space:nowrap}
+.rv-xp-remove{background:#fff1ed;color:#b44031;border:1px solid #f0d0c8;padding:8px;border-radius:8px;display:flex;cursor:pointer}
+.rv-xp-payment-list{display:grid;gap:8px}
+.rv-xp-payment{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #eee5d8;background:white;border-radius:9px;padding:11px 12px}
+.rv-xp-payment>div{display:grid;gap:3px}
+.rv-xp-payment strong{font-size:12px}
+.rv-xp-payment>strong{font-size:14px;color:#526b3b;white-space:nowrap}
+.rv-xp-info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rv-xp-info-grid>div{display:grid;gap:5px;padding:9px 10px;background:#fff;border:1px solid #eee5d8;border-radius:8px;min-width:0}
+.rv-xp-info-grid b{font-size:12px;color:#423a31;overflow-wrap:anywhere}
+.rv-xp-lunch{display:flex;align-items:start;gap:7px;padding:9px 10px;font-size:11px;color:#68512c;background:#fff6e8;border-radius:8px;margin-top:9px}
+.rv-xp-notes{width:100%;box-sizing:border-box;resize:vertical;line-height:1.5}
+.rv-xp-observation{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.7;color:#544b40;margin:0}
+.rv-xp-hint{margin:9px 0 0;padding:9px 11px;font-size:11px;line-height:1.5;border-radius:8px;border:1px solid #e4dec6;background:#fffbea;color:#7a674a}
+.rv-xp-error{font-size:11px;color:#b91c1c}
+.rv-xp-loading{border:1px dashed #d9c7aa;border-radius:12px;padding:18px;background:#fffbf3;color:#7e6745;font-size:13px}
+.rv-xp-complete-modal{max-width:940px}
+.rv-xp-complete-modal .rv-modal-header{background:linear-gradient(90deg,#fffdf8,#f7f0e4)}
+.rv-xp-complete-modal .rv-modal-header h2{color:#594025}
+.rv-xp-modal-subtitle{font-size:11px;color:#93826b;margin-top:4px}
+.rv-xp-modal-footer-hint{font-size:11px;color:#82715c;margin-right:auto;align-self:center}
+.rv-xp-secondary-btn{display:inline-flex;gap:6px;align-items:center;justify-content:center;border:1px solid #ddc9a8;border-radius:8px;padding:9px 13px;background:#fff9ed;color:#735326;font-size:12px;font-weight:800;cursor:pointer}
+.rv-xp-secondary-btn:disabled{opacity:.4;cursor:default}
+.rv-xp-complete-modal .rv-btn-save{background:#b6853e}
+.rv-xp-complete-modal .rv-btn-save:hover:not(:disabled){background:#98702f}
+@media(max-width:730px){.rv-xp-complete-modal{max-width:98vw}.rv-xp-finance-grid,.rv-xp-info-grid{grid-template-columns:1fr}.rv-xp-extra-row{flex-wrap:wrap}.rv-xp-extra-edit-main,.rv-xp-extra-numbers{flex-basis:100%}.rv-xp-extra-amount{margin-left:auto}.rv-xp-total strong{font-size:20px}.rv-xp-complete-modal .rv-modal-footer{flex-wrap:wrap}.rv-xp-modal-footer-hint{flex-basis:100%}}
+
+.rv-xp-edit-field{display:grid;gap:7px}
+.rv-xp-edit-field label{font-size:11px;color:#776444;font-weight:800}
+.rv-xp-edit-field select{width:100%;min-width:0;border:1px solid #d7caba;border-radius:8px;background:white;color:#3d3325;padding:9px;font:inherit;font-size:12px}
+.rv-xp-checkbox{display:flex;align-items:center;gap:8px;padding:9px 0;cursor:pointer}
+.rv-xp-checkbox input{accent-color:#8eaa55;width:16px;height:16px}

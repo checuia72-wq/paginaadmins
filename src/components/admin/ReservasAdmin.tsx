@@ -32,6 +32,14 @@ import {
 } from "lucide-react";
 import { calcularPrecioPlan, calcularTotalPlan } from "../../services/planTarifa.service";
 import ReservationApprovalModal from "../common/ReservationApprovalModal";
+import ReservaExpediente from "./ReservaExpediente";
+import { rehacerYReenviarPdfReserva } from "../../services/reservaPdf.service";
+import {
+  getDetalleCompletoReserva, desgloseEdicionReserva, impactoAdicionalesGuardados,
+  type DetalleCompletoReserva,
+} from "../../services/reservaDetalleCompleto.service";
+import { replaceReservaAdicionales, type ReservaAdicionalInput } from "../../services/adicional.service";
+import { listAvailableGuides, type ManagedUser } from "../../services/adminUsers.service";
 import LargeGroupExcelImport, { type ImportedGroupParticipant } from "./LargeGroupExcelImport";
 import "../../styles/reservas.css";
 
@@ -82,6 +90,7 @@ interface Participante {
   correo?: string | null;
   telefono_cliente?: string | null;
   telefono_participante?: string | null;
+  tipo_almuerzo?: string | null;
 }
 
 type NuevoParticipante = {
@@ -93,6 +102,7 @@ type NuevoParticipante = {
   numero_documento: string;
   correo: string;
   telefono: string;
+  tipo_almuerzo?: string;
 };
 
 const emptyParticipant = (): NuevoParticipante => ({
@@ -103,6 +113,7 @@ const emptyParticipant = (): NuevoParticipante => ({
   numero_documento: "",
   correo: "",
   telefono: "",
+  tipo_almuerzo: "",
 });
 
 const emptyForm = {
@@ -200,6 +211,17 @@ export default function ReservasAdmin() {
   const [loadingBuggyPricing, setLoadingBuggyPricing] = useState(false);
 
   const [viewing, setViewing] = useState<Reserva | null>(null);
+  const [detalleViewing, setDetalleViewing] = useState<DetalleCompletoReserva | null>(null);
+  const [cargandoDetalleViewing, setCargandoDetalleViewing] = useState(false);
+  const [detalleEditing, setDetalleEditing] = useState<DetalleCompletoReserva | null>(null);
+  const [cargandoDetalleEditing, setCargandoDetalleEditing] = useState(false);
+  const [extrasEdit, setExtrasEdit] = useState<ReservaAdicionalInput[]>([]);
+  const [extrasDirty, setExtrasDirty] = useState(false);
+  const [observacionEdit, setObservacionEdit] = useState("");
+  const [pdfAlGuardar, setPdfAlGuardar] = useState(false);
+  const [guiasPdf, setGuiasPdf] = useState<ManagedUser[]>([]);
+  const [guiaPdfId, setGuiaPdfId] = useState("");
+  const [refrigerioPdf, setRefrigerioPdf] = useState(false);
   const [participantes, setParticipantes] = useState<Participante[]>([]);
   const [loadingParticipantes, setLoadingParticipantes] = useState(false);
   const [approvalTarget, setApprovalTarget] = useState<Reserva | null>(null);
@@ -379,6 +401,11 @@ export default function ReservasAdmin() {
 
   const openCreate = () => {
     setEditing(null);
+    setDetalleEditing(null);
+    setExtrasEdit([]);
+    setExtrasDirty(false);
+    setPdfAlGuardar(false);
+    setObservacionEdit("");
     setIsLargeGroup(false);
     setHasFullGroupList(false);
     setGroupImportFile("");
@@ -392,7 +419,16 @@ export default function ReservasAdmin() {
     setShowForm(true);
   };
 
-  const openEdit = async (r: Reserva) => {
+  const openEdit = async (r: Reserva, solicitarPdf = false) => {
+    setDetalleEditing(null);
+    setCargandoDetalleEditing(true);
+    setExtrasEdit([]);
+    setExtrasDirty(false);
+    setObservacionEdit(String(r.observacion ?? ""));
+    setPdfAlGuardar(solicitarPdf);
+    setGuiasPdf([]);
+    void listAvailableGuides().then(setGuiasPdf)
+      .catch(error=>console.warn("No se pudieron cargar guías para la edición",error));
     const large = Number(r.cantidad_personas ?? 0) > 30;
     setEditing(r);
     setIsLargeGroup(large);
@@ -427,7 +463,15 @@ export default function ReservasAdmin() {
     setLoadingEditParticipants(true);
 
     try {
-      const existentes: Participante[] = await getParticipantesPorReserva(r.id_reserva);
+      const [existentes, detalle] = await Promise.all([
+        getParticipantesPorReserva(r.id_reserva),
+        getDetalleCompletoReserva(r.id_reserva),
+      ]);
+      setDetalleEditing(detalle);
+      setExtrasEdit(detalle.adicionales.map(item => ({ ...item })));
+      setObservacionEdit(String(detalle.reserva.observacion ?? ""));
+      setGuiaPdfId(String(detalle.reserva.guia_user_id ?? ""));
+      setRefrigerioPdf(Boolean(detalle.reserva.refrigerio));
       const mapped: NuevoParticipante[] = existentes.map((p) => ({
         id_participante: p.id_participante,
         nombre: p.nombre ?? "",
@@ -437,6 +481,7 @@ export default function ReservasAdmin() {
         numero_documento: p.numero_documento ?? "",
         correo: p.correo ?? "",
         telefono: p.telefono_participante || p.telefono_cliente || "",
+        tipo_almuerzo: p.tipo_almuerzo ?? "",
       }));
       const total = Math.max(1, Number(r.cantidad_personas) || 1, mapped.length);
       const isLarge = total > 30;
@@ -465,21 +510,56 @@ export default function ReservasAdmin() {
       );
     } finally {
       setLoadingEditParticipants(false);
+      setCargandoDetalleEditing(false);
     }
   };
 
   const openView = async (r: Reserva) => {
     setViewing(r);
+    setDetalleViewing(null);
     setParticipantes([]);
     setLoadingParticipantes(true);
+    setCargandoDetalleViewing(true);
     try {
-      setParticipantes(await getParticipantesPorReserva(r.id_reserva));
+      const [parts, detalle] = await Promise.all([
+        getParticipantesPorReserva(r.id_reserva),
+        getDetalleCompletoReserva(r.id_reserva),
+      ]);
+      setParticipantes(parts);
+      setDetalleViewing(detalle);
     } catch (e) {
-      console.error(e);
+      console.error("No se pudo cargar el expediente completo de la reserva", e);
     } finally {
       setLoadingParticipantes(false);
+      setCargandoDetalleViewing(false);
     }
   };
+
+  // El botón externo «Editar / rehacer PDF» abre este mismo editor.
+  useEffect(() => {
+    const handleEditForPdf = (event: Event) => {
+      const id = Number((event as CustomEvent<{ idReserva: number }>).detail?.idReserva);
+      const reserva = reservas.find(item => Number(item.id_reserva) === id);
+      if (reserva) {
+        setViewing(null);
+        void openEdit(reserva, true);
+      }
+    };
+    window.addEventListener("checua:editar-reserva-para-pdf", handleEditForPdf);
+    return () => window.removeEventListener("checua:editar-reserva-para-pdf", handleEditForPdf);
+  }, [reservas]);
+
+  // El botón de Control Operativo abre este editor en modo corrección + PDF.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const id = Number(url.searchParams.get("editar_pdf") || 0);
+    if (!id) return;
+    const reserva = reservas.find(item => Number(item.id_reserva) === id);
+    if (!reserva) return;
+    url.searchParams.delete("editar_pdf");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    void openEdit(reserva, true);
+  }, [reservas]);
 
   const updateNewParticipant = (i: number, f: keyof NuevoParticipante, v: string) => {
     setNewParticipants((p) => p.map((x, j) => (j === i ? { ...x, [f]: v } : x)));
@@ -582,15 +662,35 @@ export default function ReservasAdmin() {
     tipo_documento: p.tipo_documento || null,
     numero_documento: p.numero_documento.trim() || null,
     correo: p.correo.trim() || null,
+    tipo_almuerzo: p.tipo_almuerzo?.trim() || null,
   });
 
-  const handleSave = async () => {
+  const handleSave = async (reenviarPdf = false) => {
     setFormError(null);
     setSaving(true);
     try {
       const validation = validateParticipants();
       if (validation) {
         setFormError(validation);
+        return;
+      }
+      if (editing && (!detalleEditing || cargandoDetalleEditing)) {
+        setFormError("Espera a que se carguen el historial y los adicionales antes de guardar.");
+        return;
+      }
+      if (reenviarPdf && (!editing?.aprobado || !formData.aprobado)) {
+        setFormError("Para rehacer el PDF la reserva debe permanecer aprobada.");
+        return;
+      }
+      if (extrasDirty && extrasEdit.some(item =>
+        item.tipo_movimiento === "agregado" &&
+        (!item.nombre_adicional.trim() || !Number.isFinite(item.precio_unitario) ||
+         Number(item.precio_unitario) <= 0 || !Number.isInteger(Number(item.cantidad_aplicada)) ||
+         Number(item.cantidad_aplicada) < 1 ||
+         (item.tipo_cobro === "por_persona" && Number(item.cantidad_aplicada) > Number(formData.cantidad_personas)) ||
+         (item.id_adicional == null && !String(item.descripcion_temporal || "").trim()))
+      )) {
+        setFormError("Revisa los adicionales: nombre, precio positivo, cantidad válida y descripción del temporal son obligatorios.");
         return;
       }
 
@@ -665,6 +765,50 @@ export default function ReservasAdmin() {
             valor_total: standardTotal,
           };
 
+      const precioFinal = (() => {
+        if (!editing || !detalleEditing || !extrasDirty) return pricingFields;
+        const subtotal = desgloseEdicionReserva(
+          Number(editing.valor_total || 0),
+          Number(editing.precio_unitario || 0),
+          Math.max(1, Number(editing.cantidad_personas || 1)),
+          detalleEditing.adicionales,
+          detalleEditing.planesAdicionales,
+        );
+        const base = conservarPrecioExistente
+          ? subtotal.base
+          : (isBuggyPlan && buggyPricing ? buggyPricing.totalPrice : standardTotal);
+        const extrasNuevos = impactoAdicionalesGuardados(extrasEdit);
+        const nuevoTotal = base + subtotal.planesExtra + extrasNuevos;
+        if (!Number.isFinite(nuevoTotal) || nuevoTotal <= 0) throw new Error("El total con adicionales debe ser mayor a $0.");
+        return {
+          ...pricingFields,
+          valor_total: nuevoTotal,
+          precio_unitario: conservarPrecioExistente ? Number(editing.precio_unitario) : Number(pricingFields.precio_unitario),
+        };
+      })();
+
+      if (editing?.aprobado && selectedPlanId !== Number(editing.id_plan)) {
+        throw new Error(
+          "No se puede cambiar el plan de una reserva aprobada sin reasignar su código operativo (CH). " +
+          "Conserva el plan original y solicita el cambio operativo antes de rehacer el PDF.",
+        );
+      }
+      const pagado = Number(detalleEditing?.reserva.valor_abonado || 0) +
+        Number(detalleEditing?.reserva.valor_saldo_pagado || 0);
+      if (editing && Number(precioFinal.valor_total) + 0.01 < pagado) {
+        throw new Error(
+          "El nuevo total no puede ser inferior a los abonos y saldos ya pagados (" +
+          pagado.toLocaleString("es-CO") + " COP). Revisa los adicionales.",
+        );
+      }
+
+      const guiaCambio = Boolean(editing && detalleEditing &&
+        guiaPdfId !== String(detalleEditing.reserva.guia_user_id ?? ""));
+      const guiaNuevo = guiaCambio ? guiasPdf.find(g=>g.user_id===guiaPdfId) : null;
+      if (guiaCambio && (!guiaNuevo || !guiaNuevo.telefono)) {
+        throw new Error("Elige un guía válido con teléfono registrado para modificar el acompañante.");
+      }
+
       if (editing) {
         if (!clientes.some((c) => c.telefono === clientPhone)) {
           await createCliente({
@@ -684,8 +828,23 @@ export default function ReservasAdmin() {
           cantidad_personas: participantCount,
           aprobado: formData.aprobado,
           fecha_aprobacion,
-          ...pricingFields,
+          ...precioFinal,
+          ...(observacionEdit !== String(detalleEditing?.reserva.observacion ?? "")
+            ? { observacion: observacionEdit.trim() || null } : {}),
+          ...(guiaNuevo ? {
+            guia_user_id: guiaNuevo.user_id,
+            guia_username: guiaNuevo.username,
+            guia_telefono: guiaNuevo.telefono,
+          } : {}),
+          ...(detalleEditing && refrigerioPdf !== Boolean(detalleEditing.reserva.refrigerio)
+            ? { refrigerio: refrigerioPdf } : {}),
         });
+
+        if (extrasDirty) {
+          // Solo se sustituyen cuando el usuario ha editado los adicionales.
+          // Las reservas antiguas no se recalculan por abrir y guardar el formulario.
+          await replaceReservaAdicionales(editing.id_reserva, extrasEdit);
+        }
 
         if (Number(updatedReserva?.id_plan) !== selectedPlanId) {
           throw new Error("El cambio de plan no quedó guardado. Intenta nuevamente.");
@@ -739,12 +898,27 @@ export default function ReservasAdmin() {
         }
       }
 
+      let errorPdf = "";
+      if (reenviarPdf && editing) {
+        try {
+          await rehacerYReenviarPdfReserva(editing.id_reserva);
+        } catch (error) {
+          errorPdf = error instanceof Error ? error.message : "No se pudo enviar la solicitud a n8n";
+        }
+      }
+
       setShowForm(false);
       setDeletedParticipantIds([]);
       setHasFullGroupList(false);
       setGroupImportFile("");
       setGroupImportDirty(false);
+      setPdfAlGuardar(false);
       await fetchAll();
+      if (errorPdf) {
+        window.alert("Los cambios se guardaron, pero no se pudo solicitar el nuevo PDF: " + errorPdf);
+      } else if (reenviarPdf) {
+        window.alert("Cambios guardados. La regeneración y el reenvío del PDF quedaron solicitados; verifica su ejecución en n8n.");
+      }
     } catch (e: any) {
       console.error(e);
       setFormError(e?.message || "No fue posible guardar la reserva.");
@@ -945,6 +1119,11 @@ export default function ReservasAdmin() {
                   onChange={(e) => updateNewParticipant(index, "correo", e.target.value)}
                 />
               </div>
+              {editing && <div className="pt-form-group" style={{ marginTop: 10 }}>
+                <label>Tipo de almuerzo registrado</label>
+                <input value={p.tipo_almuerzo ?? ""} placeholder="Opcional · almuerzo del participante"
+                  onChange={(e) => updateNewParticipant(index, "tipo_almuerzo", e.target.value)}/>
+              </div>}
             </div>
           ))
         )}
@@ -1091,9 +1270,10 @@ export default function ReservasAdmin() {
 
       {viewing && (
         <div className="rv-overlay" onClick={() => setViewing(null)}>
-          <div className="rv-modal rv-modal-lg" onClick={(e) => e.stopPropagation()}>
+          <div className="rv-modal rv-modal-lg rv-xp-complete-modal" onClick={(e) => e.stopPropagation()}>
             <div className="rv-modal-header">
-              <h2>Reserva {viewing.codigo_reserva || `#${viewing.id_reserva}`}</h2>
+              <div><h2>Expediente completo · {viewing.codigo_reserva || `#${viewing.id_reserva}`}</h2>
+                <p className="rv-xp-modal-subtitle">Datos guardados para el PDF y el control operativo</p></div>
               <button className="rv-modal-close" onClick={() => setViewing(null)}><X size={20} /></button>
             </div>
             <div className="rv-modal-body">
@@ -1114,6 +1294,10 @@ export default function ReservasAdmin() {
                   </span>
                 </div>
               </div>
+              <ReservaExpediente detalle={detalleViewing} loading={cargandoDetalleViewing}
+                cantidad={Number(viewing.cantidad_personas || 1)}
+                precioUnitario={Number(viewing.precio_unitario || 0)}
+                totalActual={Number(viewing.valor_total || 0)}/>
               <div className="rv-parts">
                 <div className="rv-parts-head">
                   <h3 className="rv-parts-title"><UserCheck size={15} /> {Number(viewing.cantidad_personas ?? 0) > 30 ? participantes.length > 1 ? "Participantes del grupo" : "Encargado del grupo" : "Participantes"}</h3>
@@ -1121,11 +1305,11 @@ export default function ReservasAdmin() {
                 {loadingParticipantes ? <p>Cargando…</p> : (
                   <div className="rv-parts-table-wrap">
                     <table className="rv-parts-table">
-                      <thead><tr><th>Nombre</th><th>Edad</th><th>Nacionalidad</th><th>Documento</th><th>Teléfono</th></tr></thead>
+                      <thead><tr><th>Nombre</th><th>Edad</th><th>Nacionalidad</th><th>Documento</th><th>Teléfono</th><th>Correo</th><th>Almuerzo</th></tr></thead>
                       <tbody>
                         {participantes.map((p) => (
                           <tr key={p.id_participante}>
-                            <td>{p.nombre}</td><td>{p.edad ?? "—"}</td><td>{p.nacionalidad || "—"}</td><td>{`${p.tipo_documento || ""} ${p.numero_documento || ""}`.trim() || "—"}</td><td>{p.telefono_participante || p.telefono_cliente || "—"}</td>
+                            <td>{p.nombre}</td><td>{p.edad ?? "—"}</td><td>{p.nacionalidad || "—"}</td><td>{`${p.tipo_documento || ""} ${p.numero_documento || ""}`.trim() || "—"}</td><td>{p.telefono_participante || p.telefono_cliente || "—"}</td><td>{p.correo || "—"}</td><td>{p.tipo_almuerzo || "—"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1134,15 +1318,24 @@ export default function ReservasAdmin() {
                 )}
               </div>
             </div>
+            <div className="rv-modal-footer">
+              <button className="rv-btn-cancel" type="button" onClick={()=>setViewing(null)}>Cerrar</button>
+              <button className="rv-btn-save" type="button" onClick={() => {
+                const reserva = viewing;
+                setViewing(null);
+                void openEdit(reserva);
+              }}><Pencil size={15}/> Editar esta reserva</button>
+            </div>
           </div>
         </div>
       )}
 
       {showForm && (
         <div className="rv-overlay" onClick={() => !saving && setShowForm(false)}>
-          <div className="rv-modal rv-modal-lg" onClick={(e) => e.stopPropagation()}>
+          <div className="rv-modal rv-modal-lg rv-xp-complete-modal" onClick={(e) => e.stopPropagation()}>
             <div className="rv-modal-header">
-              <h2>{editing ? `Editar reserva ${editing.codigo_reserva || `#${editing.id_reserva}`}` : "Nueva reserva"}</h2>
+              <div><h2>{editing ? `Editar reserva ${editing.codigo_reserva || `#${editing.id_reserva}`}` : "Nueva reserva"}</h2>
+                {editing && <p className="rv-xp-modal-subtitle">{pdfAlGuardar ? "Revisa, guarda y solicita el PDF actualizado" : "Modifica los datos sin perder pagos ni adicionales registrados"}</p>}</div>
               <button className="rv-modal-close" onClick={() => setShowForm(false)}><X size={20} /></button>
             </div>
             <div className="rv-modal-body">
@@ -1320,15 +1513,28 @@ export default function ReservasAdmin() {
                 <label htmlFor="aprobado-check">Marcar como aprobada</label>
               </div>
 
+              {editing && <ReservaExpediente detalle={detalleEditing} loading={cargandoDetalleEditing}
+                editing extrasDirty={extrasDirty} cantidad={Number(formData.cantidad_personas || 1)}
+                precioUnitario={Number(editing.precio_unitario || 0)}
+                totalActual={Number(editing.valor_total || 0)} extras={extrasEdit}
+                onExtrasChange={(items)=>{setExtrasEdit(items);setExtrasDirty(true);}}
+                observacion={observacionEdit} onObservacionChange={setObservacionEdit}
+                guias={guiasPdf} guiaSeleccionada={guiaPdfId} onGuiaChange={setGuiaPdfId}
+                refrigerio={refrigerioPdf} onRefrigerioChange={setRefrigerioPdf}/>}
               {renderParticipantsForm()}
             </div>
             <div className="rv-modal-footer">
               <button className="rv-btn-cancel" onClick={() => setShowForm(false)} disabled={saving}>Cancelar</button>
-              <button className="rv-btn-save" onClick={handleSave} disabled={saving || loadingEditParticipants}>
+              {editing?.aprobado && <button className="rv-xp-secondary-btn" type="button"
+                onClick={() => void handleSave(!pdfAlGuardar)} disabled={saving || loadingEditParticipants || cargandoDetalleEditing}>
+                {pdfAlGuardar ? "Guardar sin reenviar" : "Guardar y rehacer PDF"}
+              </button>}
+              <button className="rv-btn-save" onClick={() => void handleSave(Boolean(editing?.aprobado && pdfAlGuardar))}
+                disabled={saving || loadingEditParticipants || cargandoDetalleEditing}>
                 {saving
                   ? "Guardando..."
                   : editing
-                    ? "Guardar reserva y participantes"
+                    ? pdfAlGuardar ? "Guardar cambios y solicitar PDF" : "Guardar cambios de la reserva"
                     : isLargeGroup
                       ? hasFullGroupList
                         ? `Crear grupo con ${newParticipants.length} participantes`
