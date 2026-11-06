@@ -46,6 +46,7 @@ type ReservaLite = {
   aprobado?: boolean | null;
   precio_unitario?: number | null;
   valor_total?: number | null;
+  precio_plan?: number | null;
   refrigerio?: boolean | null;
   referencia_pago_abono?: string | null;
   observacion?: string | null;
@@ -67,6 +68,20 @@ const onlyDigits = (value: string) => value.replace(/\D/g, "");
 const parseMoney = (value: string) => Number(value.replace(/\./g, "").replace(/,/g, ".").replace(/[^\d.]/g, "") || 0);
 const formatMoney = (value: number | null | undefined) => Number(value || 0).toLocaleString("es-CO");
 const labelMetodo = (value: string) => value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+// Los movimientos almacenados pueden describir elementos ya incluidos en el precio
+// original. Solo se descuentan del total cuando existe evidencia de cobro adicional
+// sobre el precio del plan; nunca se debe erosionar el valor contratado.
+const obtenerTotalBaseReserva = (reserva: ReservaLite, movimientos: ReservaAdicional[]) => {
+  const cantidad = Math.max(1, Number(reserva.cantidad_personas || 1));
+  const totalActual = Number(reserva.valor_total || 0);
+  const precioPlan = Number(reserva.precio_plan || 0);
+  const precioUnitario = Number(reserva.precio_unitario || 0);
+  const referenciaBase = precioPlan > 0 ? precioPlan * cantidad : precioUnitario * cantidad;
+  const impactoGuardado = movimientos.reduce((total, item) => total + Number(item.impacto_total || 0), 0);
+  const impactoCobrado = Math.min(Math.max(0, impactoGuardado), Math.max(0, totalActual - referenciaBase));
+  return totalActual - impactoCobrado;
+};
 const todayLocal = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -424,8 +439,10 @@ export default function ReservasApprovalGuard() {
     const cantidad = Math.max(1, Number(selected.cantidad_personas || 1));
     const totalOriginal = Number(selected.valor_total || 0);
     const unitarioOriginal = Number(selected.precio_unitario || (totalOriginal > 0 ? totalOriginal / cantidad : 0));
-    const impactoOriginal = reservaAdicionalesOriginales.reduce((total, item) => total + Number(item.impacto_total || 0), 0);
-    const totalBaseOriginal = totalOriginal - impactoOriginal;
+    // El snapshot histórico no garantiza que esos adicionales ya se hayan
+    // sumado al valor_total. La comparación debe hacerse contra el total
+    // efectivamente guardado, no contra el snapshot de adicionales.
+    const totalBaseOriginal = obtenerTotalBaseReserva(selected, reservaAdicionalesOriginales);
 
     const movimientosAdicionales: ReservaAdicionalInput[] = adicionalesDelPlan.flatMap<ReservaAdicionalInput>((item) => {
       const max = maxCantidadPlanAdicional(item, cantidad);
@@ -538,6 +555,11 @@ export default function ReservasApprovalGuard() {
     const totalNuevo = totalSinPlanesAdicionales + impactoPlanesAdicionales;
     const unitarioSinPlanesAdicionales = totalSinPlanesAdicionales / cantidad;
     const unitarioNuevo = totalNuevo / cantidad;
+    // El precio unitario pertenece al plan contratado: los extras aumentan
+    // valor_total, nunca deben sobrescribir el precio del plan por persona.
+    const unitarioBaseParaGuardar = advancedOption === "valor_total" || advancedOption === "valor_unitario"
+      ? unitarioSinPlanesAdicionales
+      : totalBaseOriginal / cantidad;
     const ajusteMonetario = advancedOption === "valor_total"
       ? Math.abs(totalSinPlanesAdicionales - totalOriginal) > 0.01
       : advancedOption === "valor_unitario"
@@ -625,9 +647,9 @@ export default function ReservasApprovalGuard() {
         guia_telefono: guiaElegido.telefono,
       };
 
-      if (ajusteMonetario || Math.abs(impactoAdicionales - impactoOriginal) > 0.01) {
+      if (ajusteMonetario || Math.abs(totalSinPlanesAdicionales - totalOriginal) > 0.01) {
         patch.valor_total = totalSinPlanesAdicionales;
-        patch.precio_unitario = unitarioSinPlanesAdicionales;
+        patch.precio_unitario = unitarioBaseParaGuardar;
         if (ajusteMonetario || crearTemporal) patch.observacion = [
           observacion.trim(),
           crearTemporal ? `Adicional temporal: ${temporal.nombre.trim()} (Qué incluye: ${temporal.descripcion.trim()}). ${cantidadTemporal} x ${formatMoney(precioTemporal)} = ${formatMoney(precioTemporal*cantidadTemporal)}.` : "",
@@ -722,8 +744,7 @@ export default function ReservasApprovalGuard() {
   };
 
   const cantidadSeleccionada = Math.max(1, Number(selected?.cantidad_personas || 1));
-  const impactoOriginalVista = reservaAdicionalesOriginales.reduce((total, item) => total + Number(item.impacto_total || 0), 0);
-  const totalBaseOriginalVista = Number(selected?.valor_total || 0) - impactoOriginalVista;
+  const totalBaseOriginalVista = selected ? obtenerTotalBaseReserva(selected, reservaAdicionalesOriginales) : 0;
   const impactoAdicionalesVista = adicionalesDelPlan.reduce((total, item) => {
     const quantity = item.modalidad === "opcional" && !incluirAdicionales
       ? 0
@@ -811,6 +832,15 @@ export default function ReservasApprovalGuard() {
                   <span style={{ display: "block", marginTop: 3, color: "#756654", fontSize: 13 }}>
                     ${formatMoney(unitarioVista)} por persona · {cantidadSeleccionada} {cantidadSeleccionada === 1 ? "persona" : "personas"}
                   </span>
+                  {advancedOption !== "valor_total" && advancedOption !== "valor_unitario" && (
+                    <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#f4f8f4", color: "#35543c", fontSize: 12, lineHeight: 1.8 }}>
+                      <div>Precio del plan contratado: <strong>${formatMoney(totalBaseOriginalVista)}</strong></div>
+                      <div>Adicionales seleccionados: <strong>{impactoAdicionalesTotalVista >= 0 ? "+" : "−"}${formatMoney(Math.abs(impactoAdicionalesTotalVista))}</strong></div>
+                      {impactoPlanesAdicionalesVista > 0 && (
+                        <div>Planes adicionales: <strong>+${formatMoney(impactoPlanesAdicionalesVista)}</strong></div>
+                      )}
+                    </div>
+                  )}
                   {selected.nombre_plan && <span style={{ display: "block", marginTop: 3, color: "#756654", fontSize: 13 }}>{selected.nombre_plan}</span>}
                 </div>
                 <span style={{

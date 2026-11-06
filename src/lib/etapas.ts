@@ -34,7 +34,7 @@ export interface EtapaInfo {
 /* Orden y estilo de cada etapa. Editar aquí afecta a Overview y a Clientes. */
 export const ETAPAS: EtapaInfo[] = [
   { key: EtapaConversacion.SALUDO,              label: "Saludo",        color: "#6366f1", bg: "#eef2ff" },
-  { key: EtapaConversacion.DESCRIPCION_INCLUYE, label: "Descripción",   color: "#3b82f6", bg: "#eff6ff" },
+  { key: EtapaConversacion.DESCRIPCION_INCLUYE, label: "Descripción e incluye",   color: "#3b82f6", bg: "#eff6ff" },
   { key: EtapaConversacion.COMO_RESERVAR,       label: "Cómo reservar", color: "#f59e0b", bg: "#fffbeb" },
   { key: EtapaConversacion.POR_CONFIRMAR,       label: "Por confirmar", color: "#f97316", bg: "#fff7ed" },
   { key: EtapaConversacion.CONFIRMADA,          label: "Confirmada",    color: "#22c55e", bg: "#f0fdf4" },

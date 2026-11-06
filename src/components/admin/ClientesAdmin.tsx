@@ -19,6 +19,8 @@ import type { EtapaConversacionValue } from "../../lib/etapas";
 interface Cliente {
   telefono: string;
   atencion_humana: boolean;
+  bot_habilitado: boolean;
+  identidad?: { username: string | null; nombre_perfil: string | null; bsuid: string | null } | null;
   etapaconversacion?: EtapaConversacionValue | null;
   id_plan?: number | null;
 }
@@ -31,6 +33,7 @@ interface Plan {
 const emptyForm = {
   telefono: "",
   atencion_humana: false,
+  bot_habilitado: false,
   etapaconversacion: "" as EtapaConversacionValue | "",
   id_plan: "" as number | "",
 };
@@ -47,7 +50,7 @@ export default function ClientesAdmin() {
   // Filtros
   const [search, setSearch] = useState("");
   const [etapaFilter, setEtapaFilter] = useState("todas");
-  const [atencionFilter, setAtencionFilter] = useState<"todas" | "humana" | "bot">("todas");
+  const [atencionFilter, setAtencionFilter] = useState<"todas" | "humana" | "bot" | "pausado">("todas");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
@@ -104,6 +107,7 @@ export default function ClientesAdmin() {
     setFormData({
       telefono: c.telefono,
       atencion_humana: c.atencion_humana,
+      bot_habilitado: c.bot_habilitado,
       etapaconversacion: (c.etapaconversacion ?? "") as EtapaConversacionValue | "",
       id_plan: c.id_plan ?? "",
     });
@@ -125,6 +129,7 @@ export default function ClientesAdmin() {
       if (editing) {
         await updateCliente(editing.telefono, {
           atencion_humana: formData.atencion_humana,
+          bot_habilitado: formData.atencion_humana ? false : formData.bot_habilitado,
           etapaconversacion: formData.etapaconversacion || null,
           id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
@@ -132,6 +137,7 @@ export default function ClientesAdmin() {
         await createCliente({
           telefono: formData.telefono,
           atencion_humana: formData.atencion_humana,
+          bot_habilitado: formData.atencion_humana ? false : formData.bot_habilitado,
           etapaconversacion: formData.etapaconversacion || null,
           id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
@@ -158,21 +164,35 @@ export default function ClientesAdmin() {
     }
   };
 
-  /* ── Filtrado y paginación ── */
-  const etapasDisponibles = Array.from(
-    new Set(clientes.map((c) => c.etapaconversacion).filter(Boolean))
-  ) as string[];
+  const toggleBot = async (c: Cliente) => {
+    const next = !c.bot_habilitado;
+    setOpenMenu(null);
+    try {
+      await updateCliente(c.telefono, {bot_habilitado: next, atencion_humana: !next});
+      setClientes(prev => prev.map(x => x.telefono === c.telefono
+        ? {...x, bot_habilitado: next, atencion_humana: !next} : x));
+    } catch (e: any) {
+      alert("No se pudo cambiar el estado del bot: " + (e?.message ?? "Error desconocido"));
+    }
+  };
 
+  const displayName = (c: Cliente) => c.identidad?.nombre_perfil?.trim()
+    || c.identidad?.username?.trim()
+    || c.telefono;
+
+  /* ── Filtrado y paginación ── */
   const filtered = clientes.filter((c) => {
     const q = search.toLowerCase();
     const matchSearch =
       c.telefono.toLowerCase().includes(q) ||
+      displayName(c).toLowerCase().includes(q) ||
       (c.etapaconversacion ?? "").toLowerCase().includes(q);
     const matchEtapa = etapaFilter === "todas" ? true : c.etapaconversacion === etapaFilter;
     const matchAtencion =
       atencionFilter === "todas" ? true :
-      atencionFilter === "humana" ? c.atencion_humana === true :
-      c.atencion_humana === false;
+      atencionFilter === "humana" ? c.atencion_humana :
+      atencionFilter === "bot" ? c.bot_habilitado && !c.atencion_humana :
+      !c.bot_habilitado && !c.atencion_humana;
     return matchSearch && matchEtapa && matchAtencion;
   });
 
@@ -186,8 +206,8 @@ export default function ClientesAdmin() {
   /* ── KPIs ── */
   const totalClientes = clientes.length;
   const conHumana = clientes.filter((c) => c.atencion_humana).length;
-  const soloBot = clientes.filter((c) => !c.atencion_humana).length;
-  const etapasDistintas = etapasDisponibles.length;
+  const soloBot = clientes.filter((c) => c.bot_habilitado && !c.atencion_humana).length;
+  const pausados = clientes.filter((c) => !c.bot_habilitado && !c.atencion_humana).length;
 
   /* ── Sub-componentes ── */
   const nombrePlan = (id_plan?: number | null) => {
@@ -201,10 +221,12 @@ export default function ClientesAdmin() {
     return <span className="cl-badge cl-badge-plan"><Package size={12} /> {nombre}</span>;
   };
 
-  const AtencionBadge = ({ humana }: { humana: boolean }) =>
-    humana
+  const AtencionBadge = ({ humana, habilitado }: { humana: boolean; habilitado: boolean }) =>
+    (humana || !habilitado)
       ? <span className="cl-badge cl-badge-humana"><Headphones size={12} /> Humana</span>
-      : <span className="cl-badge cl-badge-bot"><Bot size={12} /> Bot</span>;
+      : habilitado
+        ? <span className="cl-badge cl-badge-bot"><Bot size={12} /> Bot activo</span>
+        : <span className="cl-badge cl-badge-plan"><Bot size={12} /> Bot pausado</span>;
 
   const EtapaBadge = ({ etapa }: { etapa?: string | null }) => {
     if (!etapa) return <span className="rv-null">—</span>;
@@ -223,6 +245,9 @@ export default function ClientesAdmin() {
     <div className="action-buttons">
       <button className="action-btn action-ver" onClick={() => openView(c)}>
         <Eye size={14} /> Ver
+      </button>
+      <button className="action-btn action-editar" onClick={() => toggleBot(c)}>
+        <Bot size={14} /> {c.bot_habilitado ? "Desactivar bot" : "Activar bot"}
       </button>
       <button className="action-btn action-editar" onClick={() => openEdit(c)}>
         <Pencil size={14} /> Editar
@@ -245,6 +270,7 @@ export default function ClientesAdmin() {
       {openMenu === c.telefono && (
         <div className="cl-menu-dropdown">
           <button onClick={() => openView(c)}><Eye size={15} /> Ver</button>
+          <button onClick={() => toggleBot(c)}><Bot size={15} /> {c.bot_habilitado ? "Desactivar bot" : "Activar bot"}</button>
           <button onClick={() => openEdit(c)}><Pencil size={15} /> Editar</button>
           <button className="cl-menu-danger" onClick={() => handleDelete(c)}>
             <Trash2 size={15} /> Eliminar
@@ -288,15 +314,15 @@ export default function ClientesAdmin() {
         <div className="cl-kpi line-slate">
           <div className="cl-kpi-icon cl-kpi-slate"><Bot size={20} /></div>
           <div>
-            <div className="cl-kpi-label">Solo bot</div>
+            <div className="cl-kpi-label">Bot activo</div>
             <div className="cl-kpi-value">{soloBot}</div>
           </div>
         </div>
         <div className="cl-kpi line-violet">
           <div className="cl-kpi-icon cl-kpi-violet"><MessageSquare size={20} /></div>
           <div>
-            <div className="cl-kpi-label">Etapas distintas</div>
-            <div className="cl-kpi-value">{etapasDistintas}</div>
+            <div className="cl-kpi-label">Bot pausado</div>
+            <div className="cl-kpi-value">{pausados}</div>
           </div>
         </div>
       </div>
@@ -338,7 +364,8 @@ export default function ClientesAdmin() {
           >
             <option value="todas">Todas</option>
             <option value="humana">Humana</option>
-            <option value="bot">Solo bot</option>
+            <option value="bot">Bot activo</option>
+            <option value="pausado">Bot pausado</option>
           </select>
         </div>
 
@@ -365,7 +392,7 @@ export default function ClientesAdmin() {
         <table className="cl-table">
           <thead>
             <tr>
-              <th>TELÉFONO</th>
+              <th>CLIENTE / WHATSAPP</th>
               <th>ATENCIÓN</th>
               <th>ETAPA</th>
               <th>PLAN</th>
@@ -379,8 +406,8 @@ export default function ClientesAdmin() {
               <tr><td colSpan={5} className="cl-empty">Sin resultados</td></tr>
             ) : paginated.map((c) => (
               <tr key={c.telefono}>
-                <td><span className="cl-phone"><Phone size={13} /> {c.telefono}</span></td>
-                <td><AtencionBadge humana={c.atencion_humana} /></td>
+                <td><strong>{displayName(c)}</strong><div className="cl-phone"><Phone size={13} /> {c.telefono}</div></td>
+                <td><AtencionBadge humana={c.atencion_humana} habilitado={c.bot_habilitado} /></td>
                 <td><EtapaBadge etapa={c.etapaconversacion} /></td>
                 <td><PlanBadge id_plan={c.id_plan} /></td>
                 <td><ActionButtons c={c} /></td>
@@ -415,11 +442,11 @@ export default function ClientesAdmin() {
         ) : paginated.map((c) => (
           <div className="cl-card" key={c.telefono}>
             <div className="cl-card-top">
-              <span className="cl-card-phone"><Phone size={15} /> {c.telefono}</span>
+              <span className="cl-card-phone"><Phone size={15} /> {displayName(c)} ({c.telefono})</span>
               <ActionMenu c={c} />
             </div>
             <div className="cl-card-badges">
-              <AtencionBadge humana={c.atencion_humana} />
+              <AtencionBadge humana={c.atencion_humana} habilitado={c.bot_habilitado} />
               <EtapaBadge etapa={c.etapaconversacion} />
               <PlanBadge id_plan={c.id_plan} />
             </div>
@@ -453,7 +480,8 @@ export default function ClientesAdmin() {
             </div>
             <div className="cl-modal-body">
               <div className="cl-detail-field"><label>Teléfono</label><span>{viewing.telefono}</span></div>
-              <div className="cl-detail-field"><label>Atención</label><span><AtencionBadge humana={viewing.atencion_humana} /></span></div>
+              <div className="cl-detail-field"><label>Nombre WhatsApp</label><span>{displayName(viewing)}</span></div>
+              <div className="cl-detail-field"><label>Atención</label><span><AtencionBadge humana={viewing.atencion_humana} habilitado={viewing.bot_habilitado} /></span></div>
               <div className="cl-detail-field"><label>Etapa de conversación</label><span><EtapaBadge etapa={viewing.etapaconversacion} /></span></div>
               <div className="cl-detail-field"><label>Plan asociado</label><span><PlanBadge id_plan={viewing.id_plan} /></span></div>
             </div>
@@ -513,6 +541,11 @@ export default function ClientesAdmin() {
                   onChange={(e) => setFormData({ ...formData, atencion_humana: e.target.checked })}
                 />
                 <label htmlFor="atencion-check">Requiere atención humana</label>
+              </div>
+              <div className="cl-form-check">
+                <input type="checkbox" id="bot-check" checked={formData.bot_habilitado && !formData.atencion_humana}
+                  onChange={e => setFormData({...formData, bot_habilitado:e.target.checked,atencion_humana:e.target.checked?false:formData.atencion_humana})} />
+                <label htmlFor="bot-check">Bot habilitado para esta conversación</label>
               </div>
             </div>
             <div className="cl-modal-footer">

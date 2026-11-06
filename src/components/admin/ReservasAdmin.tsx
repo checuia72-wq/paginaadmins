@@ -618,18 +618,31 @@ export default function ReservasAdmin() {
         ? `${formData.fecha_visita}T00:00:00`
         : `${formData.fecha_visita}T${formData.hora_visita}:00`;
 
-      const [standardUnitPrice, standardTotal] = isBuggyPlan
+      // Si solo se editan datos de contacto, hora u otros campos, conservar el
+      // precio contratado, incluidas las modificaciones comerciales anteriores.
+      const conservarPrecioExistente = Boolean(
+        editing && !isBuggyPlan &&
+        Number(editing.id_plan) === selectedPlanId &&
+        Math.max(1, Number(editing.cantidad_personas || 1)) === participantCount &&
+        String(editing.fecha_reserva || "").slice(0, 10) === formData.fecha_visita &&
+        Number(editing.valor_total || 0) > 0 &&
+        Number(editing.precio_unitario || 0) > 0
+      );
+
+      const [standardUnitPrice, standardTotal] = isBuggyPlan || conservarPrecioExistente
         ? [0, 0]
         : await Promise.all([
             calcularPrecioPlan(selectedPlanId, participantCount, formData.fecha_visita),
             calcularTotalPlan(selectedPlanId, participantCount, formData.fecha_visita),
           ]);
 
-      if (!isBuggyPlan && (!Number.isFinite(standardUnitPrice) || standardUnitPrice <= 0 || !Number.isFinite(standardTotal) || standardTotal <= 0)) {
+      if (!isBuggyPlan && !conservarPrecioExistente && (!Number.isFinite(standardUnitPrice) || standardUnitPrice <= 0 || !Number.isFinite(standardTotal) || standardTotal <= 0)) {
         throw new Error("No fue posible calcular el valor del plan seleccionado para esta cantidad de personas.");
       }
 
-      const pricingFields = isBuggyPlan && buggyPricing
+      const pricingFields = conservarPrecioExistente && editing
+        ? { precio_unitario: Number(editing.precio_unitario), valor_total: Number(editing.valor_total) }
+        : isBuggyPlan && buggyPricing
         ? {
             precio_unitario: buggyPricing.averageUnitPrice,
             valor_total: buggyPricing.totalPrice,

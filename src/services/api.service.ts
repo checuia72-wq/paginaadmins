@@ -196,7 +196,21 @@ export async function deletePlan(id: number) {
 }
 
 /* ─── CLIENTES ───────────────────────────────────────────── */
-export async function getClientes(){const{data,error}=await getClient().from("cliente").select("telefono, atencion_humana, etapaconversacion, id_plan").order("telefono",{ascending:true});if(error)throw error;return data??[]}
+export async function getClientes(){
+  const db=getClient();
+  const [{data,error},{data:identidades,error:identidadesError}]=await Promise.all([
+    db.from("cliente").select("telefono, atencion_humana, bot_habilitado, etapaconversacion, id_plan").order("telefono",{ascending:true}),
+    db.from("whatsapp_identidades").select("telefono, username, nombre_perfil, bsuid")
+  ]);
+  if(error)throw error;
+  if(identidadesError) console.warn("No se pudieron consultar identidades WhatsApp",identidadesError);
+  const normalize=(v:string|null|undefined)=>String(v??"").replace(/\D/g,"").slice(-10);
+  const identityByPhone=new Map<string,{username:string|null;nombre_perfil:string|null;bsuid:string|null}>();
+  for(const row of identidades??[]){
+    if(row.telefono) identityByPhone.set(normalize(row.telefono),row);
+  }
+  return (data??[]).map(c=>({...c,identidad:identityByPhone.get(normalize(c.telefono))??null}));
+}
 export async function createCliente(payload:any){const{data,error}=await getClient().from("cliente").insert(payload).select().single();if(error)throw error;return data}
 export async function updateCliente(telefono:string,payload:any){const{data,error}=await getClient().from("cliente").update(payload).eq("telefono",telefono).select().single();if(error)throw error;return data}
 export async function deleteCliente(telefono:string){const{error}=await getClient().from("cliente").delete().eq("telefono",telefono);if(error)throw error}
@@ -227,7 +241,7 @@ export async function getReservas() {
   const horaIds = [...new Set(rows.map((r: any) => Number(r.id_hora)).filter(Number.isFinite))];
 
   const [planesResult, fechasResult, horasResult] = await Promise.allSettled([
-    planIds.length ? db.from("plan").select("id_plan,nombre_plan").in("id_plan", planIds) : Promise.resolve({ data: [], error: null }),
+    planIds.length ? db.from("plan").select("id_plan,nombre_plan,precio_plan").in("id_plan", planIds) : Promise.resolve({ data: [], error: null }),
     fechaIds.length ? db.from("plan_fechas").select("id_fecha,fecha").in("id_fecha", fechaIds) : Promise.resolve({ data: [], error: null }),
     horaIds.length ? db.from("plan_horas").select("id_hora,hora").in("id_hora", horaIds) : Promise.resolve({ data: [], error: null }),
   ]);
@@ -245,6 +259,7 @@ export async function getReservas() {
   const fechas = safeData(fechasResult);
   const horas = safeData(horasResult);
   const planMap = new Map(planes.map((p: any) => [Number(p.id_plan), p.nombre_plan]));
+  const planPriceMap = new Map(planes.map((p: any) => [Number(p.id_plan), p.precio_plan == null ? null : Number(p.precio_plan)]));
   const fechaMap = new Map(fechas.map((f: any) => [Number(f.id_fecha), f.fecha]));
   const horaMap = new Map(horas.map((h: any) => [Number(h.id_hora), h.hora]));
 
@@ -253,6 +268,7 @@ export async function getReservas() {
     return {
       ...r,
       nombre_plan: planMap.get(Number(r.id_plan)) ?? null,
+      precio_plan: planPriceMap.get(Number(r.id_plan)) ?? null,
       fecha_reserva: direct ? direct.slice(0, 10) : (fechaMap.get(Number(r.id_fecha)) ?? null),
       hora_reserva: direct && direct.length >= 16 ? direct.slice(11, 16) : (horaMap.get(Number(r.id_hora)) ?? null),
     };

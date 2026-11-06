@@ -1,0 +1,461 @@
+{
+  "name": "Checua - Chatbot WhatsApp Fase 1 (Hostinger)",
+  "nodes": [
+    {
+      "id": "15a5c0b2-a247-4969-93d6-b68e3ee2e15a",
+      "name": "If",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        448,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "6887b067-8fbe-4099-9f5e-e707c9a340a8",
+              "leftValue": "={{ $json.recipient }}",
+              "rightValue": "__TELEFONO_DE_PRUEBA__",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "23554eb7-0bbe-428f-ae4c-78e1e6a46edf",
+      "name": "Consultar imagen catálogo · Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        400
+      ],
+      "parameters": {
+        "url": "https://mdifjhrlgtxhgyfdldxu.supabase.co/rest/v1/configuracion_bot",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "valor"
+            },
+            {
+              "name": "clave",
+              "value": "eq.catalogo_planes_imagen"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "__CONFIGURAR_CLAVE_SUPABASE__"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "f1aaba73-e362-4424-be8a-5d6d67340212",
+      "name": "Normalizar mensaje YCloud",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const e=$json.body ?? $json;\nconst msg=e.whatsappInboundMessage ?? e.message ?? {};\nif(e.type && e.type!== 'whatsapp.inbound_message.received') return [];\nconst incoming=String(msg.text?.body ?? msg.interactive?.button_reply?.title ?? msg.interactive?.list_reply?.title ?? '').trim();\nconst recipient=String(msg.from ?? '').trim();\nconst sender=String(msg.to ?? '').trim();\nif(msg.type && msg.type!=='text' && msg.type!=='interactive') return [];\nif(!incoming || !recipient || !sender || !/^\\+?\\d{8,15}$/.test(recipient)) return [];\nconst referral = msg.referral ?? msg.context?.referral ?? null;\nconst from_ad = Boolean(referral && (referral.source_type === 'ad' || referral.ctwa_clid || referral.source_id));\nreturn [{json:{\n  incoming,recipient,sender,msg_id:String(msg.id ?? e.id ?? ''),\n  from_ad,\n  ad_source_id:String(referral?.source_id ?? ''),\n  ad_headline:String(referral?.headline ?? ''),\n  ad_body:String(referral?.body ?? ''),\n  ad_url:String(referral?.source_url ?? ''),\n  ad_welcome_text:String(referral?.welcome_message?.text ?? '')\n}}];"
+      }
+    },
+    {
+      "id": "0c3d773e-4bcb-4739-98ae-532ff2ffce6a",
+      "name": "Fase 1 · catálogo, plan y reserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const RESERVAS_URL = 'https://reservas.checua.shop/';\nconst entrada = $('Normalizar mensaje YCloud').first().json;\nconst registros = $('Consultar control bot · Supabase').all().map(x=>x.json).filter(x => x && x.telefono);\nconst telefonoCanonico = String(entrada.recipient);\nconst registroActual = registros.filter(c => c.telefono === telefonoCanonico);\nif (!registroActual.length || registroActual[0].bot_habilitado !== true || registroActual[0].atencion_humana === true) return [];\n\nlet planes = $('Consultar planes activos · Supabase').all().map(x => x.json);\nif (planes.length === 1 && Array.isArray(planes[0])) planes = planes[0];\nplanes = planes.filter(p => p.activo !== false);\nconst promoGroupIds = new Set(planes.filter(p => p.es_grupo && String(p.nombre_plan ?? '').trim().toLowerCase() === 'promociones').map(p => Number(p.id_plan)));\nplanes = planes.filter(p => !promoGroupIds.has(Number(p.id_plan)) && !promoGroupIds.has(Number(p.id_plan_padre)));\nconst principales = planes.filter(p => p.id_plan_padre == null).sort((a,b) => Number(a.numero_plan ?? 9999)-Number(b.numero_plan ?? 9999));\nif (!principales.length) throw new Error('No hay planes principales activos');\nconst cfg = $('Consultar imagen catálogo · Supabase').first().json;\nconst catalogoImagen = String(Array.isArray(cfg) ? cfg[0]?.valor ?? '' : cfg?.valor ?? '');\nconst norm = x => String(x ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim();\nconst nombre = p => String(p.nombre_plan ?? '').replace(/\\s+/g,' ').trim();\nconst money = n => '$'+Number(n).toLocaleString('es-CO',{maximumFractionDigits:0});\nconst precio = p => p.precio_plan != null ? money(p.precio_plan) : 'Ver opciones';\nconst nl = String.fromCharCode(10);\nconst catalogNames = {\n  1:'Senderismo en el Desierto', 2:'Desierto + Mina de Sal + Almuerzo',\n  3:'Aventura en bicicleta', 4:'Senderismo + descanso en montaña',\n  5:'Escápate a Nemocón', 6:'Buggies por Nemocón',\n  7:'Retiro para parejas', 10:'Mapping nocturno',\n  11:'Astroturismo', 12:'Picnic en el Desierto',\n  13:'Nemocón Todo Incluido', 14:'Promo Senderismo + Mina',\n  15:'Festival Halloween'\n};\nconst shortName = p => catalogNames[Number(p.numero_plan)] || nombre(p).slice(0,40).trim();\nconst planEmoji = p => {\n  const n=Number(p.numero_plan);\n  const symbolByNumber = {1:'🥾',2:'🧂',3:'🚴',4:'🧖',5:'🏡',6:'🏎️',7:'💑',10:'🎆',11:'🔭',12:'🧺',13:'🏞️',14:'🎁',15:'🎃'};\n  if(symbolByNumber[n]) return symbolByNumber[n];\n  const name=norm(nombre(p));\n  if(name.includes('bicicleta')) return '🚴';\n  if(name.includes('buggy')||name.includes('buggies')) return '🏎️';\n  if(name.includes('picnic')) return '🧺';\n  if(name.includes('mina')) return '⛏️';\n  if(name.includes('noche')||name.includes('nocturno')) return '🌙';\n  if(name.includes('senderismo')) return '🥾';\n  return '🌵';\n};\nconst welcome = language => {\n  const lines = principales.filter(p=>p.numero_plan!=null).map(p=>String(p.numero_plan)+'. '+planEmoji(p)+' '+shortName(p)+' · '+precio(p));\n  const content = language==='en'\n    ? ['🌵✨ *Welcome to Desierto de Checua!*','So happy you are here! 💛 Nature, adventures and unforgettable memories are waiting for you.','🎒 *Find your next adventure:*','💬 Which one catches your eye? Tell me the *number, name or price* and I will share the details. 😊']\n    : language==='pt'\n    ? ['🌵✨ *Bem-vindo ao Deserto de Checua!*','Que alegria ter você aqui! 💛 Natureza, aventura e lembranças especiais esperam por você.','🎒 *Escolha sua próxima aventura:*','💬 Qual chamou sua atenção? Diga o *número, nome ou preço* para saber mais. 😊']\n    : ['🌵✨ *¡Bienvenido al Desierto de Checua!*','¡Qué alegría saludarte! 💛 Por aquí tenemos caminatas, aventura y planes especiales para desconectarte de la rutina.','🎒 *Encuentra tu próxima aventura:*','💬 ¿Cuál te llamó la atención? Dime su *número, nombre o precio* y te cuento qué incluye. 😊'];\n  const [title,intro,heading,closing] = content;\n  let out = title + nl + intro + nl + nl + heading;\n  for(const line of lines){if((out+nl+line+nl+nl+closing).length<=1000)out+=nl+line;}\n  return out+nl+nl+closing;\n};\nconst msg = norm(entrada.incoming);\nconst store = $getWorkflowStaticData('global');\nstore.chatStates ??= {};\nconst prev = store.chatStates[entrada.recipient] ?? {};\nconst current = planes.find(p => Number(p.id_plan) === Number(prev.planId ?? registroActual[0]?.id_plan)) ?? null;\nconst hijos = padre => planes.filter(p => Number(p.id_plan_padre) === Number(padre.id_plan));\nconst group = p => Boolean(p.es_grupo) || hijos(p).length > 0;\nconst nmatch = msg.match(/^(?:plan\\s*(?:numero|n)?\\s*|el\\s*plan\\s*|el\\s*|numero\\s*)?(\\d{1,2})$/) ?? msg.match(/\\b(?:plan|numero)\\s*(?:numero|n)?\\s*(\\d{1,2})\\b/);\nlet chosen = null;\nif (nmatch) {\n  const n = Number(nmatch[1]);\n  chosen = (current && group(current) && n>0 && !msg.includes(\"plan\")) ? (hijos(current)[n-1] ?? null) : null;\n  if (!chosen) chosen = principales.find(p=>Number(p.numero_plan)===n) ?? null;\n}\nif (!chosen) {\n  const numbers = [...msg.matchAll(/(?:\\$\\s*)?(\\d{2,3}(?:[., ]?\\d{3})+|\\d{4,7})/g)].map(m=>Number(m[1].replace(/[., ]/g,'')));\n  const matches = planes.filter(p=>p.precio_plan!=null && numbers.includes(Number(p.precio_plan)));\n  if (matches.length===1) chosen=matches[0];\n}\nif (!chosen && msg.length>2) {\n  const pool = [...principales,...planes.filter(p=>p.id_plan_padre!=null)];\n  const exact = pool.filter(p=>norm(nombre(p))===msg || msg.includes(norm(nombre(p))));\n  if (exact.length===1) chosen=exact[0];\n  if (!chosen) {\n    const scored=pool.map(p=>({p,score:norm(nombre(p)).split(' ').filter(w=>w.length>3&&!['plan','desierto','checua','nemocon'].includes(w)&&msg.includes(w)).length})).sort((a,b)=>b.score-a.score);\n    if(scored[0]?.score>0 && (!scored[1] || scored[0].score>scored[1].score)) chosen=scored[0].p;\n  }\n}\n// A pauta pode incluir o plano no texto, título ou link do anúncio.\nconst fromAd = entrada.from_ad === true;\nconst adText = norm([entrada.ad_headline,entrada.ad_body,entrada.ad_welcome_text].filter(Boolean).join(' '));\nif (fromAd && !chosen) {\n  const pool = [...principales,...planes.filter(p=>p.id_plan_padre!=null)];\n  const numbered = adText.match(/(?:plan|paquete|tour|paseo)\\s*(?:numero\\s*)?(\\d{1,2})\\b/);\n  const urlNumber = String(entrada.ad_url||'').match(/(?:plan|tour|paseo)[=\\/](\\d{1,2})(?:\\b|$)/i);\n  if(numbered || urlNumber) {\n    chosen=principales.find(p=>Number(p.numero_plan)===Number((numbered||urlNumber)[1])) || null;\n  }\n  if(!chosen && adText) {\n    const full=pool.filter(p=>norm(nombre(p)).length>=8 && adText.includes(norm(nombre(p))));\n    if(full.length===1) chosen=full[0];\n    if(!chosen) {\n      const ignored=new Set(['plan','desierto','checua','nemocon','aventura','experiencia','para','y','con','por','el','de','del','la','los','las','en','una','un','sal','todo']);\n      const scored=pool.map(p=>{\n        const terms=norm(nombre(p)).split(' ').filter(x=>x.length>3&&!ignored.has(x));\n        const count=terms.filter(x=>adText.split(' ').includes(x)).length;\n        return {p,count};\n      }).sort((a,b)=>b.count-a.count);\n      if(scored[0]?.count>=1 && (!scored[1] || scored[0].count>scored[1].count)) chosen=scored[0].p;\n    }\n  }\n}\nconst explicitGreeting=/^(?:hola+|hol|ola+|buenas(?: dias| tardes| noches)?|buenos dias|buenas tardes|buenas noches|saludos|hello|hi|hey|good morning|good afternoon|good evening|bom dia|boa tarde|boa noite)(?:\\s|$)/.test(msg);\nconst firstGreeting = registroActual[0].saludo_bot_enviado !== true;\nconst shouldGreet = firstGreeting || explicitGreeting;\nconst greetPlan = language => language==='en'\n  ? 'Hi! 😊 It is great to hear from you. Here is what this experience includes:'\n  : language==='pt'\n  ? 'Olá! 😊 Que alegria receber sua mensagem. Veja o que inclui esta experiência:'\n  : '¡Hola! 😊 Qué gusto saludarte. Mira lo que incluye esta experiencia:';\nconst catalogText = (language, withGreeting) => {\n  const full=welcome(language);\n  if(withGreeting) return full;\n  const ix=full.indexOf('🎒 *');\n  return ix>=0?full.slice(ix):full;\n};\nconst infoRequest=/\\b(informacion|info|incluye|inclui|incluido|descripcion|description|detalles|details|interesa|interesado|interesada|interested|conocer|saber|about|explicame|tell me)\\b/.test(msg);\nconst languageGuess = /\\b(hello|hi|good morning|good evening|show me|another tour|another plan|i want|i would like|how do i|what|where|when|how|can i|do you|book now|booking|yes please|thank you)\\b/.test(msg) ? 'en' : /\\b(ola|bom dia|boa tarde|boa noite|outro passeio|outro plano|quero|gostaria|obrigado|quanto custa|sim por favor)\\b/.test(msg) ? 'pt' : null;\nconst lang = languageGuess || prev.lang || 'es';\nconst texts = {\n  en:{hello:'Hello! 😊 Discover our tours:',choose:'✨ Which tour interests you? Reply with a number, name or price. 😊',group:'Available options:',which:'✨ Which buggy route interests you? Reply with its number or name.',cta:'✨ Would you like to book this tour or ask a question? 😊',book:'✨ *Booking your experience is easy!*\\n\\n1️⃣ Complete your booking details: '+RESERVAS_URL+'\\n\\n2️⃣ Pay the deposit. 💳\\n\\n📸 Send us a screenshot of your payment receipt and our team will confirm your reservation.\\n\\n🌵 Your next adventure starts here!',details:'Full descriptions are currently available in Spanish. Our team can help with details in English.'},\n  pt:{hello:'Olá! 😊 Conheça nossos passeios:',choose:'✨ Qual passeio lhe interessa? Responda com número, nome ou preço. 😊',group:'Opções disponíveis:',which:'✨ Qual roteiro de buggy lhe interessa? Responda com o número ou nome.',cta:'✨ Gostaria de reservar este passeio ou tem alguma dúvida? 😊',book:'✨ *Reservar sua experiência é fácil!*\\n\\n1️⃣ Preencha seus dados: '+RESERVAS_URL+'\\n\\n2️⃣ Faça o pagamento do sinal. 💳\\n\\n📸 Envie a captura do comprovante de pagamento e nossa equipe confirmará sua reserva.\\n\\n🌵 Sua próxima aventura começa aqui!',details:'As descrições completas estão disponíveis em espanhol. Nossa equipe pode ajudar em português.'}\n};\nif (lang !== 'es') {\n  const t=texts[lang];\n  const hi=/^(hello|hi|hey|good morning|good afternoon|good evening|show me the tours|show me the plans|another tour|another plan|i want another plan|i want another tour|ola|bom dia|boa tarde|boa noite|outro passeio|outro plano|quero ver outro passeio)$/.test(msg);\n  const confirm=/^(yes|yes please|sure|yeah|yep|book now|i want to book|i would like to book|how do i book|sim|sim por favor|claro|quero reservar|como reservar)$/.test(msg);\n  const list=principales.map(p=>String(p.numero_plan??'')+'. '+nombre(p).slice(0,48)+' — '+precio(p));\n  let answer='', picture='', selected=null;\n  if((hi && !chosen && !fromAd) || (!current && !chosen && !confirm && !fromAd)) {\n    answer=catalogText(lang,shouldGreet);\n    picture=catalogoImagen;\n    store.chatStates[entrada.recipient]={lang,updated:Date.now()};\n  } else if(fromAd && !chosen && !confirm) {\n    picture='';\n    answer=(shouldGreet ? (lang==='en' ? 'Hello! 😊 Thanks for reaching out.\\n\\n' : 'Olá! 😊 Que bom receber sua mensagem.\\n\\n') : '')+(lang==='en' ? 'Which experience in our ad interested you? Tell me its name and I will share what is included. 🌵' : 'Qual experiência do nosso anúncio chamou sua atenção? Diga o nome e conto o que está incluído. 🌵');\n  } else if(chosen && group(chosen)) {\n    selected=chosen.id_plan;picture=String(chosen.imagen_url||catalogoImagen);\n    answer=(shouldGreet ? greetPlan(lang)+'\\n\\n' : '')+'🚙 *'+nombre(chosen)+'*\\n'+t.group+'\\n'+hijos(chosen).map((p,i)=>(i+1)+'. '+nombre(p)+' — '+precio(p)).join('\\n')+'\\n\\n'+t.which;\n    store.chatStates[entrada.recipient]={planId:chosen.id_plan,lang,updated:Date.now()};\n  } else if(chosen) {\n    selected=chosen.id_plan;picture=String(chosen.imagen_url||'');\n    const description=[String(chosen.descripcion_basica??'').trim(),String(chosen.descripcion_detallada??'').trim()].filter(Boolean).join('\\n\\n');\n    const title=(shouldGreet ? greetPlan(lang)+'\\n\\n' : '')+'🌵 *'+nombre(chosen)+'*\\n💰 '+precio(chosen)+'\\n\\n'+t.details+'\\n'+description;\n    const closing='\\n\\n'+t.cta;\n    answer=title.length+closing.length>1024 ? title.slice(0,1023-closing.length).trimEnd()+'…'+closing : title+closing;\n    store.chatStates[entrada.recipient]={planId:chosen.id_plan,lang,updated:Date.now()};\n  } else if(confirm && current && !group(current)) {\n    selected=current.id_plan;answer=t.book;\n  } else if(current && group(current)) {\n    picture=String(current.imagen_url||catalogoImagen);\n    answer=(shouldGreet ? greetPlan(lang)+'\\n\\n' : '')+'🚙 *'+nombre(current)+'*\\n'+t.group+'\\n'+hijos(current).map((p,i)=>(i+1)+'. '+nombre(p)+' — '+precio(p)).join('\\n')+'\\n\\n'+t.which;\n  } else if(current) {\n    answer=(shouldGreet ? greetPlan(lang)+'\\n\\n' : '')+'🌵 *'+nombre(current)+'* — '+precio(current)+'\\n'+t.cta;\n  } else {\n    answer=catalogText(lang,shouldGreet);picture=catalogoImagen;\n  }\n  const bookingIntention = confirm && (current && !group(current) || /^(i want to book|how do i book|how to book|book now|quero reservar|como reservar)$/.test(msg));\n  const uncertain = !hi && !bookingIntention && !(chosen && infoRequest) && (/[?¿]/.test(String(entrada.incoming)) || /^(what|how|where|when|can i|do you|quanto|onde|quando|posso|tem)\\b/.test(msg));\n  if (uncertain) {\n    picture='';\n    answer = lang==='en' ? '😊 Our team will answer your question personally. An advisor will take over this conversation.' : '😊 Nossa equipe responderá sua pergunta pessoalmente. Um atendente continuará esta conversa.';\n  }\n  const stage = bookingIntention ? 'como_reservar' : (chosen ? 'descripcionincluye' : (hi || fromAd ? 'saludo' : (registroActual[0]?.etapaconversacion || 'saludo')));\n  return [{json:{to:entrada.recipient,from:entrada.sender,image_url:picture,image_caption:answer.slice(0,1024),response_text:answer,planId:(stage==='saludo' && !chosen) ? null : (selected ?? current?.id_plan ?? null),etapa:stage,handoff:Boolean(uncertain || bookingIntention)}}];\n}\nconst yes = /^(si|simon|sisas|sip|sipi|seh|claro|listo|quiero reservar|reservar|me interesa|de una|dale|ok|bueno)(\\b|$)/.test(msg);\nconst greeting = /^(hola+|hol|ola+|buenas|buenos dias|buenas tardes|buenas noches|hey|catalogo|planes|ver planes|menu|promociones|promocion|ofertas)[!. ]*$/.test(msg) || /^(muestrame|quiero ver|ver) (todos )?(los )?planes$/.test(msg) || /^(otro|otra|otros|otro plan|otra opcion|quiero ver otro plan|quiero otro plan|ver otro plan|ver otros planes|quiero ver otros planes|muestrame otros planes|conocer otro plan|quiero conocer otro plan|no quiero este plan)$/.test(msg);\n// Cabe en una única imagen con caption de hasta 1024 caracteres SIN cortar el cierre comercial.\nconst fit = (intro, lines, closing, max=1024) => {\n  let result=intro;\n  for(const line of lines) {\n    if((result+'\\n'+line+'\\n\\n'+closing).length>max) break;\n    result+='\\n'+line;\n  }\n  return result+'\\n\\n'+closing;\n};\nconst directBooking=/^(quiero reservar|deseo reservar|como reservar|como reservo|quiero hacer una reserva|vamos a reservar|reservar)$/.test(msg);\nlet response='', image='', planId=null, sentBookingMessage=false;\nif (greeting && !chosen && !fromAd) {\n  image=catalogoImagen;\n  response=catalogText('es',shouldGreet);\n  store.chatStates[entrada.recipient]={updated:Date.now()};\n } else if (fromAd && !chosen && !directBooking) {\n  response=(shouldGreet ? '¡Hola! 😊 Qué gusto saludarte.\\n\\n' : '')+'Veo que llegaste desde uno de nuestros anuncios. ¿Qué experiencia te llamó la atención? Dime su nombre y con gusto te cuento qué incluye. 🌵';\n} else if (chosen && group(chosen)) {\n  const options=hijos(chosen);\n  store.chatStates[entrada.recipient]={planId:chosen.id_plan,updated:Date.now()};\n  planId=chosen.id_plan;\n  image=String(chosen.imagen_url ?? catalogoImagen);\n  const intro=(shouldGreet ? greetPlan('es')+'\\n\\n' : '')+'🚙 *'+nombre(chosen)+'*\\nEstas son nuestras opciones:';\n  response=fit(intro,options.map((p,i)=>String(i+1)+'. '+nombre(p)+' — '+precio(p)),'✨ ¿Qué recorrido de Buggies te interesa? Dime su nombre o número.');\n} else if(chosen) {\n  store.chatStates[entrada.recipient]={planId:chosen.id_plan,updated:Date.now()};\n  planId=chosen.id_plan;\n  image=String(chosen.imagen_url ?? '');\n  const titulo=(shouldGreet ? greetPlan('es')+'\\n\\n' : '')+'🌵 *'+nombre(chosen)+'*\\n💰 '+precio(chosen)+' por persona (ver condiciones)';\n  const cta='✨ ¿Te gustaría reservar este plan o tienes alguna pregunta? 😊';\n  const descripcion=[String(chosen.descripcion_basica??'').trim(),String(chosen.descripcion_detallada??'').trim()].filter(Boolean).join('\\n\\n📋 *Detalles:*\\n');\n  const espacio=Math.max(0,1024-titulo.length-cta.length-5);\n  response=titulo+'\\n\\n'+(descripcion.length>espacio ? descripcion.slice(0,Math.max(0,espacio-1)).trimEnd().replace(/[,. ;:]+$/,'')+'…':descripcion)+'\\n\\n'+cta;\n} else if((!chosen && yes && current && !group(current)) || directBooking) {\n  sentBookingMessage=true;\n  planId=current?.id_plan ?? null;\n  response=`✨ *¡Reservar tu experiencia es más fácil de lo que imaginas!*\\n\\nSolo necesitas completar 2 sencillos pasos y tu aventura comenzará a tomar forma. 🌿\\n\\n1️⃣ Diligencia tus datos de reserva:\\n${RESERVAS_URL}\\n\\n2️⃣ Realiza el abono del plan. 💳\\n\\n📸 Luego, envíanos una foto o captura del comprobante de pago y nosotros nos encargaremos de confirmar tu reserva.\\n\\n✅ ¡Así de fácil! Eliges tu experiencia, aseguras tu cupo y nosotros nos encargamos del resto.\\n\\n🌵✨ ¡Tu próxima aventura comienza con una reserva!`;\n } else if(!current) {\n  image=catalogoImagen;\n  response=catalogText('es',shouldGreet);\n  store.chatStates[entrada.recipient]={updated:Date.now()};\n} else if(group(current)) {\n  image=String(current.imagen_url ?? catalogoImagen);\n  response=fit((shouldGreet ? greetPlan('es')+'\\n\\n' : '')+'🚙 *'+nombre(current)+'*. Opciones disponibles:',hijos(current).map((p,i)=>String(i+1)+'. '+nombre(p)+' — '+precio(p)),'✨ ¿Cuál recorrido te gustaría conocer?');\n} else {\n  image=String(current.imagen_url??'');\n  response=(shouldGreet ? greetPlan('es')+'\\n\\n' : '')+'🌵 *'+nombre(current)+'* — '+precio(current)+'\\n¿Quieres reservarlo o conocer otro plan? 😊';\n}\nconst bookingRequested = sentBookingMessage;\nconst isQuestion = /[?¿]/.test(String(entrada.incoming)) || /^(que|como|cuando|donde|cuanto|cual|tienen|puedo|hay|me puedes|what|how|when|where|can i|do you|quanto|onde|quando|posso|tem)\\b/.test(msg);\nconst needsHuman = !greeting && !bookingRequested && !(chosen && infoRequest) && (isQuestion || /\\b(asesor|humano|humana|persona real|hablar con alguien|necesito ayuda|no entiendo|operador|support agent|human agent|talk to a person|atendente|falar com alguem)\\b/.test(msg));\nlet handoff = bookingRequested || needsHuman;\nif (needsHuman) {\n  image='';\n  response=(shouldGreet ? '¡Hola! 😊 Qué gusto saludarte.\\n\\n' : '')+'Gracias por tu pregunta. Un asesor de nuestro equipo continuará atendiéndote personalmente.';\n}\nconst etapa = bookingRequested ? 'como_reservar' : (chosen ? 'descripcionincluye' : (greeting ? 'saludo' : (registroActual[0]?.etapaconversacion || 'saludo')));\n// El nodo YCloud de imagen debe usar response_text como caption y NO enviar luego texto adicional.\nreturn [{json:{to:entrada.recipient,from:entrada.sender,image_url:image,image_caption:response,response_text:response,planId:(etapa==='saludo' && !chosen) ? null : (planId ?? current?.id_plan ?? null),etapa,handoff}}];"
+      }
+    },
+    {
+      "id": "21edbe9d-8255-45b8-8d03-64f63cab623e",
+      "name": "Consultar planes activos · Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        400
+      ],
+      "parameters": {
+        "url": "https://mdifjhrlgtxhgyfdldxu.supabase.co/rest/v1/plan",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "id_plan,numero_plan,nombre_plan,precio_plan,imagen_url,descripcion_basica,descripcion_detallada,activo,id_plan_padre,es_grupo"
+            },
+            {
+              "name": "activo",
+              "value": "eq.true"
+            },
+            {
+              "name": "order",
+              "value": "id_plan.asc"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "__CONFIGURAR_CLAVE_SUPABASE__"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "08e6dcf3-de4d-40f7-8a89-8fc4f1ddb59b",
+      "name": "¿Enviar imagen?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "3ae54142-95df-4a54-8ec5-aba50a73aff7",
+              "leftValue": "={{ $('Fase 1 · catálogo, plan y reserva').first().json.image_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "605ebbc6-75b0-4fe0-8b7e-b1bcaefb1638",
+      "name": "YCLOUD · Mensaje entrante",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "checua-chat-fase1",
+        "options": {
+          "responseData": "ok"
+        }
+      },
+      "webhookId": "cf596cd5-41d8-43b2-9500-345495821409"
+    },
+    {
+      "id": "4c1b1e6f-dcbf-4e26-ac96-07d0688be5d6",
+      "name": "YCloud · enviar respuesta comercial",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        496
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  from: $('Fase 1 · catálogo, plan y reserva').first().json.from,\n  to: $('Fase 1 · catálogo, plan y reserva').first().json.to,\n  type: 'text',\n  text: {\n    body: $('Fase 1 · catálogo, plan y reserva').first().json.response_text\n  }\n}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "9cb76ed1-f5db-417e-bb81-43693b177e30",
+      "name": "YCloud · enviar imagen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('Fase 1 · catálogo, plan y reserva').first().json.from, to: $('Fase 1 · catálogo, plan y reserva').first().json.to, type: 'image', image: { link: $('Fase 1 · catálogo, plan y reserva').first().json.image_url, caption: ($('Fase 1 · catálogo, plan y reserva').first().json.response_text || '').slice(0,1024) } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "e32dbbe7-4b66-4fdc-9f12-1bc90b9abc5a",
+      "name": "Consultar control bot · Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        200
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://mdifjhrlgtxhgyfdldxu.supabase.co/rest/v1/cliente",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "telefono,bot_habilitado,atencion_humana,etapaconversacion,id_plan,saludo_bot_enviado"
+            },
+            {
+              "name": "telefono",
+              "value": "={{ 'eq.' + $('Normalizar mensaje YCloud').first().json.recipient }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "__CONFIGURAR_CLAVE_SUPABASE__"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "903041d6-633b-4ecf-880c-3631593dae56",
+      "name": "Registrar conversación · Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://mdifjhrlgtxhgyfdldxu.supabase.co/rest/v1/cliente?on_conflict=telefono",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "__CONFIGURAR_CLAVE_SUPABASE__"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({telefono: $('Normalizar mensaje YCloud').first().json.recipient, atencion_humana: $json.handoff === true, bot_habilitado: $json.handoff !== true, etapaconversacion: $json.etapa, id_plan: $json.planId || null, saludo_bot_enviado: true}) }}",
+        "options": {}
+      },
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "Consultar imagen catálogo · Supabase": {
+      "main": [
+        [
+          {
+            "node": "Fase 1 · catálogo, plan y reserva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar mensaje YCloud": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar planes activos · Supabase": {
+      "main": [
+        [
+          {
+            "node": "Consultar imagen catálogo · Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Enviar imagen?": {
+      "main": [
+        [
+          {
+            "node": "YCloud · enviar imagen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "YCloud · enviar respuesta comercial",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YCLOUD · Mensaje entrante": {
+      "main": [
+        [
+          {
+            "node": "Normalizar mensaje YCloud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Consultar control bot · Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar control bot · Supabase": {
+      "main": [
+        [
+          {
+            "node": "Consultar planes activos · Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fase 1 · catálogo, plan y reserva": {
+      "main": [
+        [
+          {
+            "node": "Registrar conversación · Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar conversación · Supabase": {
+      "main": [
+        [
+          {
+            "node": "¿Enviar imagen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}
