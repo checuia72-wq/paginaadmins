@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import {
   getClientes,
   createCliente,
@@ -9,11 +9,14 @@ import {
 import {
   Plus, Eye, Pencil, Trash2, Search, X,
   ChevronLeft, ChevronRight, Phone, Users, Headphones, Bot,
-  MessageSquare, MoreVertical, Package,
+  MessageSquare, MoreVertical, Package, AlertTriangle, MessageCircle, ExternalLink,
 } from "lucide-react";
 import "../../styles/clientes.css";
 import { ETAPAS, getEtapaInfo } from "../../lib/etapas";
 import type { EtapaConversacionValue } from "../../lib/etapas";
+import { supabase } from "../../lib/supabase";
+import ClientesHandoffAlert from "./ClientesHandoffAlert";
+import type { ClienteHandoffPendiente } from "./ClientesHandoffAlert";
 
 /* ── Tipos ─────────────────────────────────── */
 type EstadoAtencion = "atencion_humana" | "atencion_bot" | "atencion_humana_desde_bot";
@@ -32,6 +35,8 @@ interface Cliente {
   bot_habilitado: boolean;
   estado_atencion: EstadoAtencion;
   ultima_interaccion_cliente?: string | null;
+  fecha_estado_atencion?: string | null;
+  alerta_atencion_pendiente: boolean;
   identidad?: { username: string | null; nombre_perfil: string | null; bsuid: string | null } | null;
   etapaconversacion?: EtapaConversacionValue | null;
   id_plan?: number | null;
@@ -53,17 +58,27 @@ const emptyForm = {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
+// wa.me abre el chat existente por número; no envía mensajes automáticamente.
+function whatsappChatUrl(telefono: string): string | null {
+  let digitos = String(telefono ?? "").replace(/\D/g, "");
+  if (digitos.length === 10 && digitos.startsWith("3")) digitos = "57" + digitos;
+  if (!/^[1-9]\d{10,14}$/.test(digitos)) return null;
+  return "https://wa.me/" + digitos;
+}
+
 
 /* ── Componente ────────────────────────────── */
 export default function ClientesAdmin() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [planes, setPlanes] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
+  // Ocultar el aviso inmediatamente, mientras se confirma el cambio en Supabase.
+  const [ocultadasTemporal, setOcultadasTemporal] = useState<Record<string, string>>({});
 
   // Filtros
   const [search, setSearch] = useState("");
   const [etapaFilter, setEtapaFilter] = useState("todas");
-  const [atencionFilter, setAtencionFilter] = useState<"todas" | "humana" | "bot" | "desde_bot">("todas");
+  const [atencionFilter, setAtencionFilter] = useState<"todas" | "humana" | "bot" | "desde_bot" | "pendiente">("todas");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
@@ -78,7 +93,6 @@ export default function ClientesAdmin() {
 
   // Menú acciones (móvil)
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   /* ── Fetch ── */
   const fetchClientes = async () => {
@@ -94,12 +108,45 @@ export default function ClientesAdmin() {
     }
   };
 
-  useEffect(() => { fetchClientes(); }, []);
+  useEffect(() => { void fetchClientes(); }, []);
+
+  // Refresca la bandeja ante nuevas derivaciones. El sondeo cubre instalaciones
+  // donde los eventos Realtime de la tabla cliente no están habilitados.
+  useEffect(() => {
+    let activo = true;
+    let consultando = false;
+    const refrescar = async () => {
+      if (!activo || consultando) return;
+      consultando = true;
+      try {
+        const data = await getClientes();
+        if (activo) setClientes(data);
+      } catch (error) {
+        console.error("No se pudo actualizar la lista de clientes", error);
+      } finally {
+        consultando = false;
+      }
+    };
+    const timer = window.setInterval(() => void refrescar(), 60_000);
+    const channel = supabase?.channel("clientes-derivaciones-bot")
+      .on("postgres_changes", { event: "*", schema: "public", table: "cliente" }, () => void refrescar())
+      .subscribe();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refrescar();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      activo = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      if (channel && supabase) void supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     if (openMenu == null) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (!(e.target as Element).closest(".cl-card-menu")) {
         setOpenMenu(null);
       }
     };
@@ -198,6 +245,39 @@ export default function ClientesAdmin() {
     || c.identidad?.username?.trim()
     || c.telefono;
 
+  const necesitaAtencion = (c: Cliente) =>
+    c.estado_atencion === "atencion_humana_desde_bot"
+    && c.alerta_atencion_pendiente === true
+    && ocultadasTemporal[c.telefono] !== (c.fecha_estado_atencion ?? "sin-fecha");
+
+  // Abrir WhatsApp no cambia el estado de atención, solo reconoce la alerta.
+  const marcarAtencionIniciada = (telefono: string) => {
+    const actual = clientes.find(c => c.telefono === telefono);
+    if (!actual || !necesitaAtencion(actual)) return;
+    const identificador = actual.fecha_estado_atencion ?? "sin-fecha";
+    setOcultadasTemporal(prev => ({ ...prev, [telefono]: identificador }));
+    void (async () => {
+      try {
+        const actualizado = await updateCliente(telefono, { alerta_atencion_pendiente: false });
+        if (actualizado.alerta_atencion_pendiente !== false) {
+          throw new Error("La confirmación no quedó registrada.");
+        }
+        setClientes(prev => prev.map(c =>
+          c.telefono === telefono ? { ...c, alerta_atencion_pendiente: false } : c
+        ));
+      } catch (error) {
+        console.error("No se pudo registrar la atención del cliente", error);
+        setOcultadasTemporal(prev => {
+          if (prev[telefono] !== identificador) return prev;
+          const siguiente = { ...prev };
+          delete siguiente[telefono];
+          return siguiente;
+        });
+        window.alert("Se abrió WhatsApp, pero no se pudo quitar la alerta. Inténtalo de nuevo.");
+      }
+    })();
+  };
+
   /* ── Filtrado y paginación ── */
   const filtered = clientes.filter((c) => {
     const q = search.toLowerCase();
@@ -210,6 +290,7 @@ export default function ClientesAdmin() {
       atencionFilter === "todas" ? true :
       atencionFilter === "humana" ? c.estado_atencion === "atencion_humana" :
       atencionFilter === "bot" ? c.estado_atencion === "atencion_bot" :
+      atencionFilter === "pendiente" ? necesitaAtencion(c) :
       c.estado_atencion === "atencion_humana_desde_bot";
     return matchSearch && matchEtapa && matchAtencion;
   });
@@ -226,6 +307,27 @@ export default function ClientesAdmin() {
   const conHumana = clientes.filter((c) => c.estado_atencion === "atencion_humana").length;
   const soloBot = clientes.filter((c) => c.estado_atencion === "atencion_bot").length;
   const desdeBot = clientes.filter((c) => c.estado_atencion === "atencion_humana_desde_bot").length;
+
+  const pendientesAtencion: ClienteHandoffPendiente[] = clientes
+    .filter(necesitaAtencion)
+    .map((c) => ({
+      telefono: c.telefono,
+      nombre: displayName(c),
+      plan: planes.find((p) => p.id_plan === c.id_plan)?.nombre_plan ?? null,
+      fechaEstado: c.fecha_estado_atencion ?? null,
+      ultimaInteraccion: c.ultima_interaccion_cliente ?? null,
+      whatsappUrl: whatsappChatUrl(c.telefono),
+    }))
+    .sort((a, b) => Date.parse(b.fechaEstado || b.ultimaInteraccion || "") -
+                    Date.parse(a.fechaEstado || a.ultimaInteraccion || ""));
+
+  const verPendientes = () => {
+    setSearch("");
+    setEtapaFilter("todas");
+    setAtencionFilter("pendiente");
+    setPage(1);
+    document.getElementById("clientes-filtros")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   /* ── Sub-componentes ── */
   const nombrePlan = (id_plan?: number | null) => {
@@ -246,6 +348,21 @@ export default function ClientesAdmin() {
         ? <span className="cl-badge cl-badge-derivada"><Headphones size={12} /> {ESTADOS_ATENCION[estado]}</span>
         : <span className="cl-badge cl-badge-humana"><Headphones size={12} /> {ESTADOS_ATENCION[estado]}</span>;
 
+  const AtenderLink = ({ c, compacto = false }: { c: Cliente; compacto?: boolean }) => {
+    if (c.estado_atencion !== "atencion_humana_desde_bot") return null;
+    const url = whatsappChatUrl(c.telefono);
+    if (!url) return <span className="cl-handoff-invalid">Número no válido</span>;
+    return (
+      <a className={compacto ? "cl-attend-btn cl-attend-btn-compact" : "cl-attend-btn"}
+        href={url} target="_blank" rel="noopener noreferrer"
+        onClick={() => marcarAtencionIniciada(c.telefono)}
+        title="Abrir conversación en WhatsApp"
+        aria-label={"Abrir WhatsApp para " + displayName(c)}>
+        <MessageCircle size={15}/> {necesitaAtencion(c) ? "Atender" : "Abrir WhatsApp"} <ExternalLink size={13}/>
+      </a>
+    );
+  };
+
   const EtapaBadge = ({ etapa }: { etapa?: string | null }) => {
     if (!etapa) return <span className="rv-null">—</span>;
     const info = getEtapaInfo(etapa);
@@ -259,38 +376,44 @@ export default function ClientesAdmin() {
     );
   };
 
+  // Mostramos las acciones frecuentes sin ocupar toda la fila.
+  // El menú agrupa el mantenimiento (bot, edición y eliminación).
   const ActionButtons = ({ c }: { c: Cliente }) => (
-    <div className="action-buttons">
-      <button className="action-btn action-ver" onClick={() => openView(c)}>
+    <div className="cl-row-actions">
+      {c.estado_atencion === "atencion_humana_desde_bot" && <AtenderLink c={c} compacto />}
+      <button type="button" className="action-btn action-ver" onClick={() => openView(c)}>
         <Eye size={14} /> Ver
       </button>
-      <button className="action-btn action-editar" onClick={() => toggleBot(c)}>
-        <Bot size={14} /> {c.estado_atencion === "atencion_bot" ? "Pasar a humana" : "Pasar a bot"}
-      </button>
-      <button className="action-btn action-editar" onClick={() => openEdit(c)}>
-        <Pencil size={14} /> Editar
-      </button>
-      <button className="action-btn action-eliminar" onClick={() => handleDelete(c)}>
-        <Trash2 size={14} /> Eliminar
-      </button>
+      <ActionMenu c={c} soloGestion />
     </div>
   );
 
-  const ActionMenu = ({ c }: { c: Cliente }) => (
-    <div className="cl-card-menu" ref={openMenu === c.telefono ? menuRef : undefined}>
-      <button
+  const ActionMenu = ({ c, soloGestion = false }: { c: Cliente; soloGestion?: boolean }) => (
+    <div className="cl-card-menu">
+      <button type="button"
         className="cl-menu-trigger"
         onClick={() => setOpenMenu(openMenu === c.telefono ? null : c.telefono)}
-        aria-label="Acciones"
+        aria-label={"Más acciones para " + displayName(c)}
+        aria-expanded={openMenu === c.telefono}
+        aria-haspopup="menu"
+        title="Más acciones"
       >
         <MoreVertical size={18} />
       </button>
       {openMenu === c.telefono && (
-        <div className="cl-menu-dropdown">
-          <button onClick={() => openView(c)}><Eye size={15} /> Ver</button>
-          <button onClick={() => toggleBot(c)}><Bot size={15} /> {c.estado_atencion === "atencion_bot" ? "Pasar a humana" : "Pasar a bot"}</button>
-          <button onClick={() => openEdit(c)}><Pencil size={15} /> Editar</button>
-          <button className="cl-menu-danger" onClick={() => handleDelete(c)}>
+        <div className="cl-menu-dropdown" role="menu">
+          {!soloGestion && c.estado_atencion === "atencion_humana_desde_bot" && whatsappChatUrl(c.telefono) && (
+            <a href={whatsappChatUrl(c.telefono)!} target="_blank" rel="noopener noreferrer"
+              onClick={() => { setOpenMenu(null); marcarAtencionIniciada(c.telefono); }}>
+              <MessageCircle size={15}/> {necesitaAtencion(c) ? "Atender en WhatsApp" : "Abrir WhatsApp"}
+            </a>
+          )}
+          {!soloGestion && <button type="button" onClick={() => openView(c)}><Eye size={15} /> Ver</button>}
+          <button type="button" onClick={() => toggleBot(c)}>
+            <Bot size={15} /> {c.estado_atencion === "atencion_bot" ? "Pasar a humana" : "Pasar a bot"}
+          </button>
+          <button type="button" onClick={() => openEdit(c)}><Pencil size={15} /> Editar</button>
+          <button type="button" className="cl-menu-danger" onClick={() => handleDelete(c)}>
             <Trash2 size={15} /> Eliminar
           </button>
         </div>
@@ -345,8 +468,10 @@ export default function ClientesAdmin() {
         </div>
       </div>
 
+      <ClientesHandoffAlert pendientes={pendientesAtencion} onShowAll={verPendientes} onAtender={marcarAtencionIniciada} />
+
       {/* Filter bar */}
-      <div className="cl-filter-bar">
+      <div className="cl-filter-bar" id="clientes-filtros">
         <div className="cl-search-wrap">
           <Search size={15} className="cl-search-icon" />
           <input
@@ -384,6 +509,7 @@ export default function ClientesAdmin() {
             <option value="humana">Atención humana</option>
             <option value="bot">Atención bot</option>
             <option value="desde_bot">Atención humana desde bot</option>
+            <option value="pendiente">Necesita atención</option>
           </select>
         </div>
 
@@ -408,6 +534,13 @@ export default function ClientesAdmin() {
       {/* ── Tabla (desktop) ── */}
       <div className="cl-table-wrap cl-desktop-only">
         <table className="cl-table">
+          <colgroup>
+            <col className="cl-col-client" />
+            <col className="cl-col-attention" />
+            <col className="cl-col-stage" />
+            <col className="cl-col-plan" />
+            <col className="cl-col-actions" />
+          </colgroup>
           <thead>
             <tr>
               <th>CLIENTE / WHATSAPP</th>
@@ -424,8 +557,20 @@ export default function ClientesAdmin() {
               <tr><td colSpan={5} className="cl-empty">Sin resultados</td></tr>
             ) : paginated.map((c) => (
               <tr key={c.telefono}>
-                <td><strong>{displayName(c)}</strong><div className="cl-phone"><Phone size={13} /> {c.telefono}</div></td>
-                <td><AtencionBadge estado={c.estado_atencion} /></td>
+                <td>
+                  <div className="cl-client-cell">
+                    <strong className="cl-client-name" title={displayName(c)}>{displayName(c)}</strong>
+                    <span className="cl-phone"><Phone size={13} /> {c.telefono}</span>
+                  </div>
+                </td>
+                <td>
+                  <div className="cl-status-stack">
+                    <AtencionBadge estado={c.estado_atencion} />
+                  {necesitaAtencion(c) && (
+                    <span className="cl-needs-attention"><AlertTriangle size={12}/> Necesita atención</span>
+                  )}
+                  </div>
+                </td>
                 <td><EtapaBadge etapa={c.etapaconversacion} /></td>
                 <td><PlanBadge id_plan={c.id_plan} /></td>
                 <td><ActionButtons c={c} /></td>
@@ -460,14 +605,23 @@ export default function ClientesAdmin() {
         ) : paginated.map((c) => (
           <div className="cl-card" key={c.telefono}>
             <div className="cl-card-top">
-              <span className="cl-card-phone"><Phone size={15} /> {displayName(c)} ({c.telefono})</span>
+              <div className="cl-card-identity">
+                <strong className="cl-card-name">{displayName(c)}</strong>
+                <span className="cl-card-number"><Phone size={13} /> {c.telefono}</span>
+              </div>
               <ActionMenu c={c} />
             </div>
             <div className="cl-card-badges">
               <AtencionBadge estado={c.estado_atencion} />
+              {necesitaAtencion(c) && (
+                <span className="cl-needs-attention"><AlertTriangle size={12}/> Necesita atención</span>
+              )}
               <EtapaBadge etapa={c.etapaconversacion} />
               <PlanBadge id_plan={c.id_plan} />
             </div>
+            {c.estado_atencion === "atencion_humana_desde_bot" && (
+              <div className="cl-card-attend"><AtenderLink c={c}/></div>
+            )}
           </div>
         ))}
 
