@@ -7,7 +7,7 @@ export interface DashboardReserva {
   valor_total?:number|null; valor_abonado?:number|null; valor_saldo_pagado?:number|null;
   metodo_pago_abono?:string|null; metodo_pago_saldo?:string|null; estado_operativo?:string|null; plan?:DashboardPlan|null;
 }
-export interface DashboardCliente { telefono:string; atencion_humana?:boolean|null; etapaconversacion?:string|null; }
+export interface DashboardCliente { telefono:string; atencion_humana?:boolean|null; estado_atencion?: "atencion_humana" | "atencion_bot" | "atencion_humana_desde_bot"; etapaconversacion?:string|null; }
 export interface DashboardParticipante { id_participante:number; id_reserva?:number|null; }
 export interface DashboardPago { id_pago?:number; id_reserva:number; tipo_pago:"abono"|"saldo"; monto:number; medio_pago:string; fecha_pago?:string|null; }
 export interface DashboardDevolucion { id_devolucion?:number; id_reserva:number; monto:number; medio_pago:string; fecha_devolucion?:string|null; }
@@ -23,7 +23,7 @@ export async function getDashboardAnalytics():Promise<DashboardAnalyticsData>{
   const [reservasResult,planesResult,clientesResult,participantesResult,pagosResult,devolucionesResult]=await Promise.all([
     db.from("reserva").select(`id_reserva,codigo_reserva,fecha_solicitud,fecha_aprobacion,telefono_cliente,id_plan,id_fecha,cantidad_personas,aprobado,precio_unitario,valor_total,valor_abonado,valor_saldo_pagado,metodo_pago_abono,metodo_pago_saldo,estado_operativo,plan (id_plan,nombre_plan,precio_plan),plan_fechas (id_fecha,fecha)`).order("id_reserva",{ascending:false}),
     db.from("plan").select("id_plan, nombre_plan, precio_plan").order("id_plan",{ascending:true}),
-    db.from("cliente").select("telefono, atencion_humana, etapaconversacion"),
+    db.from("cliente").select("telefono, atencion_humana, estado_atencion, etapaconversacion"),
     db.from("participante").select("id_participante, id_reserva"),
     db.from("reserva_pago").select("id_pago,id_reserva,tipo_pago,monto,medio_pago,fecha_pago").order("fecha_pago",{ascending:false}),
     db.from("reserva_devolucion").select("id_devolucion,id_reserva,monto,medio_pago,fecha_devolucion").order("fecha_devolucion",{ascending:false}),

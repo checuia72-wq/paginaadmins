@@ -202,6 +202,7 @@
 }
 .cl-badge-humana { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
 .cl-badge-bot    { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.cl-badge-derivada { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
 
 /* ── Badge etapa ── */
 .cl-etapa {

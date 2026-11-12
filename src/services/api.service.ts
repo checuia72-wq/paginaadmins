@@ -199,7 +199,7 @@ export async function deletePlan(id: number) {
 export async function getClientes(){
   const db=getClient();
   const [{data,error},{data:identidades,error:identidadesError}]=await Promise.all([
-    db.from("cliente").select("telefono, atencion_humana, bot_habilitado, etapaconversacion, id_plan").order("telefono",{ascending:true}),
+    db.from("cliente").select("telefono, atencion_humana, bot_habilitado, estado_atencion, ultima_interaccion_cliente, etapaconversacion, id_plan").order("telefono",{ascending:true}),
     db.from("whatsapp_identidades").select("telefono, username, nombre_perfil, bsuid")
   ]);
   if(error)throw error;

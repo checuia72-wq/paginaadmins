@@ -16,10 +16,22 @@ import { ETAPAS, getEtapaInfo } from "../../lib/etapas";
 import type { EtapaConversacionValue } from "../../lib/etapas";
 
 /* ── Tipos ─────────────────────────────────── */
+type EstadoAtencion = "atencion_humana" | "atencion_bot" | "atencion_humana_desde_bot";
+const ESTADOS_ATENCION: Record<EstadoAtencion, string> = {
+  atencion_humana: "Atención humana",
+  atencion_bot: "Atención bot",
+  atencion_humana_desde_bot: "Atención humana desde bot",
+};
+const permitidoPruebas = (telefono: string) => {
+  const n = telefono.replace(/\D/g, "");
+  return n === "3013844877" || n === "573013844877";
+};
 interface Cliente {
   telefono: string;
   atencion_humana: boolean;
   bot_habilitado: boolean;
+  estado_atencion: EstadoAtencion;
+  ultima_interaccion_cliente?: string | null;
   identidad?: { username: string | null; nombre_perfil: string | null; bsuid: string | null } | null;
   etapaconversacion?: EtapaConversacionValue | null;
   id_plan?: number | null;
@@ -34,6 +46,7 @@ const emptyForm = {
   telefono: "",
   atencion_humana: false,
   bot_habilitado: false,
+  estado_atencion: "atencion_humana" as EstadoAtencion,
   etapaconversacion: "" as EtapaConversacionValue | "",
   id_plan: "" as number | "",
 };
@@ -50,7 +63,7 @@ export default function ClientesAdmin() {
   // Filtros
   const [search, setSearch] = useState("");
   const [etapaFilter, setEtapaFilter] = useState("todas");
-  const [atencionFilter, setAtencionFilter] = useState<"todas" | "humana" | "bot" | "pausado">("todas");
+  const [atencionFilter, setAtencionFilter] = useState<"todas" | "humana" | "bot" | "desde_bot">("todas");
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
@@ -108,6 +121,7 @@ export default function ClientesAdmin() {
       telefono: c.telefono,
       atencion_humana: c.atencion_humana,
       bot_habilitado: c.bot_habilitado,
+      estado_atencion: c.estado_atencion,
       etapaconversacion: (c.etapaconversacion ?? "") as EtapaConversacionValue | "",
       id_plan: c.id_plan ?? "",
     });
@@ -128,16 +142,18 @@ export default function ClientesAdmin() {
     try {
       if (editing) {
         await updateCliente(editing.telefono, {
-          atencion_humana: formData.atencion_humana,
-          bot_habilitado: formData.atencion_humana ? false : formData.bot_habilitado,
+          estado_atencion: formData.estado_atencion,
+          atencion_humana: formData.estado_atencion !== "atencion_bot",
+          bot_habilitado: formData.estado_atencion === "atencion_bot" && permitidoPruebas(formData.telefono),
           etapaconversacion: formData.etapaconversacion || null,
           id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
       } else {
         await createCliente({
           telefono: formData.telefono,
-          atencion_humana: formData.atencion_humana,
-          bot_habilitado: formData.atencion_humana ? false : formData.bot_habilitado,
+          estado_atencion: formData.estado_atencion,
+          atencion_humana: formData.estado_atencion !== "atencion_bot",
+          bot_habilitado: formData.estado_atencion === "atencion_bot" && permitidoPruebas(formData.telefono),
           etapaconversacion: formData.etapaconversacion || null,
           id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
@@ -165,12 +181,14 @@ export default function ClientesAdmin() {
   };
 
   const toggleBot = async (c: Cliente) => {
-    const next = !c.bot_habilitado;
+    const next = c.estado_atencion !== "atencion_bot";
+    const estado: EstadoAtencion = next ? "atencion_bot" : "atencion_humana";
+    const habilitado = next && permitidoPruebas(c.telefono);
     setOpenMenu(null);
     try {
-      await updateCliente(c.telefono, {bot_habilitado: next, atencion_humana: !next});
+      await updateCliente(c.telefono, { estado_atencion: estado, bot_habilitado: habilitado, atencion_humana: !next });
       setClientes(prev => prev.map(x => x.telefono === c.telefono
-        ? {...x, bot_habilitado: next, atencion_humana: !next} : x));
+        ? {...x, estado_atencion: estado, bot_habilitado: habilitado, atencion_humana: !next} : x));
     } catch (e: any) {
       alert("No se pudo cambiar el estado del bot: " + (e?.message ?? "Error desconocido"));
     }
@@ -190,9 +208,9 @@ export default function ClientesAdmin() {
     const matchEtapa = etapaFilter === "todas" ? true : c.etapaconversacion === etapaFilter;
     const matchAtencion =
       atencionFilter === "todas" ? true :
-      atencionFilter === "humana" ? c.atencion_humana :
-      atencionFilter === "bot" ? c.bot_habilitado && !c.atencion_humana :
-      !c.bot_habilitado && !c.atencion_humana;
+      atencionFilter === "humana" ? c.estado_atencion === "atencion_humana" :
+      atencionFilter === "bot" ? c.estado_atencion === "atencion_bot" :
+      c.estado_atencion === "atencion_humana_desde_bot";
     return matchSearch && matchEtapa && matchAtencion;
   });
 
@@ -205,9 +223,9 @@ export default function ClientesAdmin() {
 
   /* ── KPIs ── */
   const totalClientes = clientes.length;
-  const conHumana = clientes.filter((c) => c.atencion_humana).length;
-  const soloBot = clientes.filter((c) => c.bot_habilitado && !c.atencion_humana).length;
-  const pausados = clientes.filter((c) => !c.bot_habilitado && !c.atencion_humana).length;
+  const conHumana = clientes.filter((c) => c.estado_atencion === "atencion_humana").length;
+  const soloBot = clientes.filter((c) => c.estado_atencion === "atencion_bot").length;
+  const desdeBot = clientes.filter((c) => c.estado_atencion === "atencion_humana_desde_bot").length;
 
   /* ── Sub-componentes ── */
   const nombrePlan = (id_plan?: number | null) => {
@@ -221,12 +239,12 @@ export default function ClientesAdmin() {
     return <span className="cl-badge cl-badge-plan"><Package size={12} /> {nombre}</span>;
   };
 
-  const AtencionBadge = ({ humana, habilitado }: { humana: boolean; habilitado: boolean }) =>
-    (humana || !habilitado)
-      ? <span className="cl-badge cl-badge-humana"><Headphones size={12} /> Humana</span>
-      : habilitado
-        ? <span className="cl-badge cl-badge-bot"><Bot size={12} /> Bot activo</span>
-        : <span className="cl-badge cl-badge-plan"><Bot size={12} /> Bot pausado</span>;
+  const AtencionBadge = ({ estado }: { estado: EstadoAtencion }) =>
+    estado === "atencion_bot"
+      ? <span className="cl-badge cl-badge-bot"><Bot size={12} /> {ESTADOS_ATENCION[estado]}</span>
+      : estado === "atencion_humana_desde_bot"
+        ? <span className="cl-badge cl-badge-derivada"><Headphones size={12} /> {ESTADOS_ATENCION[estado]}</span>
+        : <span className="cl-badge cl-badge-humana"><Headphones size={12} /> {ESTADOS_ATENCION[estado]}</span>;
 
   const EtapaBadge = ({ etapa }: { etapa?: string | null }) => {
     if (!etapa) return <span className="rv-null">—</span>;
@@ -247,7 +265,7 @@ export default function ClientesAdmin() {
         <Eye size={14} /> Ver
       </button>
       <button className="action-btn action-editar" onClick={() => toggleBot(c)}>
-        <Bot size={14} /> {c.bot_habilitado ? "Desactivar bot" : "Activar bot"}
+        <Bot size={14} /> {c.estado_atencion === "atencion_bot" ? "Pasar a humana" : "Pasar a bot"}
       </button>
       <button className="action-btn action-editar" onClick={() => openEdit(c)}>
         <Pencil size={14} /> Editar
@@ -270,7 +288,7 @@ export default function ClientesAdmin() {
       {openMenu === c.telefono && (
         <div className="cl-menu-dropdown">
           <button onClick={() => openView(c)}><Eye size={15} /> Ver</button>
-          <button onClick={() => toggleBot(c)}><Bot size={15} /> {c.bot_habilitado ? "Desactivar bot" : "Activar bot"}</button>
+          <button onClick={() => toggleBot(c)}><Bot size={15} /> {c.estado_atencion === "atencion_bot" ? "Pasar a humana" : "Pasar a bot"}</button>
           <button onClick={() => openEdit(c)}><Pencil size={15} /> Editar</button>
           <button className="cl-menu-danger" onClick={() => handleDelete(c)}>
             <Trash2 size={15} /> Eliminar
@@ -319,10 +337,10 @@ export default function ClientesAdmin() {
           </div>
         </div>
         <div className="cl-kpi line-violet">
-          <div className="cl-kpi-icon cl-kpi-violet"><MessageSquare size={20} /></div>
+          <div className="cl-kpi-icon cl-kpi-violet"><Headphones size={20} /></div>
           <div>
-            <div className="cl-kpi-label">Bot pausado</div>
-            <div className="cl-kpi-value">{pausados}</div>
+            <div className="cl-kpi-label">Humana desde bot</div>
+            <div className="cl-kpi-value">{desdeBot}</div>
           </div>
         </div>
       </div>
@@ -363,9 +381,9 @@ export default function ClientesAdmin() {
             onChange={(e) => { setAtencionFilter(e.target.value as any); setPage(1); }}
           >
             <option value="todas">Todas</option>
-            <option value="humana">Humana</option>
-            <option value="bot">Bot activo</option>
-            <option value="pausado">Bot pausado</option>
+            <option value="humana">Atención humana</option>
+            <option value="bot">Atención bot</option>
+            <option value="desde_bot">Atención humana desde bot</option>
           </select>
         </div>
 
@@ -407,7 +425,7 @@ export default function ClientesAdmin() {
             ) : paginated.map((c) => (
               <tr key={c.telefono}>
                 <td><strong>{displayName(c)}</strong><div className="cl-phone"><Phone size={13} /> {c.telefono}</div></td>
-                <td><AtencionBadge humana={c.atencion_humana} habilitado={c.bot_habilitado} /></td>
+                <td><AtencionBadge estado={c.estado_atencion} /></td>
                 <td><EtapaBadge etapa={c.etapaconversacion} /></td>
                 <td><PlanBadge id_plan={c.id_plan} /></td>
                 <td><ActionButtons c={c} /></td>
@@ -446,7 +464,7 @@ export default function ClientesAdmin() {
               <ActionMenu c={c} />
             </div>
             <div className="cl-card-badges">
-              <AtencionBadge humana={c.atencion_humana} habilitado={c.bot_habilitado} />
+              <AtencionBadge estado={c.estado_atencion} />
               <EtapaBadge etapa={c.etapaconversacion} />
               <PlanBadge id_plan={c.id_plan} />
             </div>
@@ -481,7 +499,8 @@ export default function ClientesAdmin() {
             <div className="cl-modal-body">
               <div className="cl-detail-field"><label>Teléfono</label><span>{viewing.telefono}</span></div>
               <div className="cl-detail-field"><label>Nombre WhatsApp</label><span>{displayName(viewing)}</span></div>
-              <div className="cl-detail-field"><label>Atención</label><span><AtencionBadge humana={viewing.atencion_humana} habilitado={viewing.bot_habilitado} /></span></div>
+              <div className="cl-detail-field"><label>Atención</label><span><AtencionBadge estado={viewing.estado_atencion} /></span></div>
+              <div className="cl-detail-field"><label>Última interacción</label><span>{viewing.ultima_interaccion_cliente ? new Date(viewing.ultima_interaccion_cliente).toLocaleString("es-CO") : "Sin registro"}</span></div>
               <div className="cl-detail-field"><label>Etapa de conversación</label><span><EtapaBadge etapa={viewing.etapaconversacion} /></span></div>
               <div className="cl-detail-field"><label>Plan asociado</label><span><PlanBadge id_plan={viewing.id_plan} /></span></div>
             </div>
@@ -533,19 +552,17 @@ export default function ClientesAdmin() {
                   ))}
                 </select>
               </div>
-              <div className="cl-form-check">
-                <input
-                  type="checkbox"
-                  id="atencion-check"
-                  checked={formData.atencion_humana}
-                  onChange={(e) => setFormData({ ...formData, atencion_humana: e.target.checked })}
-                />
-                <label htmlFor="atencion-check">Requiere atención humana</label>
-              </div>
-              <div className="cl-form-check">
-                <input type="checkbox" id="bot-check" checked={formData.bot_habilitado && !formData.atencion_humana}
-                  onChange={e => setFormData({...formData, bot_habilitado:e.target.checked,atencion_humana:e.target.checked?false:formData.atencion_humana})} />
-                <label htmlFor="bot-check">Bot habilitado para esta conversación</label>
+              <div className="cl-form-group">
+                <label>Estado de atención</label>
+                <select className="cl-select" value={formData.estado_atencion}
+                  onChange={(e) => setFormData({...formData, estado_atencion: e.target.value as EstadoAtencion})}>
+                  {(Object.entries(ESTADOS_ATENCION) as [EstadoAtencion, string][]).map(([valor, nombre]) => (
+                    <option key={valor} value={valor}>{nombre}</option>
+                  ))}
+                </select>
+                {formData.estado_atencion === "atencion_bot" && !permitidoPruebas(formData.telefono) && (
+                  <small>El bot sigue limitado al número de pruebas autorizado.</small>
+                )}
               </div>
             </div>
             <div className="cl-modal-footer">

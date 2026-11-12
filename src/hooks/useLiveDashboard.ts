@@ -45,6 +45,7 @@ export interface Cliente {
   nombre?: string;
   email?: string;
   atencion_humana?: boolean;
+  estado_atencion?: "atencion_humana" | "atencion_bot" | "atencion_humana_desde_bot";
   etapaconversacion?: EtapaConversacionValue | null;
 }
 
