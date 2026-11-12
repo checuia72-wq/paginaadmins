@@ -147,8 +147,8 @@ async function exportarControlOperativoExcel(desde: string, hasta: string, filte
     Number(c.id_codigo_operativo), texto(c.codigo_ch),
   ]));
   const chCorto = (value: string) => {
-    const match = value.match(/CH[\\s-]*\\d+/i);
-    return match ? match[0].replace(/[\\s-]/g, "").toUpperCase() : value;
+    const match = value.match(/\b(?:CH|PR)[\s-]*\d{3}\b/i);
+    return match ? match[0].replace(/[\s-]/g, "").toUpperCase() : value;
   };
 
   const rows = allRows.filter((row) =>
@@ -160,7 +160,7 @@ async function exportarControlOperativoExcel(desde: string, hasta: string, filte
   const devoluciones = allDevoluciones.filter((item) => reservationIds.has(item.id_reserva));
 
   const headers = [
-    "Código operativo (CH)", "Nombre del plan", "Código de reserva",
+    "Código operativo (CH / PR)", "Nombre del plan", "Código de reserva",
     "Fecha de realización de la reserva", "Tipo de documento", "Número de documento",
     "Nombres y apellidos", "Correo electrónico", "Teléfono", "Fecha de la visita",
     "Horario de la ruta", "Observación", "Tipo de almuerzo", "Valor de la reserva",
@@ -526,7 +526,7 @@ export default function ControlOperativoExcelExport() {
                     <input
                       value={filters.search}
                       onChange={(e) => setFilters((current) => ({ ...current, search:e.target.value }))}
-                      placeholder="Ej. CH..., nombre, cédula..."
+                      placeholder="Ej. CH..., PR..., nombre, cédula..."
                       style={{ height:42, border:"1px solid #d9c4a6", borderRadius:10, padding:"0 11px" }}
                     />
                   </label>

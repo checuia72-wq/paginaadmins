@@ -790,7 +790,7 @@ export default function ReservasAdmin() {
 
       if (editing?.aprobado && selectedPlanId !== Number(editing.id_plan)) {
         throw new Error(
-          "No se puede cambiar el plan de una reserva aprobada sin reasignar su código operativo (CH). " +
+          "No se puede cambiar el plan de una reserva aprobada sin reasignar su código operativo (CH o PR). " +
           "Conserva el plan original y solicita el cambio operativo antes de rehacer el PDF.",
         );
       }

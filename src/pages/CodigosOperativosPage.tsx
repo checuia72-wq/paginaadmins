@@ -12,6 +12,7 @@ import {
 import "../styles/codigos-operativos.css";
 
 type Plan = { id_plan: number; nombre_plan: string };
+type TipoCodigo = "CH" | "PR";
 type FormState = {
   codigo_ch: string;
   descripcion: string;
@@ -21,6 +22,9 @@ type FormState = {
   prioridad: number;
   activo: boolean;
 };
+
+const formatoCodigo = /^(CH|PR)[0-9]{3}$/;
+const extraerTipo = (codigo: string): TipoCodigo => codigo.toUpperCase().startsWith("PR") ? "PR" : "CH";
 
 const emptyForm = (): FormState => ({
   codigo_ch: "CH",
@@ -96,15 +100,15 @@ export default function CodigosOperativosPage() {
 
   const save = async () => {
     const code = form.codigo_ch.trim().toUpperCase();
-    if (!/^CH\d{3}$/.test(code)) {
-      setError("El código debe tener formato CH000, por ejemplo CH034.");
+    if (!formatoCodigo.test(code)) {
+      setError("Selecciona CH o PR e ingresa exactamente 3 dígitos (ej. CH034 o PR001).");
       return;
     }
     if (!form.descripcion.trim()) {
       setError("Escribe una descripción para identificar este código.");
       return;
     }
-    if (form.incluye_almuerzo && !form.restaurante && !confirm("Este CH incluye almuerzo pero no tiene restaurante específico. Se usará como variante general para ese plan. ¿Continuar?")) return;
+    if (form.incluye_almuerzo && !form.restaurante && !confirm("Este código incluye almuerzo pero no tiene restaurante específico. Se usará como variante general para ese plan. ¿Continuar?")) return;
 
     setSaving(true);
     setError(null);
@@ -146,7 +150,7 @@ export default function CodigosOperativosPage() {
         <div>
           <span>Configuración administrativa</span>
           <h1>Códigos operativos</h1>
-          <p>Asigna cada CH al plan correcto y define las variantes de almuerzo y restaurante.</p>
+          <p>Configura códigos <strong>CH</strong> para las operaciones habituales o <strong>PR</strong> para promociones, con sus planes y condiciones.</p>
         </div>
         <div className="co-head-actions">
           <button className="co-secondary" onClick={load}><RefreshCw size={16}/> Actualizar</button>
@@ -167,7 +171,7 @@ export default function CodigosOperativosPage() {
           <div>
             <span className="co-step-label">{editing ? "Editando configuración" : "Nueva configuración"}</span>
             <strong>{editing ? `${editing.codigo_ch} · ${editing.descripcion}` : "Crear código operativo"}</strong>
-            <small>Completa los campos de izquierda a derecha. El consecutivo final se genera automáticamente al aprobar una reserva.</small>
+            <small>Elige el tipo CH o PR y escribe sus tres dígitos. El consecutivo de cada reserva se genera automáticamente al aprobarla.</small>
           </div>
           {editing && <button className="co-icon" onClick={openNew} title="Cancelar edición"><X size={17}/></button>}
         </div>
@@ -175,27 +179,45 @@ export default function CodigosOperativosPage() {
         <div className="co-form-grid">
           <div className="co-form-card">
             <div className="co-form-card-title"><span>1</span><div><strong>Identificación</strong><small>Qué código es y cómo lo reconocerás.</small></div></div>
-            <div className="co-field-row two">
-              <label><span>Código CH</span><input value={form.codigo_ch} maxLength={5} onChange={(e) => setForm({...form, codigo_ch:e.target.value.toUpperCase()})} placeholder="CH034"/></label>
-              <label><span>Descripción</span><input value={form.descripcion} onChange={(e) => setForm({...form, descripcion:e.target.value})} placeholder="Ej. Senderismo en el desierto de Checua"/></label>
+            <div className="co-field-row code-identity">
+              <label><span>Tipo de código</span>
+                <select value={extraerTipo(form.codigo_ch)}
+                  onChange={(e) => setForm({...form, codigo_ch:e.target.value + form.codigo_ch.slice(2)})}>
+                  <option value="CH">CH — Habitual</option>
+                  <option value="PR">PR — Promoción</option>
+                </select>
+              </label>
+              <label><span>Número (3 dígitos)</span>
+                <input value={form.codigo_ch.slice(2)} maxLength={3} inputMode="numeric"
+                  onChange={(e) => setForm({...form, codigo_ch:form.codigo_ch.slice(0,2) + e.target.value.replace(/\D/g, "").slice(0,3)})}
+                  placeholder="001" aria-label="Número del código, tres dígitos"/>
+              </label>
+              <label><span>Descripción</span><input value={form.descripcion} onChange={(e) => setForm({...form, descripcion:e.target.value})} placeholder="Ej. Promoción senderismo y mina"/></label>
+            </div>
+            <div className="co-code-preview">
+              <span>Vista previa</span>
+              <strong className={extraerTipo(form.codigo_ch) === "PR" ? "co-code-badge promo" : "co-code-badge"}>
+                {formatoCodigo.test(form.codigo_ch) ? form.codigo_ch : `${extraerTipo(form.codigo_ch)}···`}
+              </strong>
+              <small>{extraerTipo(form.codigo_ch) === "PR" ? "Código para promoción" : "Código operativo habitual"}</small>
             </div>
           </div>
 
           <div className="co-form-card">
-            <div className="co-form-card-title"><span>2</span><div><strong>Vinculación</strong><small>Define qué plan utiliza este CH.</small></div></div>
+            <div className="co-form-card-title"><span>2</span><div><strong>Vinculación</strong><small>Define qué plan utiliza este código.</small></div></div>
             <label><span>Plan vinculado</span><select value={form.id_plan} onChange={(e) => setForm({...form,id_plan:e.target.value ? Number(e.target.value) : ""})}><option value="">Selecciona un plan</option>{planes.map((p) => <option key={p.id_plan} value={p.id_plan}>{p.nombre_plan}</option>)}</select></label>
             {form.id_plan === "" && <div className="co-inline-help warning"><Link2 size={14}/> Este código todavía quedará sin vincular.</div>}
           </div>
 
           <div className="co-form-card">
-            <div className="co-form-card-title"><span>3</span><div><strong>Almuerzo y restaurante</strong><small>Solo aplica cuando el CH cambia por restaurante.</small></div></div>
+            <div className="co-form-card-title"><span>3</span><div><strong>Almuerzo y restaurante</strong><small>Configura almuerzo y restaurante para CH o PR.</small></div></div>
             <div className="co-toggle-row">
-              <label className="co-switch-line"><input type="checkbox" checked={form.incluye_almuerzo} onChange={(e) => setForm({...form,incluye_almuerzo:e.target.checked,restaurante:e.target.checked?form.restaurante:""})}/><span>Este CH incluye almuerzo</span></label>
+              <label className="co-switch-line"><input type="checkbox" checked={form.incluye_almuerzo} onChange={(e) => setForm({...form,incluye_almuerzo:e.target.checked,restaurante:e.target.checked?form.restaurante:""})}/><span>Este código incluye almuerzo</span></label>
             </div>
             {form.incluye_almuerzo ? (
               <label><span>Restaurante</span><select value={form.restaurante} onChange={(e) => setForm({...form,restaurante:e.target.value})}><option value="">General / cualquier restaurante</option>{restaurantes.map((r) => <option key={r} value={r}>{r}</option>)}</select></label>
             ) : (
-              <div className="co-inline-help"><Utensils size={14}/> Este CH se usará como variante sin almuerzo.</div>
+              <div className="co-inline-help"><Utensils size={14}/> Se usará como variante sin almuerzo.</div>
             )}
           </div>
 
@@ -217,16 +239,16 @@ export default function CodigosOperativosPage() {
       <section className="co-list">
         <div className="co-list-head">
           <div><strong>Códigos registrados</strong><small>Los pendientes de vincular aparecen resaltados para que puedas identificarlos rápido.</small></div>
-          <div className="co-search"><Search size={16}/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Buscar CH, plan o restaurante…"/></div>
+          <div className="co-search"><Search size={16}/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Buscar CH, PR, plan o restaurante…"/></div>
         </div>
 
         <div className="co-table-wrap">
           <table>
-            <thead><tr><th>CH</th><th>Descripción</th><th>Plan vinculado</th><th>Configuración</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Código</th><th>Descripción</th><th>Plan vinculado</th><th>Configuración</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={6} className="co-empty">Cargando…</td></tr> : filtered.length === 0 ? <tr><td colSpan={6} className="co-empty">No hay resultados.</td></tr> : filtered.map((c) => (
                 <tr key={c.id_codigo_operativo} className={!c.id_plan ? "needs-link" : ""}>
-                  <td><span className="co-code-badge">{c.codigo_ch}</span></td>
+                  <td><span className={extraerTipo(c.codigo_ch) === "PR" ? "co-code-badge promo" : "co-code-badge"}>{c.codigo_ch}</span></td>
                   <td><div className="co-desc-cell"><strong>{c.descripcion}</strong><small>{c.incluye_almuerzo ? "Variante con almuerzo" : "Variante base / sin almuerzo"}</small></div></td>
                   <td>{c.plan?.nombre_plan ? <div className="co-plan-ok"><CheckCircle2 size={15}/><span>{c.plan.nombre_plan}</span></div> : <button className="co-link-now" onClick={() => openEdit(c)}><Link2 size={14}/> Vincular ahora</button>}</td>
                   <td><div className="co-config-tags"><span className={c.incluye_almuerzo ? "with-lunch" : "without-lunch"}>{c.incluye_almuerzo ? "Con almuerzo" : "Sin almuerzo"}</span>{c.restaurante && <span>{c.restaurante}</span>}</div></td>

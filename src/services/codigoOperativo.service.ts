@@ -39,6 +39,17 @@ export type CodigoOperativoPayload = {
 
 type PlanLigero = NonNullable<CodigoOperativo["plan"]>;
 
+// Se conserva la columna histórica codigo_ch para compatibilidad de
+// reservas y reportes, pero el valor puede iniciar por CH o PR.
+const CODIGO_FORMATO = /^(CH|PR)[0-9]{3}$/;
+function validarCodigoOperativo(value: string): string {
+  const codigo = value.trim().toUpperCase();
+  if (!CODIGO_FORMATO.test(codigo)) {
+    throw new Error("El código operativo debe iniciar por CH o PR y tener 3 dígitos (ej. CH034 o PR001).");
+  }
+  return codigo;
+}
+
 function normalizeCodigo(r: any): CodigoOperativo {
   return {
     ...r,
@@ -115,7 +126,7 @@ export async function getCodigosOperativos(): Promise<CodigoOperativo[]> {
       .eq("activo", true);
 
     if (linksError) {
-      console.warn("No se pudieron cargar vínculos múltiples de códigos CH; se usarán los vínculos directos:", linksError);
+      console.warn("No se pudieron cargar vínculos múltiples de códigos operativos; se usarán los vínculos directos:", linksError);
     } else {
       links = (linkData ?? []).map((link: any) => ({
         id_codigo_operativo: Number(link.id_codigo_operativo),
@@ -179,7 +190,7 @@ export async function getCodigosOperativos(): Promise<CodigoOperativo[]> {
       ]);
 
       if (planError) {
-        console.warn("Los CH se cargaron, pero no fue posible completar los nombres de los planes:", planError);
+        console.warn("Los códigos operativos se cargaron, pero no fue posible completar los nombres de los planes:", planError);
       } else {
         const fechasPorPlan = new Map<number, Array<{ id_fecha: number; fecha: string }>>();
         const horasPorPlan = new Map<number, Array<{ id_hora: number; hora: string }>>();
@@ -237,7 +248,7 @@ export async function createCodigoOperativo(payload: CodigoOperativoPayload) {
   const db = client();
   const clean = {
     ...payload,
-    codigo_ch: payload.codigo_ch.trim().toUpperCase(),
+    codigo_ch: validarCodigoOperativo(payload.codigo_ch),
     descripcion: payload.descripcion.trim(),
     restaurante: payload.incluye_almuerzo && payload.restaurante?.trim() ? payload.restaurante.trim() : null,
     prioridad: Number(payload.prioridad || 0),
@@ -302,7 +313,7 @@ export async function createCodigoOperativo(payload: CodigoOperativoPayload) {
 export async function updateCodigoOperativo(id: number, payload: Partial<CodigoOperativoPayload>) {
   const db = client();
   const clean: Record<string, unknown> = { ...payload };
-  if (typeof payload.codigo_ch === "string") clean.codigo_ch = payload.codigo_ch.trim().toUpperCase();
+  if (typeof payload.codigo_ch === "string") clean.codigo_ch = validarCodigoOperativo(payload.codigo_ch);
   if (typeof payload.descripcion === "string") clean.descripcion = payload.descripcion.trim();
   if (payload.incluye_almuerzo === false) clean.restaurante = null;
   if (typeof payload.restaurante === "string") clean.restaurante = payload.restaurante.trim() || null;

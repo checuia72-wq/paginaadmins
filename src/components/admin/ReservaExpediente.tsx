@@ -208,7 +208,7 @@ export default function ReservaExpediente({
       <section className="rv-xp-section">
         <h3><ClipboardList size={17}/> Datos operativos y del PDF</h3>
         <div className="rv-xp-info-grid">
-          <div><span>Código operativo (CH)</span><b>{txt(detalle.codigoOperativo)}</b></div>
+          <div><span>Código operativo (CH / PR)</span><b>{txt(detalle.codigoOperativo)}</b></div>
           <div><span>Estado</span><b>{reserva.aprobado ? "Aprobada" : "Pendiente"}</b></div>
           <div><span>Fecha de solicitud</span><b>{when(reserva.fecha_solicitud)}</b></div>
           <div><span>Fecha de aprobación</span><b>{when(reserva.fecha_aprobacion)}</b></div>
@@ -252,7 +252,7 @@ export default function ReservaExpediente({
               onChange={e=>onRefrigerioChange?.(e.target.checked)}/> Incluido en la experiencia</label>
           </div>
         </div>
-        <p className="rv-xp-hint">El CH, los restaurantes y los pagos históricos se mantienen sin cambios automáticamente para proteger el control operativo.</p>
+        <p className="rv-xp-hint">El código operativo, los restaurantes y los pagos históricos se mantienen sin cambios automáticamente para proteger el control operativo.</p>
       </section>}
       <section className="rv-xp-section">
         <h3><UserRound size={17}/> Observaciones de la reserva</h3>

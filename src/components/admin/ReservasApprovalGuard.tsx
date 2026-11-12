@@ -625,11 +625,11 @@ export default function ReservasApprovalGuard() {
       return;
     }
     if (Number(codigos.find((item) => item.id_codigo_operativo === Number(codigoId))?.incluye_almuerzo) !== Number(almuerzoIncluidoPlan)) {
-      setError("El CH debe corresponder al almuerzo incluido en el plan original.");
+      setError("El código operativo debe corresponder al almuerzo incluido en el plan original.");
       return;
     }
     if (!codigoId) {
-      setError("No existe un CH configurado para este plan y esta combinación. Vincúlalo primero en Códigos operativos.");
+      setError("No existe un código CH o PR configurado para este plan y esta combinación. Vincúlalo primero en Códigos operativos.");
       return;
     }
 
@@ -1494,7 +1494,7 @@ export default function ReservasApprovalGuard() {
 
             <div className="rv-approval-note" style={{ marginTop: 14 }}>
               <div className="rv-approval-note-icon"><Tag size={18}/></div>
-              <span>El CH se calcula según el plan base. Comprar almuerzo como adicional no cambia el CH del plan original.</span>
+              <span>El código CH o PR se calcula según el plan base. Comprar almuerzo como adicional no cambia el código original.</span>
             </div>
 
             <div className="rv-approval-grid" style={{ marginTop: 14 }}>
@@ -1544,9 +1544,9 @@ export default function ReservasApprovalGuard() {
               )}
 
               <div className="rv-form-group" style={{ gridColumn: "1 / -1" }}>
-                <label>Código CH *</label>
+                <label>Código operativo (CH o PR) *</label>
                 <select value={codigoId} onChange={(e) => setCodigoId(e.target.value ? Number(e.target.value) : "")}>
-                  <option value="">Sin CH compatible</option>
+                  <option value="">Sin código compatible</option>
                   {opcionesCH.map((c) => <option key={c.id_codigo_operativo} value={c.id_codigo_operativo}>{c.codigo_ch} — {c.descripcion}</option>)}
                 </select>
               </div>
@@ -1554,7 +1554,7 @@ export default function ReservasApprovalGuard() {
 
             <div className="rv-approval-note">
               <div className="rv-approval-note-icon"><CreditCard size={18}/></div>
-              <span>Al confirmar, Supabase generará el consecutivo libre del CH para el mes de la fecha reservada y evitará códigos duplicados.</span>
+              <span>Al confirmar, Supabase generará el consecutivo libre del CH o PR seleccionado para el mes de la fecha reservada y evitará códigos duplicados.</span>
             </div>
 
             {error && <div className="rv-approval-error">{error}</div>}
