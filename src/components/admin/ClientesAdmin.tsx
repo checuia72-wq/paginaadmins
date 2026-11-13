@@ -25,10 +25,6 @@ const ESTADOS_ATENCION: Record<EstadoAtencion, string> = {
   atencion_bot: "Atención bot",
   atencion_humana_desde_bot: "Atención humana desde bot",
 };
-const permitidoPruebas = (telefono: string) => {
-  const n = telefono.replace(/\D/g, "");
-  return n === "3013844877" || n === "573013844877";
-};
 interface Cliente {
   telefono: string;
   atencion_humana: boolean;
@@ -191,7 +187,7 @@ export default function ClientesAdmin() {
         await updateCliente(editing.telefono, {
           estado_atencion: formData.estado_atencion,
           atencion_humana: formData.estado_atencion !== "atencion_bot",
-          bot_habilitado: formData.estado_atencion === "atencion_bot" && permitidoPruebas(formData.telefono),
+          bot_habilitado: formData.estado_atencion === "atencion_bot",
           etapaconversacion: formData.etapaconversacion || null,
           id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
@@ -200,7 +196,7 @@ export default function ClientesAdmin() {
           telefono: formData.telefono,
           estado_atencion: formData.estado_atencion,
           atencion_humana: formData.estado_atencion !== "atencion_bot",
-          bot_habilitado: formData.estado_atencion === "atencion_bot" && permitidoPruebas(formData.telefono),
+          bot_habilitado: formData.estado_atencion === "atencion_bot",
           etapaconversacion: formData.etapaconversacion || null,
           id_plan: formData.id_plan === "" ? null : Number(formData.id_plan),
         });
@@ -230,7 +226,7 @@ export default function ClientesAdmin() {
   const toggleBot = async (c: Cliente) => {
     const next = c.estado_atencion !== "atencion_bot";
     const estado: EstadoAtencion = next ? "atencion_bot" : "atencion_humana";
-    const habilitado = next && permitidoPruebas(c.telefono);
+    const habilitado = next;
     setOpenMenu(null);
     try {
       await updateCliente(c.telefono, { estado_atencion: estado, bot_habilitado: habilitado, atencion_humana: !next });
@@ -714,8 +710,8 @@ export default function ClientesAdmin() {
                     <option key={valor} value={valor}>{nombre}</option>
                   ))}
                 </select>
-                {formData.estado_atencion === "atencion_bot" && !permitidoPruebas(formData.telefono) && (
-                  <small>El bot sigue limitado al número de pruebas autorizado.</small>
+                {formData.estado_atencion === "atencion_bot" && (
+                  <small>Las respuestas automáticas se activan para clientes que lleguen por pauta en la línea Checua 1; se respeta la atención humana.</small>
                 )}
               </div>
             </div>

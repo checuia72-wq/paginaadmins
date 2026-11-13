@@ -45,6 +45,7 @@ type PlanHoraInput = { id_hora?: number; hora: string };
 function sanitizePlanData(raw: Record<string, any>) {
   const allowed = [
     "nombre_plan",
+    "codigo_plan",
     "precio_plan",
     "descripcion_basica",
     "descripcion_detallada",
