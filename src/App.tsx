@@ -59,7 +59,7 @@ export default function App() {
           <Route path="accesos-guias" element={<RoleRoute allow={["administrador", "coordinador"]}><AccesosGuiasPage /></RoleRoute>} />
           <Route path="entrega-efectivo" element={<RoleRoute allow={["administrador", "coordinador", "guia"]}><EntregaEfectivoPage /></RoleRoute>} />
           <Route path="planes" element={<RoleRoute allow={["administrador"]}><PlanesPage /></RoleRoute>} />
-          <Route path="clientes" element={<RoleRoute allow={["administrador"]}><ClientesPage /></RoleRoute>} />
+          <Route path="clientes" element={<RoleRoute allow={["administrador", "atencion"]}><ClientesPage /></RoleRoute>} />
           <Route path="participantes" element={<RoleRoute allow={["administrador"]}><ParticipantesPage /></RoleRoute>} />
           <Route path="crear" element={<RoleRoute allow={["administrador"]}><CrearPage /></RoleRoute>} />
           <Route path="codigos-operativos" element={<RoleRoute allow={["administrador"]}><CodigosOperativosPage /></RoleRoute>} />

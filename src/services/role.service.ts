@@ -46,7 +46,7 @@ export async function getCurrentRole(): Promise<CurrentRole | null> {
 export function canAccess(role: AppRole, path: string) {
   if (role === "administrador") return true;
   if (role === "atencion") {
-    return ["/app/reservas", "/app/control-operativo", "/app/ventas-snacks", "/app/ventas-snacks-enclave"].includes(path);
+    return ["/app/reservas", "/app/clientes", "/app/control-operativo", "/app/ventas-snacks", "/app/ventas-snacks-enclave"].includes(path);
   }
   if (role === "coordinador") {
     return ["/app/control-operativo", "/app/ventas-snacks", "/app/ventas-snacks-enclave", "/app/inventario-snacks", "/app/accesos-guias", "/app/entrega-efectivo"].includes(path);
