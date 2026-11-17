@@ -17,6 +17,7 @@ import type { EtapaConversacionValue } from "../../lib/etapas";
 import { supabase } from "../../lib/supabase";
 import ClientesHandoffAlert from "./ClientesHandoffAlert";
 import type { ClienteHandoffPendiente } from "./ClientesHandoffAlert";
+import { WHATSAPP_TAB_TARGET, whatsappChatUrl } from "../../utils/whatsappChat";
 
 /* ── Tipos ─────────────────────────────────── */
 type EstadoAtencion = "atencion_humana" | "atencion_bot" | "atencion_humana_desde_bot";
@@ -53,14 +54,6 @@ const emptyForm = {
 };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
-
-// wa.me abre el chat existente por número; no envía mensajes automáticamente.
-function whatsappChatUrl(telefono: string): string | null {
-  let digitos = String(telefono ?? "").replace(/\D/g, "");
-  if (digitos.length === 10 && digitos.startsWith("3")) digitos = "57" + digitos;
-  if (!/^[1-9]\d{10,14}$/.test(digitos)) return null;
-  return "https://wa.me/" + digitos;
-}
 
 
 /* ── Componente ────────────────────────────── */
@@ -350,7 +343,7 @@ export default function ClientesAdmin() {
     if (!url) return <span className="cl-handoff-invalid">Número no válido</span>;
     return (
       <a className={compacto ? "cl-attend-btn cl-attend-btn-compact" : "cl-attend-btn"}
-        href={url} target="_blank" rel="noopener noreferrer"
+        href={url} target={WHATSAPP_TAB_TARGET} referrerPolicy="no-referrer"
         onClick={() => marcarAtencionIniciada(c.telefono)}
         title="Abrir conversación en WhatsApp"
         aria-label={"Abrir WhatsApp para " + displayName(c)}>
@@ -399,7 +392,7 @@ export default function ClientesAdmin() {
       {openMenu === c.telefono && (
         <div className="cl-menu-dropdown" role="menu">
           {!soloGestion && c.estado_atencion === "atencion_humana_desde_bot" && whatsappChatUrl(c.telefono) && (
-            <a href={whatsappChatUrl(c.telefono)!} target="_blank" rel="noopener noreferrer"
+            <a href={whatsappChatUrl(c.telefono)!} target={WHATSAPP_TAB_TARGET} referrerPolicy="no-referrer"
               onClick={() => { setOpenMenu(null); marcarAtencionIniciada(c.telefono); }}>
               <MessageCircle size={15}/> {necesitaAtencion(c) ? "Atender en WhatsApp" : "Abrir WhatsApp"}
             </a>
