@@ -47,6 +47,8 @@ type ReservaLite = {
   precio_unitario?: number | null;
   valor_total?: number | null;
   precio_plan?: number | null;
+  recargo_mina_extranjeros?: number | null;
+  cantidad_extranjeros_mina?: number | null;
   refrigerio?: boolean | null;
   referencia_pago_abono?: string | null;
   observacion?: string | null;
@@ -1014,7 +1016,19 @@ export default function ReservasApprovalGuard() {
               )}
             </div>
 
-            <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
+            {selected && Number(selected.recargo_mina_extranjeros || 0) > 0 && (
+                <div style={{ border: "1px solid #e5c887", borderRadius: 12, marginBottom: 14,
+                  padding: 14, background: "#fff8e8", color: "#77531b", display: "grid", gap: 6 }}>
+                  <strong>⛏️ Tarifa adicional de la Mina de Sal para extranjeros</strong>
+                  <span>La Mina de Sal cobra $14.000 COP por cada participante extranjero.
+                    Este valor ya está incluido en el total de la reserva.</span>
+                  <strong>
+                    {selected.cantidad_extranjeros_mina} extranjero(s) × $14.000 =
+                    +$ {Number(selected.recargo_mina_extranjeros).toLocaleString("es-CO")} COP
+                  </strong>
+                </div>
+              )}
+<div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
                   <strong style={{ display: "block", color: "#3b3127", fontSize: 14 }}>Abono de la reserva</strong>

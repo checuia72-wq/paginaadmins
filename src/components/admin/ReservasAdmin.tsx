@@ -43,6 +43,7 @@ import { notaEditableReserva, guardarNotaReserva } from "../../utils/reservaObse
 import { listAvailableGuides, type ManagedUser } from "../../services/adminUsers.service";
 import LargeGroupExcelImport, { type ImportedGroupParticipant } from "./LargeGroupExcelImport";
 import "../../styles/reservas.css";
+import { calcularRecargoMina, planIncluyeMina, RECARGO_MINA_EXTRANJERO } from "../../utils/mineForeignSurcharge";
 
 interface Reserva {
   id_reserva: number;
@@ -63,6 +64,9 @@ interface Reserva {
   hora_reserva?: string | null;
   precio_unitario?: number | null;
   valor_total?: number | null;
+  recargo_mina_extranjeros?: number | null;
+  cantidad_extranjeros_mina?: number | null;
+  mina?: boolean | null;
   observacion?: string | null;
 }
 
@@ -74,6 +78,8 @@ interface PlanHora {
 interface Plan {
   id_plan: number;
   nombre_plan: string;
+  descripcion_basica?: string | null;
+  descripcion_detallada?: string | null;
   tipo_hora?: string | null;
   id_plan_padre?: number | null;
   es_grupo?: boolean | null;
@@ -260,6 +266,14 @@ export default function ReservasAdmin() {
       : null,
     [planes, selectedPlan],
   );
+
+  const vistaRecargoMina = useMemo(() => {
+    const minaExplicita = Boolean(editing?.mina && Number(editing.id_plan) === Number(formData.id_plan));
+    return calcularRecargoMina(
+      selectedPlan ? { ...selectedPlan, mina: minaExplicita } : null,
+      newParticipants.map(p => p.nacionalidad),
+    );
+  }, [editing?.id_plan, editing?.mina, selectedPlan, formData.id_plan, newParticipants]);
 
   const isBuggyPlan = useMemo(() => {
     if (!selectedPlan) return false;
@@ -788,6 +802,11 @@ export default function ReservasAdmin() {
         };
       })();
 
+      // Se mantiene el suplemento ya guardado hasta que Supabase revise nacionalidades.
+      if (editing && !conservarPrecioExistente) {
+        precioFinal.valor_total += Number(editing.recargo_mina_extranjeros || 0);
+      }
+
       if (editing?.aprobado && selectedPlanId !== Number(editing.id_plan)) {
         throw new Error(
           "No se puede cambiar el plan de una reserva aprobada sin reasignar su código operativo (CH o PR). " +
@@ -823,6 +842,7 @@ export default function ReservasAdmin() {
         const updatedReserva = await updateReserva(editing.id_reserva, {
           telefono_cliente: clientPhone,
           id_plan: selectedPlanId,
+          ...(selectedPlanId !== Number(editing.id_plan) ? { mina: planIncluyeMina(selectedPlan) } : {}),
           id_fecha: idFecha,
           id_hora: idHora,
           fecha_reserva: fechaReserva,
@@ -885,6 +905,7 @@ export default function ReservasAdmin() {
         const created = await createReserva({
           telefono_cliente: clientPhone,
           id_plan: selectedPlanId,
+          mina: planIncluyeMina(selectedPlan),
           id_fecha: idFecha,
           id_hora: idHora,
           fecha_reserva: fechaReserva,
@@ -1242,7 +1263,14 @@ export default function ReservasAdmin() {
                     </span>
                   </td>
                   <td><span className="rv-phone"><Phone size={13} /> {r.telefono_cliente}</span></td>
-                  <td>{r.nombre_plan || `#${r.id_plan}`}</td>
+                  <td>
+                     {r.nombre_plan || `#${r.id_plan}`}
+                     {Number(r.recargo_mina_extranjeros || 0) > 0 && (
+                       <small style={{ display: "block", color: "#9a6319", fontWeight: 700, marginTop: 3 }}>
+                         Mina de Sal · {r.cantidad_extranjeros_mina} extranjero(s): +$ {Number(r.recargo_mina_extranjeros).toLocaleString("es-CO")} COP
+                       </small>
+                     )}
+                   </td>
                   <td>{r.cantidad_personas ?? "—"}</td>
                   <td><EstadoBadge aprobado={r.aprobado} /></td>
                   <td>
@@ -1286,6 +1314,13 @@ export default function ReservasAdmin() {
                 <div className="rv-detail-field"><label>Plan</label><span>{viewing.nombre_plan}</span></div>
                 <div className="rv-detail-field"><label>Fecha que quiere reservar</label><span>{fmtReserva(viewing.fecha_reserva)}{viewing.hora_reserva ? ` · ${fmtHora(viewing.hora_reserva)}` : ""}</span></div>
                 <div className="rv-detail-field"><label>Personas</label><span>{viewing.cantidad_personas}</span></div>
+                 {Number(viewing.recargo_mina_extranjeros || 0) > 0 && (
+                   <div className="rv-detail-field">
+                     <label>Recargo por extranjeros · Mina de Sal</label>
+                     <span>{viewing.cantidad_extranjeros_mina} × $14.000 =
+                       +$ {Number(viewing.recargo_mina_extranjeros).toLocaleString("es-CO")} COP (incluido en el total).</span>
+                   </div>
+                 )}
                 <div className="rv-detail-field"><label>Estado</label><span><EstadoBadge aprobado={viewing.aprobado} /></span></div>
                 <div className="rv-detail-field">
                   <label>Aprobó</label>
@@ -1403,6 +1438,24 @@ export default function ReservasAdmin() {
                     : "Si aumentas esta cantidad, aparecerán formularios nuevos para registrar a las personas faltantes."}
                 </small>
               </div>
+
+              {vistaRecargoMina.incluyeMina && (
+                 <div style={{ border: "1px solid #e9c987", borderRadius: 12, background: "#fff9ed", color: "#725019", padding: 14, margin: "12px 0" }}>
+                   <strong>Tarifa de ingreso a la Mina de Sal · extranjeros</strong>
+                   <p style={{ fontSize: 13, margin: "6px 0" }}>
+                     La Mina de Sal cobra $14.000 COP adicionales por asistente extranjero.
+                   </p>
+                   <p style={{ fontWeight: 800, margin: 0 }}>
+                     {vistaRecargoMina.extranjeros} extranjero(s) × $ {RECARGO_MINA_EXTRANJERO.toLocaleString("es-CO")} =
+                     +$ {vistaRecargoMina.valor.toLocaleString("es-CO")} COP al total
+                   </p>
+                   {isLargeGroup && !hasFullGroupList && (
+                     <p style={{ fontSize: 12, marginTop: 7 }}>
+                       La lista del grupo está incompleta: solo se cuentan las nacionalidades registradas.
+                     </p>
+                   )}
+                 </div>
+               )}
 
               {isBuggyPlan && (
                 <div className="rv-buggy-config">

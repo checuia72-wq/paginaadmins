@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, BellRing, ExternalLink, Headphones, MessageCircle } from "lucide-react";
-import { WHATSAPP_TAB_TARGET, openWhatsAppChat } from "../../utils/whatsappChat";
+import type { MouseEvent } from "react";
 
 export interface ClienteHandoffPendiente {
   telefono: string;
@@ -14,7 +14,7 @@ export interface ClienteHandoffPendiente {
 interface Props {
   pendientes: ClienteHandoffPendiente[];
   onShowAll: () => void;
-  onAtender: (telefono: string) => void;
+  onAtender: (telefono: string, url: string) => void;
 }
 
 const MAX_VISIBLES = 5;
@@ -53,7 +53,7 @@ export default function ClientesHandoffAlert({ pendientes, onShowAll, onAtender 
           window.focus();
           notif.close();
           if (cliente.whatsappUrl) {
-            if (openWhatsAppChat(cliente.whatsappUrl)) onAtender(cliente.telefono);
+            onAtender(cliente.telefono, cliente.whatsappUrl);
           }
         };
       } catch (error) {
@@ -112,8 +112,12 @@ export default function ClientesHandoffAlert({ pendientes, onShowAll, onAtender 
               <small>Última interacción: {fechaLegible(cliente.ultimaInteraccion)}</small>
             </div>
             {cliente.whatsappUrl ? (
-              <a className="cl-attend-btn" href={cliente.whatsappUrl} target={WHATSAPP_TAB_TARGET} referrerPolicy="no-referrer"
-                onClick={() => onAtender(cliente.telefono)}
+              <a className="cl-attend-btn" href={cliente.whatsappUrl} referrerPolicy="no-referrer"
+                onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  if (cliente.whatsappUrl) onAtender(cliente.telefono, cliente.whatsappUrl);
+                }}
                 aria-label={"Atender en WhatsApp a " + cliente.nombre}>
                 <MessageCircle size={16}/> Atender <ExternalLink size={14}/>
               </a>

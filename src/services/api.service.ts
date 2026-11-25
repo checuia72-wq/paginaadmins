@@ -229,6 +229,7 @@ export async function getReservas() {
     id_plan, id_fecha, id_hora, cantidad_personas, aprobado,
     aprobado_por_user_id, aprobado_por_username, aprobado_por_email,
     precio_unitario, valor_total, valor_abonado, valor_saldo_pagado,
+    recargo_mina_extranjeros, cantidad_extranjeros_mina,
     mina, refrigerio, restaurante, observacion, metodo_pago_abono, metodo_pago_saldo,
     id_codigo_operativo, incluye_almuerzo, estado_operativo, motivo_estado_operativo, estado_operativo_at
   `).order("id_reserva", { ascending: false });

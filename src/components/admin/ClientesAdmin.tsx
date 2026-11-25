@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   getClientes,
   createCliente,
@@ -17,7 +17,7 @@ import type { EtapaConversacionValue } from "../../lib/etapas";
 import { supabase } from "../../lib/supabase";
 import ClientesHandoffAlert from "./ClientesHandoffAlert";
 import type { ClienteHandoffPendiente } from "./ClientesHandoffAlert";
-import { WHATSAPP_TAB_TARGET, whatsappChatUrl } from "../../utils/whatsappChat";
+import { openWhatsAppChat, whatsappChatUrl } from "../../utils/whatsappChat";
 
 /* ── Tipos ─────────────────────────────────── */
 type EstadoAtencion = "atencion_humana" | "atencion_bot" | "atencion_humana_desde_bot";
@@ -239,32 +239,45 @@ export default function ClientesAdmin() {
     && c.alerta_atencion_pendiente === true
     && ocultadasTemporal[c.telefono] !== (c.fecha_estado_atencion ?? "sin-fecha");
 
-  // Abrir WhatsApp no cambia el estado de atención, solo reconoce la alerta.
-  const marcarAtencionIniciada = (telefono: string) => {
+  // Registrar el reconocimiento ANTES de navegar fuera de Página Admin
+  // evita que el navegador cancele la actualización de Supabase.
+  const marcarAtencionIniciada = async (telefono: string): Promise<void> => {
     const actual = clientes.find(c => c.telefono === telefono);
     if (!actual || !necesitaAtencion(actual)) return;
     const identificador = actual.fecha_estado_atencion ?? "sin-fecha";
     setOcultadasTemporal(prev => ({ ...prev, [telefono]: identificador }));
-    void (async () => {
-      try {
-        const actualizado = await updateCliente(telefono, { alerta_atencion_pendiente: false });
-        if (actualizado.alerta_atencion_pendiente !== false) {
-          throw new Error("La confirmación no quedó registrada.");
-        }
-        setClientes(prev => prev.map(c =>
-          c.telefono === telefono ? { ...c, alerta_atencion_pendiente: false } : c
-        ));
-      } catch (error) {
-        console.error("No se pudo registrar la atención del cliente", error);
-        setOcultadasTemporal(prev => {
-          if (prev[telefono] !== identificador) return prev;
-          const siguiente = { ...prev };
-          delete siguiente[telefono];
-          return siguiente;
-        });
-        window.alert("Se abrió WhatsApp, pero no se pudo quitar la alerta. Inténtalo de nuevo.");
+    try {
+      const actualizado = await updateCliente(telefono, { alerta_atencion_pendiente: false });
+      if (actualizado.alerta_atencion_pendiente !== false) {
+        throw new Error("La confirmación no quedó registrada.");
       }
-    })();
+      setClientes(prev => prev.map(c =>
+        c.telefono === telefono ? { ...c, alerta_atencion_pendiente: false } : c
+      ));
+    } catch (error) {
+      console.error("No se pudo registrar la atención del cliente", error);
+      setOcultadasTemporal(prev => {
+        if (prev[telefono] !== identificador) return prev;
+        const siguiente = { ...prev };
+        delete siguiente[telefono];
+        return siguiente;
+      });
+      window.alert("No se pudo quitar la alerta, pero se abrirá el chat. Inténtalo nuevamente al regresar.");
+    }
+  };
+
+  // Comportamiento garantizado: no crea pestañas. Usa «Atrás» para volver.
+  const atenderCliente = async (telefono: string, url: string): Promise<void> => {
+    await marcarAtencionIniciada(telefono);
+    openWhatsAppChat(url);
+  };
+
+  const handleWhatsAppClick = (event: ReactMouseEvent<HTMLAnchorElement>, telefono: string, url: string) => {
+    // Respetar Ctrl/Cmd, Shift y clic central, que el usuario puede usar
+    // expresamente para abrir una pestaña independiente.
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    void atenderCliente(telefono, url);
   };
 
   /* ── Filtrado y paginación ── */
@@ -343,9 +356,9 @@ export default function ClientesAdmin() {
     if (!url) return <span className="cl-handoff-invalid">Número no válido</span>;
     return (
       <a className={compacto ? "cl-attend-btn cl-attend-btn-compact" : "cl-attend-btn"}
-        href={url} target={WHATSAPP_TAB_TARGET} referrerPolicy="no-referrer"
-        onClick={() => marcarAtencionIniciada(c.telefono)}
-        title="Abrir conversación en WhatsApp"
+        href={url} referrerPolicy="no-referrer"
+        onClick={event => handleWhatsAppClick(event, c.telefono, url)}
+        title="Abrir WhatsApp en esta pestaña; usar Atrás para volver"
         aria-label={"Abrir WhatsApp para " + displayName(c)}>
         <MessageCircle size={15}/> {necesitaAtencion(c) ? "Atender" : "Abrir WhatsApp"} <ExternalLink size={13}/>
       </a>
@@ -392,8 +405,13 @@ export default function ClientesAdmin() {
       {openMenu === c.telefono && (
         <div className="cl-menu-dropdown" role="menu">
           {!soloGestion && c.estado_atencion === "atencion_humana_desde_bot" && whatsappChatUrl(c.telefono) && (
-            <a href={whatsappChatUrl(c.telefono)!} target={WHATSAPP_TAB_TARGET} referrerPolicy="no-referrer"
-              onClick={() => { setOpenMenu(null); marcarAtencionIniciada(c.telefono); }}>
+            <a href={whatsappChatUrl(c.telefono)!} referrerPolicy="no-referrer"
+              onClick={event => {
+                const url = whatsappChatUrl(c.telefono);
+                if (!url) return;
+                setOpenMenu(null);
+                handleWhatsAppClick(event, c.telefono, url);
+              }}>
               <MessageCircle size={15}/> {necesitaAtencion(c) ? "Atender en WhatsApp" : "Abrir WhatsApp"}
             </a>
           )}
@@ -457,7 +475,7 @@ export default function ClientesAdmin() {
         </div>
       </div>
 
-      <ClientesHandoffAlert pendientes={pendientesAtencion} onShowAll={verPendientes} onAtender={marcarAtencionIniciada} />
+      <ClientesHandoffAlert pendientes={pendientesAtencion} onShowAll={verPendientes} onAtender={(telefono, url) => { void atenderCliente(telefono, url); }} />
 
       {/* Filter bar */}
       <div className="cl-filter-bar" id="clientes-filtros">
