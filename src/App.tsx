@@ -14,6 +14,7 @@ import CrearPage from "./pages/CrearPage";
 import CodigosOperativosPage from "./pages/CodigosOperativosPage";
 import AdicionalesPage from "./pages/AdicionalesPage";
 import ActivityPage from "./pages/ActivityPage";
+import BotIAPage from "./pages/BotIAPage";
 import InventarioSnacksPage from "./pages/InventarioSnacksPage";
 import VentasSnacksPage from "./pages/VentasSnacksPage";
 import ConsumoOperativoSnacksPage from "./pages/ConsumoOperativoSnacksPage";
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="codigos-operativos" element={<RoleRoute allow={["administrador"]}><CodigosOperativosPage /></RoleRoute>} />
           <Route path="adicionales" element={<RoleRoute allow={["administrador"]}><AdicionalesPage /></RoleRoute>} />
           <Route path="actividad" element={<RoleRoute allow={["administrador"]}><ActivityPage /></RoleRoute>} />
+          <Route path="checua-ia" element={<RoleRoute allow={["administrador"]}><BotIAPage /></RoleRoute>} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
