@@ -10,6 +10,7 @@ function db() {
 }
 
 export type BotResumen = {
+  contactos_activaron_bot: number;
   contactos_entrantes: number;
   contactos_atendidos: number;
   contactos_sin_respuesta_bot: number;
@@ -17,6 +18,8 @@ export type BotResumen = {
   contactos_continuaron: number;
   mensajes_entrantes: number;
   mensajes_aceptados_ycloud: number;
+  mensajes_ia: number;
+  mensajes_seguimiento: number;
   mensajes_fallidos_ycloud: number;
   contactos_con_plan: number;
   contactos_con_enlace: number;
@@ -38,6 +41,7 @@ export type BotMetricas = {
   desde: string;
   hasta: string;
   bitacora_desde: string | null;
+  criterio_activacion: string;
   metricas: BotResumen;
   diario: BotDia[];
   ventas_asociadas: {
